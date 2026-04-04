@@ -57,8 +57,7 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
 
       const app = new PIXI.Application();
       await app.init({
-        width: containerRef.current.clientWidth,
-        height: containerRef.current.clientHeight,
+        resizeTo: containerRef.current,
         backgroundAlpha: 0,
         antialias: true,
       });
@@ -66,9 +65,9 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
       containerRef.current.appendChild(app.canvas);
       appRef.current = app;
 
-      // Create a dragon placeholder
+      // Create a dragon placeholder (matching the blue dragon)
       const dragon = new PIXI.Graphics();
-      dragon.beginFill(0xff00ff);
+      dragon.beginFill(0x38bdf8); // Sky blue
       dragon.drawPolygon([0, 0, 100, 50, 0, 100]);
       dragon.endFill();
       dragon.x = -150;
@@ -82,9 +81,9 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
             dragon.x += 5 * ticker.deltaTime;
           }
           
-          // Fire breathing (simulated by color change)
+          // Fire breathing (simulated by color change to hazard yellow)
           if (dragon.x >= 50) {
-            dragon.tint = 0xff6600;
+            dragon.tint = 0xeab308;
           }
         }
       });

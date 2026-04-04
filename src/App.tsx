@@ -19,7 +19,7 @@ import {
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
 import { SmeltLog, GlobalStats as GlobalStatsType } from './types';
 import { SmelterCanvas } from './components/SmelterCanvas';
-import { SlagManifest } from './components/SlagManifest';
+import { SmeltManifest } from './components/SmeltManifest';
 import { GlobalStats } from './components/GlobalStats';
 import { Camera, Upload, Trash2, ShieldAlert, Zap } from 'lucide-react';
 import { cn } from './lib/utils';
@@ -136,95 +136,105 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col max-w-md mx-auto relative bg-concrete overflow-x-hidden">
+    <div className="min-h-screen flex flex-col bg-concrete text-zinc-100 font-sans">
       {/* Header */}
-      <header className="p-6 border-b-4 border-white bg-black sticky top-0 z-50">
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-black font-mono text-white tracking-tighter uppercase">
-            THE LEGACY <span className="text-neon-pink">SMELTER</span>
+      <header className="p-6 border-b border-zinc-800 bg-concrete-light sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto w-full flex justify-between items-center">
+          <h1 className="text-2xl font-black font-mono tracking-tighter uppercase">
+            LEGACY <span className="text-hazard-yellow">SMELTER</span>
           </h1>
-          <div className="text-acid-green font-mono text-xs uppercase font-bold">
+          <div className="text-steel-blue font-mono text-xs uppercase font-bold">
             [ ACCESS_GRANTED ]
           </div>
         </div>
       </header>
 
-      <main className="flex-1 p-6 space-y-8">
-        {/* Global Stats */}
-        <GlobalStats totalPixels={globalStats.total_pixels_melted} />
-
-        {/* Smelter Area */}
-        <div className="brutalist-card aspect-square relative bg-[#0a0a0a] flex items-center justify-center overflow-hidden">
-          {!currentImage ? (
-            <div className="text-center p-8">
-              <div className="mb-6 flex justify-center">
-                <div className="w-16 h-16 border-4 border-dashed border-gray-600 flex items-center justify-center">
-                  <Zap className="text-gray-600" size={32} />
-                </div>
-              </div>
-              <p className="text-gray-500 font-mono text-xs uppercase mb-6">
-                INPUT LEGACY HARDWARE FOR DESTRUCTION
-              </p>
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="brutalist-button w-full flex items-center justify-center gap-2"
-              >
-                <Upload size={20} />
-                UPLOAD_TARGET
-              </button>
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileSelect} 
-                className="hidden" 
-                accept="image/*"
-              />
-            </div>
-          ) : (
-            <div className="w-full h-full relative">
-              <SmelterCanvas 
-                image={currentImage} 
-                isMelting={isMelting} 
-                onComplete={handleSmeltComplete}
-                colors={analysis?.dominantColors || []}
-              />
-              
-              {isAnalyzing && (
-                <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center p-6 text-center">
-                  <div className="w-12 h-12 border-4 border-acid-green border-t-transparent rounded-full animate-spin mb-4" />
-                  <p className="text-acid-green font-mono text-xs uppercase animate-pulse">
-                    GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
-                  </p>
-                </div>
-              )}
-
-              {analysis && !isMelting && (
-                <div className="absolute bottom-0 left-0 w-full p-4 bg-black/90 border-t-4 border-neon-pink">
-                  <p className="text-acid-green font-mono text-xs mb-4 leading-tight">
-                    {analysis.damageReport}
+      <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* Left Column: Smelter Area */}
+          <div className="lg:col-span-7 space-y-6">
+            <div className="modern-card aspect-video relative flex items-center justify-center overflow-hidden">
+              {!currentImage ? (
+                <div className="text-center p-8">
+                  <div className="mb-6 flex justify-center">
+                    <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center">
+                      <Zap className="text-hazard-yellow" size={32} />
+                    </div>
+                  </div>
+                  <p className="text-zinc-400 font-mono text-sm uppercase mb-6">
+                    INPUT LEGACY HARDWARE FOR SMELTING
                   </p>
                   <button 
-                    onClick={startSmelt}
-                    className="brutalist-button w-full bg-neon-pink text-white border-white"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="modern-button w-full flex items-center justify-center gap-2"
                   >
-                    INITIATE_SMELT
+                    <Upload size={20} />
+                    UPLOAD_TARGET
                   </button>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileSelect} 
+                    className="hidden" 
+                    accept="image/*"
+                  />
+                </div>
+              ) : (
+                <div className="w-full h-full relative">
+                  <SmelterCanvas 
+                    image={currentImage} 
+                    isMelting={isMelting} 
+                    onComplete={handleSmeltComplete}
+                    colors={analysis?.dominantColors || []}
+                  />
+                  
+                  {isAnalyzing && (
+                    <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
+                      <div className="w-12 h-12 border-4 border-steel-blue border-t-transparent rounded-full animate-spin mb-4" />
+                      <p className="text-steel-blue font-mono text-xs uppercase animate-pulse">
+                        GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
+                      </p>
+                    </div>
+                  )}
+
+                  {analysis && !isMelting && (
+                    <div className="absolute bottom-0 left-0 w-full p-6 bg-concrete-light/95 backdrop-blur-md border-t border-zinc-700">
+                      <p className="text-zinc-300 font-mono text-sm mb-4 leading-relaxed">
+                        {analysis.damageReport}
+                      </p>
+                      <button 
+                        onClick={startSmelt}
+                        className="modern-button w-full"
+                      >
+                        INITIATE_SMELT
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* Public Feed */}
-        <SlagManifest logs={logs} />
+          {/* Right Column: Stats & Feed */}
+          <div className="lg:col-span-5 space-y-8">
+            <GlobalStats totalPixels={globalStats.total_pixels_melted} />
+            <SmeltManifest logs={logs} />
+          </div>
+
+        </div>
       </main>
 
-      {/* Footer / Hazard Stripe */}
-      <footer className="p-4 bg-black border-t-4 border-white">
-        <div className="hazard-stripe h-6 w-full mb-4" />
-        <p className="text-[10px] font-mono text-gray-500 text-center uppercase tracking-widest">
-          © 2026 BLAST_BUNKER_SYSTEMS // ALL_LEGACY_REDUCED_TO_SLAG
-        </p>
+      {/* Footer */}
+      <footer className="p-6 bg-concrete-light border-t border-zinc-800 mt-auto">
+        <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row justify-between items-center gap-4">
+          <p className="text-xs font-mono text-zinc-500 uppercase tracking-widest">
+            © 2026 Ashley Childress
+          </p>
+          <p className="text-xs font-mono text-zinc-500 uppercase tracking-widest">
+            Powered by <span className="text-steel-blue">Gemini</span> & <span className="text-hazard-yellow">Google AI Studio</span>
+          </p>
+        </div>
       </footer>
     </div>
   );
