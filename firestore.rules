@@ -43,12 +43,12 @@ service cloud.firestore {
 
     // Rules
     match /smelt_logs/{logId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated() && isValidSmeltLog(request.resource.data);
     }
 
     match /global_stats/main {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAuthenticated() && isValidGlobalStats(request.resource.data);
     }
     

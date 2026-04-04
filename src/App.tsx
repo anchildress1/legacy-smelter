@@ -3,8 +3,7 @@ import { Howl } from 'howler';
 import { 
   db, 
   auth, 
-  googleProvider, 
-  signInWithPopup, 
+  signInAnonymously, 
   collection, 
   onSnapshot, 
   query, 
@@ -32,7 +31,6 @@ const sizzleSound = new Howl({ src: ['https://www.soundjay.com/mechanical/sounds
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
   const [logs, setLogs] = useState<SmeltLog[]>([]);
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -43,15 +41,16 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((u) => {
-      setUser(u);
-      setIsAuthReady(true);
+      if (u) {
+        setUser(u);
+      } else {
+        signInAnonymously(auth).catch(console.error);
+      }
     });
     return () => unsubscribeAuth();
   }, []);
 
   useEffect(() => {
-    if (!isAuthReady || !user) return;
-    
     const logsQuery = query(collection(db, 'smelt_logs'), orderBy('timestamp', 'desc'), limit(5));
     const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
       const newLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SmeltLog));
@@ -73,15 +72,7 @@ export default function App() {
       unsubscribeLogs();
       unsubscribeStats();
     };
-  }, [isAuthReady, user]);
-
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error("Login failed", error);
-    }
-  };
+  }, []);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -152,15 +143,9 @@ export default function App() {
           <h1 className="text-2xl font-black font-mono text-white tracking-tighter uppercase">
             THE LEGACY <span className="text-neon-pink">SMELTER</span>
           </h1>
-          {!user ? (
-            <button onClick={handleLogin} className="text-acid-green font-mono text-xs underline uppercase font-bold">
-              [ ACCESS_GRANTED ]
-            </button>
-          ) : (
-            <div className="w-8 h-8 rounded-full border-2 border-acid-green overflow-hidden">
-              <img src={user.photoURL} alt="User" referrerPolicy="no-referrer" />
-            </div>
-          )}
+          <div className="text-acid-green font-mono text-xs uppercase font-bold">
+            [ ACCESS_GRANTED ]
+          </div>
         </div>
       </header>
 

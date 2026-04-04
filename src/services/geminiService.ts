@@ -9,7 +9,7 @@ export interface SmeltAnalysis {
 }
 
 export async function analyzeLegacyTech(base64Image: string, mimeType: string): Promise<SmeltAnalysis> {
-  const model = "gemini-3.1-pro-preview";
+  const model = "gemini-3.1-flash-lite-preview";
   
   const prompt = `Analyze this piece of legacy technology. 
   1. Extract 5 dominant hex colors that represent its decay, rust, or outdated materials.
