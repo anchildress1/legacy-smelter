@@ -70,80 +70,61 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
       containerRef.current.appendChild(app.canvas);
       appRef.current = app;
 
-      // Create a dragon container
-      const dragon = new PIXI.Container();
-      dragon.pivot.set(50, 50);
-      dragon.x = 70;
-      dragon.y = app.screen.height / 2;
+      // Define frames for both animations
+      const idleFrames = Array.from({ length: 20 }, (_, i) => 
+        `/assets/dragon/__dragon_01_blue_idle_standing_${i.toString().padStart(3, '0')}.png`
+      );
 
-      const dragonBody = new PIXI.Graphics();
-      dragonBody.beginFill(0x38bdf8); // Sky blue
-      dragonBody.drawPolygon([0, 0, 100, 50, 0, 100]);
-      dragonBody.endFill();
-      
-      const dragonEye = new PIXI.Graphics();
-      dragonEye.beginFill(0xffffff);
-      dragonEye.drawCircle(0, 0, 8);
-      dragonEye.endFill();
-      dragonEye.x = 30;
-      dragonEye.y = 30;
-      
-      const dragonPupil = new PIXI.Graphics();
-      dragonPupil.beginFill(0x18181b);
-      dragonPupil.drawCircle(0, 0, 4);
-      dragonPupil.endFill();
-      dragonPupil.x = 34;
-      dragonPupil.y = 30;
+      const meltFrames = Array.from({ length: 20 }, (_, i) => 
+        `/assets/dragon/__dragon_01_blue_standing_flame_with_flame_${i.toString().padStart(3, '0')}.png`
+      );
 
-      dragon.addChild(dragonBody, dragonEye, dragonPupil);
-      app.stage.addChild(dragon);
+      // Load all textures
+      await PIXI.Assets.load([...idleFrames, ...meltFrames]);
+
+      const idleTextures = idleFrames.map(f => PIXI.Assets.get(f));
+      const meltTextures = meltFrames.map(f => PIXI.Assets.get(f));
+
+      // Create and manage the AnimatedSprite
+      const dragonSprite = new PIXI.AnimatedSprite(idleTextures);
+      dragonSprite.animationSpeed = 0.3;
+      dragonSprite.anchor.set(0.5);
+      dragonSprite.x = 120;
+      dragonSprite.y = app.screen.height / 2;
+      dragonSprite.play();
+      app.stage.addChild(dragonSprite);
 
       let time = 0;
-      let blinkTimer = 0;
 
       app.ticker.add((ticker) => {
         time += 0.05 * ticker.deltaTime;
-        blinkTimer += ticker.deltaTime;
         
         if (isMeltingRef.current) {
-          // Active fire breathing state
-          if (dragon.x < 100) {
-            dragon.x += 5 * ticker.deltaTime;
+          if (dragonSprite.textures !== meltTextures) {
+            dragonSprite.textures = meltTextures;
+            dragonSprite.play();
+            dragonSprite.animationSpeed = 0.5;
           }
           
-          if (dragon.x >= 100) {
-            dragonBody.tint = 0xeab308; // Hazard yellow
+          if (dragonSprite.x < 150) {
+            dragonSprite.x += 5 * ticker.deltaTime;
           }
           
-          // Intense breathing/shaking
-          dragon.scale.y = 1 + Math.sin(time * 3) * 0.02;
-          dragon.scale.x = 1 + Math.cos(time * 4) * 0.02;
-          
-          // Angry eye
-          dragonEye.scale.y = 0.5;
-          dragonPupil.scale.y = 0.5;
+          dragonSprite.scale.y = 1 + Math.sin(time * 3) * 0.02;
+          dragonSprite.scale.x = 1 + Math.cos(time * 4) * 0.02;
         } else {
-          // Idle state
-          dragonBody.tint = 0xffffff; // Reset tint
-          
-          if (dragon.x > 70) {
-            dragon.x -= 2 * ticker.deltaTime;
+          if (dragonSprite.textures !== idleTextures) {
+            dragonSprite.textures = idleTextures;
+            dragonSprite.play();
+            dragonSprite.animationSpeed = 0.3;
           }
           
-          // Gentle breathing
-          dragon.scale.y = 1 + Math.sin(time) * 0.04;
-          dragon.scale.x = 1 + Math.cos(time * 0.8) * 0.015;
-          
-          // Eye blink logic
-          if (blinkTimer > 150) { // Blink occasionally
-            dragonEye.scale.y = 0.1;
-            dragonPupil.scale.y = 0.1;
-            if (blinkTimer > 160) blinkTimer = 0; // Reset after blink
-          } else {
-            // Smoothly open eye
-            dragonEye.scale.y += (1 - dragonEye.scale.y) * 0.2;
-            dragonPupil.scale.y += (1 - dragonPupil.scale.y) * 0.2;
+          if (dragonSprite.x > 120) {
+            dragonSprite.x -= 2 * ticker.deltaTime;
           }
+          
+          dragonSprite.scale.y = 1 + Math.sin(time) * 0.04;
+          dragonSprite.scale.x = 1 + Math.cos(time * 0.8) * 0.015;
         }
       });
     };
