@@ -19,7 +19,7 @@ import { SmeltLog, GlobalStats as GlobalStatsType } from './types';
 import { SmelterCanvas } from './components/SmelterCanvas';
 import { SmeltManifest } from './components/SmeltManifest';
 import { GlobalStats } from './components/GlobalStats';
-import { Camera, Upload, Trash2, ShieldAlert, Zap } from 'lucide-react';
+import { Camera, Upload, X, Zap } from 'lucide-react';
 import { cn } from './lib/utils';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
@@ -32,9 +32,14 @@ export default function App() {
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isMelting, setIsMelting] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const logsQuery = query(collection(db, 'smelt_logs'), orderBy('timestamp', 'desc'), limit(10));
@@ -60,31 +65,77 @@ export default function App() {
     };
   }, []);
 
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      setIsCameraActive(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+      }, 100);
+    } catch (err) {
+      console.error("Camera access denied", err);
+      // Fallback to native input capture if getUserMedia fails
+      cameraInputRef.current?.click();
+    }
+  };
+
+  const stopCamera = () => {
+    if (videoRef.current?.srcObject) {
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      tracks.forEach(track => track.stop());
+    }
+    setIsCameraActive(false);
+  };
+
+  const captureImage = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0);
+        const base64 = canvas.toDataURL('image/jpeg');
+        stopCamera();
+        processImage(base64, 'image/jpeg');
+      }
+    }
+  };
+
+  const processImage = async (base64: string, mimeType: string) => {
+    setCurrentImage(base64);
+    setIsComplete(false);
+    setIsAnalyzing(true);
+    
+    try {
+      const base64Data = base64.split(',')[1];
+      const result = await analyzeLegacyTech(base64Data, mimeType);
+      setAnalysis(result);
+      setIsAnalyzing(false);
+      startSmelt();
+    } catch (error) {
+      console.error("Analysis failed", error);
+      setIsAnalyzing(false);
+    }
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = ''; // Reset input so same file can be selected again
 
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
-      setCurrentImage(base64);
-      setIsAnalyzing(true);
-      
-      try {
-        const base64Data = base64.split(',')[1];
-        const result = await analyzeLegacyTech(base64Data, file.type);
-        setAnalysis(result);
-      } catch (error) {
-        console.error("Analysis failed", error);
-      } finally {
-        setIsAnalyzing(false);
-      }
+      processImage(base64, file.type);
     };
     reader.readAsDataURL(file);
   };
 
   const startSmelt = () => {
-    if (!analysis) return;
     setIsMelting(true);
     fireSound.play();
     sizzleSound.play();
@@ -113,9 +164,7 @@ export default function App() {
         total_pixels_melted: increment(analysis.pixelCount)
       }, { merge: true });
 
-      // Reset
-      setCurrentImage(null);
-      setAnalysis(null);
+      setIsComplete(true);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'smelt_logs / global_stats');
     }
@@ -141,29 +190,68 @@ export default function App() {
           {/* Left Column: Smelter Area */}
           <div className="lg:col-span-7 space-y-6">
             <div className="modern-card aspect-video relative flex items-center justify-center overflow-hidden">
-              {!currentImage ? (
-                <div className="text-center p-8">
+              {isCameraActive ? (
+                <div className="w-full h-full relative bg-black">
+                  <video 
+                    ref={videoRef} 
+                    playsInline 
+                    className="w-full h-full object-cover"
+                  />
+                  <button 
+                    onClick={stopCamera}
+                    className="absolute top-4 right-4 w-10 h-10 bg-zinc-900/80 rounded-full flex items-center justify-center text-zinc-400 hover:text-white z-10"
+                  >
+                    <X size={20} />
+                  </button>
+                  <div className="absolute bottom-6 left-0 w-full flex justify-center z-10">
+                    <button 
+                      onClick={captureImage}
+                      className="w-16 h-16 rounded-full border-4 border-white flex items-center justify-center bg-white/20 hover:bg-white/40 backdrop-blur-sm transition-all"
+                    >
+                      <div className="w-12 h-12 bg-white rounded-full" />
+                    </button>
+                  </div>
+                </div>
+              ) : !currentImage ? (
+                <div className="text-center p-8 w-full max-w-md">
                   <div className="mb-6 flex justify-center">
                     <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center">
                       <Zap className="text-hazard-yellow" size={32} />
                     </div>
                   </div>
-                  <p className="text-zinc-400 font-mono text-sm uppercase mb-6">
+                  <p className="text-zinc-400 font-mono text-sm uppercase mb-8">
                     INPUT LEGACY HARDWARE FOR SMELTING
                   </p>
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="modern-button w-full flex items-center justify-center gap-2"
-                  >
-                    <Upload size={20} />
-                    UPLOAD_TARGET
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-4 w-full">
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="modern-button flex-1 flex items-center justify-center gap-2"
+                    >
+                      <Upload size={20} />
+                      UPLOAD
+                    </button>
+                    <button 
+                      onClick={startCamera}
+                      className="modern-button flex-1 flex items-center justify-center gap-2 bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700"
+                    >
+                      <Camera size={20} />
+                      CAMERA
+                    </button>
+                  </div>
                   <input 
                     type="file" 
                     ref={fileInputRef} 
                     onChange={handleFileSelect} 
                     className="hidden" 
                     accept="image/*"
+                  />
+                  <input 
+                    type="file" 
+                    ref={cameraInputRef} 
+                    onChange={handleFileSelect} 
+                    className="hidden" 
+                    accept="image/*"
+                    capture="environment"
                   />
                 </div>
               ) : (
@@ -184,17 +272,27 @@ export default function App() {
                     </div>
                   )}
 
-                  {analysis && !isMelting && (
+                  {isComplete && analysis && !isMelting && (
                     <div className="absolute bottom-0 left-0 w-full p-6 bg-concrete-light/95 backdrop-blur-md border-t border-zinc-700">
-                      <p className="text-zinc-300 font-mono text-sm mb-4 leading-relaxed">
+                      <p className="text-zinc-300 font-mono text-sm mb-6 leading-relaxed">
                         {analysis.damageReport}
                       </p>
-                      <button 
-                        onClick={startSmelt}
-                        className="modern-button w-full"
-                      >
-                        INITIATE_SMELT
-                      </button>
+                      <div className="flex flex-col sm:flex-row gap-4">
+                        <button 
+                          onClick={() => fileInputRef.current?.click()}
+                          className="modern-button flex-1 flex items-center justify-center gap-2"
+                        >
+                          <Upload size={18} />
+                          UPLOAD ANOTHER
+                        </button>
+                        <button 
+                          onClick={startCamera}
+                          className="modern-button flex-1 flex items-center justify-center gap-2 bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700"
+                        >
+                          <Camera size={18} />
+                          CAPTURE NEW
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

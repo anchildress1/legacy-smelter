@@ -50,6 +50,11 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
   const spriteRef = useRef<PIXI.Sprite | null>(null);
   const filterRef = useRef<PIXI.Filter | null>(null);
   const [progress, setProgress] = useState(0);
+  const isMeltingRef = useRef(isMelting);
+
+  useEffect(() => {
+    isMeltingRef.current = isMelting;
+  }, [isMelting]);
 
   useEffect(() => {
     const initPixi = async () => {
@@ -65,25 +70,79 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
       containerRef.current.appendChild(app.canvas);
       appRef.current = app;
 
-      // Create a dragon placeholder (matching the blue dragon)
-      const dragon = new PIXI.Graphics();
-      dragon.beginFill(0x38bdf8); // Sky blue
-      dragon.drawPolygon([0, 0, 100, 50, 0, 100]);
-      dragon.endFill();
-      dragon.x = -150;
-      dragon.y = app.screen.height / 2 - 50;
+      // Create a dragon container
+      const dragon = new PIXI.Container();
+      dragon.pivot.set(50, 50);
+      dragon.x = 70;
+      dragon.y = app.screen.height / 2;
+
+      const dragonBody = new PIXI.Graphics();
+      dragonBody.beginFill(0x38bdf8); // Sky blue
+      dragonBody.drawPolygon([0, 0, 100, 50, 0, 100]);
+      dragonBody.endFill();
+      
+      const dragonEye = new PIXI.Graphics();
+      dragonEye.beginFill(0xffffff);
+      dragonEye.drawCircle(0, 0, 8);
+      dragonEye.endFill();
+      dragonEye.x = 30;
+      dragonEye.y = 30;
+      
+      const dragonPupil = new PIXI.Graphics();
+      dragonPupil.beginFill(0x18181b);
+      dragonPupil.drawCircle(0, 0, 4);
+      dragonPupil.endFill();
+      dragonPupil.x = 34;
+      dragonPupil.y = 30;
+
+      dragon.addChild(dragonBody, dragonEye, dragonPupil);
       app.stage.addChild(dragon);
 
+      let time = 0;
+      let blinkTimer = 0;
+
       app.ticker.add((ticker) => {
-        if (isMelting) {
-          // Dragon enters
-          if (dragon.x < 50) {
+        time += 0.05 * ticker.deltaTime;
+        blinkTimer += ticker.deltaTime;
+        
+        if (isMeltingRef.current) {
+          // Active fire breathing state
+          if (dragon.x < 100) {
             dragon.x += 5 * ticker.deltaTime;
           }
           
-          // Fire breathing (simulated by color change to hazard yellow)
-          if (dragon.x >= 50) {
-            dragon.tint = 0xeab308;
+          if (dragon.x >= 100) {
+            dragonBody.tint = 0xeab308; // Hazard yellow
+          }
+          
+          // Intense breathing/shaking
+          dragon.scale.y = 1 + Math.sin(time * 3) * 0.02;
+          dragon.scale.x = 1 + Math.cos(time * 4) * 0.02;
+          
+          // Angry eye
+          dragonEye.scale.y = 0.5;
+          dragonPupil.scale.y = 0.5;
+        } else {
+          // Idle state
+          dragonBody.tint = 0xffffff; // Reset tint
+          
+          if (dragon.x > 70) {
+            dragon.x -= 2 * ticker.deltaTime;
+          }
+          
+          // Gentle breathing
+          dragon.scale.y = 1 + Math.sin(time) * 0.04;
+          dragon.scale.x = 1 + Math.cos(time * 0.8) * 0.015;
+          
+          // Eye blink logic
+          if (blinkTimer > 150) { // Blink occasionally
+            dragonEye.scale.y = 0.1;
+            dragonPupil.scale.y = 0.1;
+            if (blinkTimer > 160) blinkTimer = 0; // Reset after blink
+          } else {
+            // Smoothly open eye
+            dragonEye.scale.y += (1 - dragonEye.scale.y) * 0.2;
+            dragonPupil.scale.y += (1 - dragonPupil.scale.y) * 0.2;
           }
         }
       });
