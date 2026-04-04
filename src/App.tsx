@@ -24,9 +24,9 @@ import { cn } from './lib/utils';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
 // Audio Assets (Local)
-const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: true });
-const sizzleSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true }); // Using purr as secondary/background sizzle
-const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'] });
+const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: true, volume: 0.6 });
+const sizzleSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true, volume: 0.4 });
+const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], volume: 0.8 });
 
 export default function App() {
   const [logs, setLogs] = useState<SmeltLog[]>([]);
@@ -110,6 +110,7 @@ export default function App() {
     setCurrentImage(base64);
     setIsComplete(false);
     setIsAnalyzing(true);
+    flyInSound.play();
     
     try {
       const base64Data = base64.split(',')[1];
@@ -144,8 +145,14 @@ export default function App() {
 
   const handleSmeltComplete = async () => {
     setIsMelting(false);
-    fireSound.stop();
-    sizzleSound.stop();
+    fireSound.fade(0.6, 0, 1000);
+    sizzleSound.fade(0.4, 0, 1000);
+    setTimeout(() => {
+      fireSound.stop();
+      sizzleSound.stop();
+      fireSound.volume(0.6);
+      sizzleSound.volume(0.4);
+    }, 1000);
 
     if (!analysis) return;
 
@@ -200,11 +207,11 @@ export default function App() {
                   />
                   <button 
                     onClick={stopCamera}
-                    className="absolute top-4 right-4 w-10 h-10 bg-zinc-900/80 rounded-full flex items-center justify-center text-zinc-400 hover:text-white z-10"
+                    className="absolute top-4 right-4 w-10 h-10 bg-zinc-900/80 rounded-full flex items-center justify-center text-zinc-400 hover:text-white z-50"
                   >
                     <X size={20} />
                   </button>
-                  <div className="absolute bottom-6 left-0 w-full flex justify-center z-10">
+                  <div className="absolute bottom-6 left-0 w-full flex justify-center z-50">
                     <button 
                       onClick={captureImage}
                       className="w-16 h-16 rounded-full border-4 border-white flex items-center justify-center bg-white/20 hover:bg-white/40 backdrop-blur-sm transition-all"
@@ -265,7 +272,7 @@ export default function App() {
                   />
                   
                   {isAnalyzing && (
-                    <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
+                    <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
                       <div className="w-12 h-12 border-4 border-steel-blue border-t-transparent rounded-full animate-spin mb-4" />
                       <p className="text-steel-blue font-mono text-xs uppercase animate-pulse">
                         GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
@@ -274,7 +281,7 @@ export default function App() {
                   )}
 
                   {isComplete && analysis && !isMelting && (
-                    <div className="absolute bottom-0 left-0 w-full p-6 bg-concrete-light/95 backdrop-blur-md border-t border-zinc-700">
+                    <div className="absolute bottom-0 left-0 w-full p-6 bg-concrete-light/95 backdrop-blur-md border-t border-zinc-700 z-50">
                       <p className="text-zinc-300 font-mono text-sm mb-6 leading-relaxed">
                         {analysis.damageReport}
                       </p>
@@ -324,3 +331,4 @@ export default function App() {
     </div>
   );
 }
+
