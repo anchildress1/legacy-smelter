@@ -2,7 +2,9 @@ node_modules/
 build/
 dist/
 coverage/
+.gemini/
 .DS_Store
 *.log
+*.tmp
 .env*
 !.env.example
