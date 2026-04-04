@@ -1,0 +1,5 @@
+{
+  "name": "The Legacy Smelter",
+  "description": "A hardware-accelerated mobile web app that visually melts user-uploaded legacy tech using Gemini Vision and PixiJS.",
+  "requestFramePermissions": ["camera"]
+}

@@ -1,0 +1,36 @@
+{
+  "entities": {
+    "SmeltLog": {
+      "title": "SmeltLog",
+      "description": "A log of a legacy tech smelting event",
+      "type": "object",
+      "properties": {
+        "pixel_count": { "type": "number", "description": "Number of pixels melted" },
+        "damage_report": { "type": "string", "description": "AI generated damage report" },
+        "dominant_colors": { "type": "array", "items": { "type": "string" }, "description": "Hex colors extracted from image" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the smelt occurred" },
+        "uid": { "type": "string", "description": "User ID who initiated the smelt" }
+      },
+      "required": ["pixel_count", "damage_report", "dominant_colors", "timestamp", "uid"]
+    },
+    "GlobalStats": {
+      "title": "GlobalStats",
+      "description": "Global statistics for the smelter",
+      "type": "object",
+      "properties": {
+        "total_pixels_melted": { "type": "number", "description": "Total pixels melted across all users" }
+      },
+      "required": ["total_pixels_melted"]
+    }
+  },
+  "firestore": {
+    "/smelt_logs/{logId}": {
+      "schema": "SmeltLog",
+      "description": "Collection of all smelting events"
+    },
+    "/global_stats/main": {
+      "schema": "GlobalStats",
+      "description": "Single document for global statistics"
+    }
+  }
+}

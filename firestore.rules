@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: smelt_logs
+    // Fields:
+    //   - pixel_count: number (required)
+    //   - damage_report: string (required, max 100 chars)
+    //   - dominant_colors: list (required, 5 strings)
+    //   - timestamp: timestamp (required)
+    //   - uid: string (required)
+    //
+    // Collection: global_stats
+    // Document: main
+    // Fields:
+    //   - total_pixels_melted: number (required)
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidSmeltLog(data) {
+      return data.pixel_count is number && data.pixel_count > 0 &&
+             data.damage_report is string && data.damage_report.size() < 200 &&
+             data.dominant_colors is list && data.dominant_colors.size() == 5 &&
+             data.timestamp is timestamp &&
+             data.uid is string && data.uid == request.auth.uid;
+    }
+
+    function isValidGlobalStats(data) {
+      return data.total_pixels_melted is number && data.total_pixels_melted >= 0;
+    }
+
+    // Rules
+    match /smelt_logs/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidSmeltLog(request.resource.data);
+    }
+
+    match /global_stats/main {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidGlobalStats(request.resource.data);
+    }
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
