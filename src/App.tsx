@@ -23,9 +23,10 @@ import { Camera, Upload, X, Zap } from 'lucide-react';
 import { cn } from './lib/utils';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
-// Audio Assets (Placeholders)
-const fireSound = new Howl({ src: ['https://www.soundjay.com/free-music/sounds/fire-1.mp3'], loop: true });
-const sizzleSound = new Howl({ src: ['https://www.soundjay.com/mechanical/sounds/sizzling-1.mp3'], loop: true });
+// Audio Assets (Local)
+const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: true });
+const sizzleSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true }); // Using purr as secondary/background sizzle
+const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'] });
 
 export default function App() {
   const [logs, setLogs] = useState<SmeltLog[]>([]);
