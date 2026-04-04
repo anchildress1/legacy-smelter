@@ -1,10 +1,13 @@
 import React from 'react';
+import { formatPixels } from '../lib/utils';
 
 interface GlobalStatsProps {
   totalPixels: number;
 }
 
 export const GlobalStats: React.FC<GlobalStatsProps> = ({ totalPixels }) => {
+  const formatted = formatPixels(totalPixels);
+
   return (
     <div className="modern-card p-6 relative overflow-hidden">
       <div className="hazard-stripe h-2 absolute top-0 left-0 w-full" />
@@ -13,8 +16,8 @@ export const GlobalStats: React.FC<GlobalStatsProps> = ({ totalPixels }) => {
           GLOBAL SMELT ACCUMULATION
         </h3>
         <div className="text-4xl font-extrabold font-mono text-steel-blue tracking-tighter">
-          {totalPixels.toLocaleString()}
-          <span className="text-sm ml-2 text-zinc-500">PX</span>
+          {formatted.value}
+          <span className="text-sm ml-2 text-zinc-500">{formatted.unit}</span>
         </div>
       </div>
       <div className="mt-4 flex gap-2 items-center">

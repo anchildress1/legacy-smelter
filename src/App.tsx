@@ -2,8 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Howl } from 'howler';
 import { 
   db, 
-  auth, 
-  signInAnonymously, 
   collection, 
   onSnapshot, 
   query, 
@@ -30,7 +28,6 @@ const fireSound = new Howl({ src: ['https://www.soundjay.com/free-music/sounds/f
 const sizzleSound = new Howl({ src: ['https://www.soundjay.com/mechanical/sounds/sizzling-1.mp3'], loop: true });
 
 export default function App() {
-  const [user, setUser] = useState<any>(null);
   const [logs, setLogs] = useState<SmeltLog[]>([]);
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -40,18 +37,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((u) => {
-      if (u) {
-        setUser(u);
-      } else {
-        signInAnonymously(auth).catch(console.error);
-      }
-    });
-    return () => unsubscribeAuth();
-  }, []);
-
-  useEffect(() => {
-    const logsQuery = query(collection(db, 'smelt_logs'), orderBy('timestamp', 'desc'), limit(5));
+    const logsQuery = query(collection(db, 'smelt_logs'), orderBy('timestamp', 'desc'), limit(10));
     const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
       const newLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SmeltLog));
       setLogs(newLogs);
@@ -119,7 +105,7 @@ export default function App() {
         damage_report: analysis.damageReport,
         dominant_colors: analysis.dominantColors,
         timestamp: serverTimestamp(),
-        uid: user?.uid || 'anonymous'
+        uid: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
       });
 
       const statsRef = doc(db, 'global_stats', 'main');

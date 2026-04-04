@@ -54,8 +54,8 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
 
   const result = JSON.parse(response.text || "{}");
   return {
-    dominantColors: result.dominantColors || ["#eab308", "#38bdf8", "#27272a", "#18181b", "#52525b"],
-    damageReport: result.damageReport || "LEGACY HARDWARE PURGED. SMELT IMMINENT.",
-    pixelCount: result.pixelCount || 2073600
+    dominantColors: Array.isArray(result.dominantColors) ? result.dominantColors : ["#eab308", "#38bdf8", "#27272a", "#18181b", "#52525b"],
+    damageReport: String(result.damageReport || "LEGACY HARDWARE PURGED. SMELT IMMINENT."),
+    pixelCount: Number(result.pixelCount) || 2073600
   };
 }

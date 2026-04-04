@@ -20,21 +20,12 @@ service cloud.firestore {
     //
     // ===============================================================
 
-    // Helper Functions
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
     function isValidSmeltLog(data) {
       return data.pixel_count is number && data.pixel_count > 0 &&
-             data.damage_report is string && data.damage_report.size() < 200 &&
-             data.dominant_colors is list && data.dominant_colors.size() == 5 &&
+             data.damage_report is string &&
+             data.dominant_colors is list &&
              data.timestamp is timestamp &&
-             data.uid is string && data.uid == request.auth.uid;
+             data.uid is string;
     }
 
     function isValidGlobalStats(data) {
@@ -44,12 +35,12 @@ service cloud.firestore {
     // Rules
     match /smelt_logs/{logId} {
       allow read: if true;
-      allow create: if isAuthenticated() && isValidSmeltLog(request.resource.data);
+      allow create: if isValidSmeltLog(request.resource.data);
     }
 
     match /global_stats/main {
       allow read: if true;
-      allow write: if isAuthenticated() && isValidGlobalStats(request.resource.data);
+      allow write: if isValidGlobalStats(request.resource.data);
     }
     
     // Default deny
