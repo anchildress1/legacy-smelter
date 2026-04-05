@@ -1,6 +1,8 @@
+import type { Timestamp } from 'firebase/firestore';
+
 export interface SmeltLog {
   id: string;
-  timestamp: any;
+  timestamp: Timestamp | null;
   pixel_count: number;
   damage_report: string;
   dominant_colors: string[];

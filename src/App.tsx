@@ -1,46 +1,47 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Howl } from 'howler';
-import { 
-  db, 
-  collection, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  limit, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  increment, 
-  serverTimestamp 
+import {
+  db,
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  limit,
+  doc,
+  setDoc,
+  increment,
+  serverTimestamp
 } from './firebase';
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
 import { SmeltLog, GlobalStats as GlobalStatsType } from './types';
-import { SmelterCanvas } from './components/SmelterCanvas';
+import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { SmeltManifest } from './components/SmeltManifest';
 import { GlobalStats } from './components/GlobalStats';
-import { Camera, Upload, X, Zap } from 'lucide-react';
-import { cn } from './lib/utils';
+import { Camera, Upload, X, Zap, RotateCcw } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
-// Audio Assets (Local)
+// Audio
+const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false, volume: 0.5 });
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
-const sizzleSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true, volume: 0.4 });
-const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], volume: 0.8 });
+const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
 
 export default function App() {
   const [logs, setLogs] = useState<SmeltLog[]>([]);
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isMelting, setIsMelting] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
-  
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<SmelterCanvasHandle>(null);
+  const activeRequestIdRef = useRef(0);
+  const activeSmeltRunIdRef = useRef(0);
+  const analysisRef = useRef<SmeltAnalysis | null>(null);
 
   useEffect(() => {
     const logsQuery = query(collection(db, 'smelt_logs'), orderBy('timestamp', 'desc'), limit(10));
@@ -66,6 +67,15 @@ export default function App() {
     };
   }, []);
 
+  // Stop camera on unmount
+  useEffect(() => {
+    return () => {
+      if (videoRef.current?.srcObject) {
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      }
+    };
+  }, []);
+
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
@@ -77,9 +87,14 @@ export default function App() {
         }
       }, 100);
     } catch (err) {
-      console.error("Camera access denied", err);
-      // Fallback to native input capture if getUserMedia fails
-      cameraInputRef.current?.click();
+      const name = err instanceof Error ? err.name : '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        // User denied permission — silently fall back to file picker
+        cameraInputRef.current?.click();
+      } else {
+        console.error(`[App] Camera unavailable (${name || 'unknown'}):`, err);
+        setAnalysisError(`CAMERA UNAVAILABLE. USE THE UPLOAD BUTTON INSTEAD.`);
+      }
     }
   };
 
@@ -87,6 +102,7 @@ export default function App() {
     if (videoRef.current?.srcObject) {
       const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
       tracks.forEach(track => track.stop());
+      videoRef.current.srcObject = null;
     }
     setIsCameraActive(false);
   };
@@ -102,92 +118,124 @@ export default function App() {
         const base64 = canvas.toDataURL('image/jpeg');
         stopCamera();
         processImage(base64, 'image/jpeg');
+      } else {
+        console.error('[App] captureImage: failed to get 2D canvas context');
+        setAnalysisError('CAMERA CAPTURE FAILED. USE THE UPLOAD BUTTON INSTEAD.');
+        stopCamera();
       }
     }
   };
 
   const processImage = async (base64: string, mimeType: string) => {
-    console.log("Processing image...", mimeType);
+    const requestId = ++activeRequestIdRef.current;
+
+    if (import.meta.env.DEV) console.log("Processing image...", mimeType);
     setCurrentImage(base64);
     setIsComplete(false);
     setIsAnalyzing(true);
-    sizzleSound.stop();
+    setAnalysisError(null);
+    setAnalysis(null);
+    analysisRef.current = null;
+    flyInSound.stop();
     fireSound.stop();
-    
+    purrSound.stop();
+
+    const base64Data = base64.split(',')[1];
+    let result: SmeltAnalysis;
     try {
-      const base64Data = base64.split(',')[1];
-      console.log("Analyzing with Gemini...");
-      const result = await analyzeLegacyTech(base64Data, mimeType);
-      console.log("Analysis complete:", result);
-      setAnalysis(result);
-      setIsAnalyzing(false);
-      startSmelt();
+      result = await analyzeLegacyTech(base64Data, mimeType);
     } catch (error) {
-      console.error("Analysis failed", error);
+      if (requestId !== activeRequestIdRef.current) return;
+      console.error("Gemini analysis failed", error);
       setIsAnalyzing(false);
+      setCurrentImage(null);
+      setAnalysisError("GEMINI ANALYSIS FAILED. CHECK API KEY AND RETRY.");
+      return;
+    }
+
+    if (requestId !== activeRequestIdRef.current) return;
+    if (import.meta.env.DEV) console.log("Analysis complete:", result);
+    setAnalysis(result);
+    analysisRef.current = result;
+    setIsAnalyzing(false);
+
+    try {
+      activeSmeltRunIdRef.current = requestId;
+      await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
+    } catch (error) {
+      if (requestId !== activeRequestIdRef.current) return;
+      console.error("Canvas render failed", error);
+      setCurrentImage(null);
+      setAnalysis(null);
+      analysisRef.current = null;
+      setAnalysisError("CANVAS RENDER FAILED. YOUR BROWSER MAY NOT SUPPORT WEBGL.");
     }
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    e.target.value = ''; // Reset input so same file can be selected again
+    e.target.value = '';
 
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
       processImage(base64, file.type);
     };
+    reader.onerror = () => {
+      console.error('[App] FileReader failed:', reader.error);
+      setAnalysisError('FILE READ FAILED. THE FILE MAY BE CORRUPT OR INACCESSIBLE.');
+    };
     reader.readAsDataURL(file);
   };
 
-  const startSmelt = () => {
-    console.log("Starting smelt animation...");
-    setIsMelting(true);
-    fireSound.play();
-  };
-
   const handleSmeltComplete = async () => {
-    console.log("Smelt complete, saving to Firestore...");
-    setIsMelting(false);
+    if (import.meta.env.DEV) console.log("Smelt complete");
     fireSound.stop();
-    sizzleSound.play();
+    purrSound.play();
 
-    if (!analysis) return;
+    if (activeSmeltRunIdRef.current !== activeRequestIdRef.current) return;
+
+    const completedAnalysis = analysisRef.current;
+
+    // Skip Firestore write on replay (isComplete already true)
+    if (isComplete || !completedAnalysis) return;
 
     try {
-      // Update Firestore
       const logRef = doc(collection(db, 'smelt_logs'));
       await setDoc(logRef, {
-        pixel_count: analysis.pixelCount,
-        damage_report: analysis.damageReport,
-        dominant_colors: analysis.dominantColors,
+        pixel_count: completedAnalysis.pixelCount,
+        damage_report: completedAnalysis.damageReport,
+        dominant_colors: completedAnalysis.dominantColors,
         timestamp: serverTimestamp(),
         uid: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
       });
 
       const statsRef = doc(db, 'global_stats', 'main');
       await setDoc(statsRef, {
-        total_pixels_melted: increment(analysis.pixelCount)
+        total_pixels_melted: increment(completedAnalysis.pixelCount)
       }, { merge: true });
-
-      setIsComplete(true);
-      console.log("Final state updated: isComplete=true");
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'smelt_logs / global_stats');
     }
+    // Show damage report regardless of whether Firestore write succeeded
+    setIsComplete(true);
   };
 
+  const handleReplay = () => {
+    purrSound.stop();
+    canvasRef.current?.replay();
+  };
 
   return (
-    <div className="min-h-screen flex flex-col bg-concrete text-zinc-100 font-sans">
+    <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       {/* Header */}
-      <header className="p-6 border-b border-zinc-800 bg-concrete-light sticky top-0 z-50">
+      <header className="p-6 border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
         <div className="max-w-7xl mx-auto w-full flex justify-between items-center">
           <h1 className="text-2xl font-black font-mono tracking-tighter uppercase">
-            LEGACY <span className="text-hazard-yellow">SMELTER</span>
+            LEGACY <span className="text-hazard-amber">SMELTER</span>
           </h1>
-          <div className="text-steel-blue font-mono text-xs uppercase font-bold">
+          <div className="text-hazard-amber font-mono text-xs uppercase font-bold">
             [ ACCESS_GRANTED ]
           </div>
         </div>
@@ -195,118 +243,112 @@ export default function App() {
 
       <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
+
           {/* Left Column: Smelter Area */}
-          <div className="lg:col-span-7 space-y-6">
-            <div className="modern-card aspect-video relative flex items-center justify-center overflow-hidden">
-              {isCameraActive ? (
-                <div className="w-full h-full relative bg-black">
-                  <video 
-                    ref={videoRef} 
-                    playsInline 
-                    className="w-full h-full object-cover"
-                  />
-                  <button 
+          <div className="lg:col-span-7 space-y-4">
+            {/* Controls — always visible */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="modern-button flex-1 flex items-center justify-center gap-2"
+              >
+                <Upload size={18} aria-hidden={true} />
+                UPLOAD
+              </button>
+              <button
+                onClick={startCamera}
+                className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-concrete-border hover:brightness-110"
+              >
+                <Camera size={18} aria-hidden={true} />
+                CAMERA
+              </button>
+            </div>
+
+            {/* Hidden file inputs */}
+            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" />
+            <input type="file" ref={cameraInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" capture="environment" />
+
+            {/* Animation Window */}
+            <div className="modern-card aspect-video relative overflow-hidden bg-concrete">
+              {/* Camera overlay */}
+              {isCameraActive && (
+                <div className="absolute inset-0 bg-black z-30">
+                  <video ref={videoRef} playsInline className="w-full h-full object-cover" aria-label="Camera preview" />
+                  <button
                     onClick={stopCamera}
-                    className="absolute top-4 right-4 w-10 h-10 bg-zinc-900/80 rounded-full flex items-center justify-center text-zinc-400 hover:text-white z-50"
+                    aria-label="Close camera"
+                    title="Close camera"
+                    className="absolute top-4 right-4 w-10 h-10 bg-concrete-mid/80 rounded-full flex items-center justify-center text-stone-gray hover:text-ash-white z-50"
                   >
-                    <X size={20} />
+                    <X size={20} aria-hidden={true} />
                   </button>
                   <div className="absolute bottom-6 left-0 w-full flex justify-center z-50">
-                    <button 
+                    <button
                       onClick={captureImage}
+                      aria-label="Capture photo"
+                      title="Capture photo"
                       className="w-16 h-16 rounded-full border-4 border-white flex items-center justify-center bg-white/20 hover:bg-white/40 backdrop-blur-sm transition-all"
                     >
                       <div className="w-12 h-12 bg-white rounded-full" />
                     </button>
                   </div>
                 </div>
-              ) : !currentImage ? (
-                <div className="text-center p-8 w-full max-w-md">
-                  <div className="mb-6 flex justify-center">
-                    <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center">
-                      <Zap className="text-hazard-yellow" size={32} />
-                    </div>
+              )}
+
+              {/* Empty state */}
+              {!currentImage && !isCameraActive && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <Zap className="text-hazard-amber mx-auto mb-3" size={32} aria-hidden={true} />
+                    <p className="text-stone-gray font-mono text-xs uppercase">
+                      INPUT LEGACY HARDWARE FOR SMELTING
+                    </p>
                   </div>
-                  <p className="text-zinc-400 font-mono text-sm uppercase mb-8">
-                    INPUT LEGACY HARDWARE FOR SMELTING
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-4 w-full">
-                    <button 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="modern-button flex-1 flex items-center justify-center gap-2"
-                    >
-                      <Upload size={20} />
-                      UPLOAD
-                    </button>
-                    <button 
-                      onClick={startCamera}
-                      className="modern-button flex-1 flex items-center justify-center gap-2 bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700"
-                    >
-                      <Camera size={20} />
-                      CAMERA
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full h-full relative">
-                  <SmelterCanvas 
-                    image={currentImage} 
-                    isMelting={isMelting} 
-                    onComplete={handleSmeltComplete}
-                    colors={analysis?.dominantColors || []}
-                    subjectBox={analysis?.subjectBox || null}
-                  />
-                  
-                  {isAnalyzing && (
-                    <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
-                      <div className="w-12 h-12 border-4 border-steel-blue border-t-transparent rounded-full animate-spin mb-4" />
-                      <p className="text-steel-blue font-mono text-xs uppercase animate-pulse">
-                        GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
-                      </p>
-                    </div>
-                  )}
                 </div>
               )}
-              {/* HIDDEN INPUTS MOVED HERE */}
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileSelect} 
-                className="hidden" 
-                accept="image/*"
-              />
-              <input 
-                type="file" 
-                ref={cameraInputRef} 
-                onChange={handleFileSelect} 
-                className="hidden" 
-                accept="image/*"
-                capture="environment"
-              />
+
+              {/* PixiJS Canvas */}
+              {currentImage && (
+                <SmelterCanvas
+                  ref={canvasRef}
+                  onComplete={handleSmeltComplete}
+                  onFlyInStart={() => flyInSound.play()}
+                  onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
+                />
+              )}
+
+              {/* Analyzing overlay */}
+              {isAnalyzing && (
+                <div role="status" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
+                  <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
+                  <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
+                    GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
+                  </p>
+                </div>
+              )}
             </div>
 
-            {isComplete && analysis && !isMelting && (
+            {analysisError && (
+              <div className="modern-card p-4" role="alert" aria-live="assertive">
+                <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">
+                  {analysisError}
+                </p>
+              </div>
+            )}
+
+            {/* Damage report + replay */}
+            {isComplete && analysis && (
               <div className="modern-card p-6">
-                <p className="text-zinc-300 font-mono text-sm mb-6 leading-relaxed">
+                <p className="text-ash-white font-mono text-sm leading-relaxed mb-4">
                   {analysis.damageReport}
                 </p>
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="modern-button flex-1 flex items-center justify-center gap-2"
-                  >
-                    <Upload size={18} />
-                    UPLOAD ANOTHER
-                  </button>
-                  <button 
-                    onClick={startCamera}
-                    className="modern-button flex-1 flex items-center justify-center gap-2 bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700"
-                  >
-                    <Camera size={18} />
-                    CAPTURE NEW
-                  </button>
-                </div>
+                <button
+                  onClick={handleReplay}
+                  className="modern-button flex items-center justify-center gap-2"
+                >
+                  <RotateCcw size={18} aria-hidden={true} />
+                  REPLAY SMELT
+                </button>
               </div>
             )}
           </div>
@@ -321,17 +363,16 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="p-6 bg-concrete-light border-t border-zinc-800 mt-auto">
+      <footer className="p-6 bg-concrete-mid border-t border-concrete-border mt-auto">
         <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-xs font-mono text-zinc-500 uppercase tracking-widest">
-            © 2026 Ashley Childress
+          <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
+            &copy; 2026 Ashley Childress
           </p>
-          <p className="text-xs font-mono text-zinc-500 uppercase tracking-widest">
-            Powered by <span className="text-steel-blue">Gemini</span> & <span className="text-hazard-yellow">Google AI Studio</span>
+          <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
+            Powered by Gemini | Built with Google AI Studio, Gemini &amp; Claude
           </p>
         </div>
       </footer>
     </div>
   );
 }
-
