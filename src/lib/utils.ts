@@ -6,12 +6,12 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatPixels(pixels: number): { value: string, unit: string } {
-  if (pixels < 1_000) return { value: pixels.toString(), unit: 'PX' };
-  if (pixels < 1_000_000) return { value: (pixels / 1_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'K PX' };
-  if (pixels < 1_000_000_000) return { value: (pixels / 1_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'M PX' };
-  if (pixels < 1_000_000_000_000) return { value: (pixels / 1_000_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'G PX' };
-  if (pixels < 1_000_000_000_000_000) return { value: (pixels / 1_000_000_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'T PX' };
-  return { value: (pixels / 1_000_000_000_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'P PX' };
+  if (pixels < 1_000) return { value: Math.ceil(pixels).toString(), unit: 'PIXELS' };
+  if (pixels < 1_000_000) return { value: Math.ceil(pixels / 1_000).toString(), unit: 'KILOPIXELS' };
+  if (pixels < 1_000_000_000) return { value: Math.ceil(pixels / 1_000_000).toString(), unit: 'MEGAPIXELS' };
+  if (pixels < 1_000_000_000_000) return { value: Math.ceil(pixels / 1_000_000_000).toString(), unit: 'GIGAPIXELS' };
+  if (pixels < 1_000_000_000_000_000) return { value: Math.ceil(pixels / 1_000_000_000_000).toString(), unit: 'TERAPIXELS' };
+  return { value: Math.ceil(pixels / 1_000_000_000_000_000).toString(), unit: 'PETAPIXELS' };
 }
 
 export const FALLBACK_COLORS = ["#ffff00", "#00c3f5", "#4db542", "#fb0094", "#fc9103"];
