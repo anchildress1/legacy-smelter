@@ -13,3 +13,12 @@ export function formatPixels(pixels: number): { value: string, unit: string } {
   if (pixels < 1_000_000_000_000_000) return { value: (pixels / 1_000_000_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'T PX' };
   return { value: (pixels / 1_000_000_000_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'P PX' };
 }
+
+export const FALLBACK_COLORS = ["#ffff00", "#00c3f5", "#4db542", "#fb0094", "#fc9103"];
+
+export function getFiveDistinctColors(colors: string[]): string[] {
+  const normalizedColors = (colors || []).map(c => typeof c === 'string' ? c.toLowerCase().trim() : c);
+  const uniqueSrc = Array.from(new Set(normalizedColors));
+  const combined = Array.from(new Set([...uniqueSrc, ...FALLBACK_COLORS]));
+  return combined.slice(0, 5);
+}

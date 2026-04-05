@@ -107,6 +107,7 @@ export default function App() {
   };
 
   const processImage = async (base64: string, mimeType: string) => {
+    console.log("Processing image...", mimeType);
     setCurrentImage(base64);
     setIsComplete(false);
     setIsAnalyzing(true);
@@ -114,7 +115,9 @@ export default function App() {
     
     try {
       const base64Data = base64.split(',')[1];
+      console.log("Analyzing with Gemini...");
       const result = await analyzeLegacyTech(base64Data, mimeType);
+      console.log("Analysis complete:", result);
       setAnalysis(result);
       setIsAnalyzing(false);
       startSmelt();
@@ -138,21 +141,17 @@ export default function App() {
   };
 
   const startSmelt = () => {
+    console.log("Starting smelt animation...");
     setIsMelting(true);
     fireSound.play();
     sizzleSound.play();
   };
 
   const handleSmeltComplete = async () => {
+    console.log("Smelt complete, saving to Firestore...");
     setIsMelting(false);
-    fireSound.fade(0.6, 0, 1000);
-    sizzleSound.fade(0.4, 0, 1000);
-    setTimeout(() => {
-      fireSound.stop();
-      sizzleSound.stop();
-      fireSound.volume(0.6);
-      sizzleSound.volume(0.4);
-    }, 1000);
+    fireSound.stop();
+    sizzleSound.stop();
 
     if (!analysis) return;
 
@@ -173,10 +172,12 @@ export default function App() {
       }, { merge: true });
 
       setIsComplete(true);
+      console.log("Final state updated: isComplete=true");
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'smelt_logs / global_stats');
     }
   };
+
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-zinc-100 font-sans">
@@ -279,33 +280,33 @@ export default function App() {
                       </p>
                     </div>
                   )}
-
-                  {isComplete && analysis && !isMelting && (
-                    <div className="absolute bottom-0 left-0 w-full p-6 bg-concrete-light/95 backdrop-blur-md border-t border-zinc-700 z-50">
-                      <p className="text-zinc-300 font-mono text-sm mb-6 leading-relaxed">
-                        {analysis.damageReport}
-                      </p>
-                      <div className="flex flex-col sm:flex-row gap-4">
-                        <button 
-                          onClick={() => fileInputRef.current?.click()}
-                          className="modern-button flex-1 flex items-center justify-center gap-2"
-                        >
-                          <Upload size={18} />
-                          UPLOAD ANOTHER
-                        </button>
-                        <button 
-                          onClick={startCamera}
-                          className="modern-button flex-1 flex items-center justify-center gap-2 bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700"
-                        >
-                          <Camera size={18} />
-                          CAPTURE NEW
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
+
+            {isComplete && analysis && !isMelting && (
+              <div className="modern-card p-6">
+                <p className="text-zinc-300 font-mono text-sm mb-6 leading-relaxed">
+                  {analysis.damageReport}
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="modern-button flex-1 flex items-center justify-center gap-2"
+                  >
+                    <Upload size={18} />
+                    UPLOAD ANOTHER
+                  </button>
+                  <button 
+                    onClick={startCamera}
+                    className="modern-button flex-1 flex items-center justify-center gap-2 bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700"
+                  >
+                    <Camera size={18} />
+                    CAPTURE NEW
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Column: Stats & Feed */}
