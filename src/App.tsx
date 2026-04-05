@@ -24,7 +24,7 @@ import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
 // Audio Assets (Local)
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
-const sizzleSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true, volume: 0.4 });
+const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true, volume: 0.4 });
 
 export default function App() {
   const [logs, setLogs] = useState<SmeltLog[]>([]);
@@ -110,7 +110,7 @@ export default function App() {
     setCurrentImage(base64);
     setIsComplete(false);
     setIsAnalyzing(true);
-    sizzleSound.stop();
+    purrSound.stop();
     fireSound.stop();
 
     try {
@@ -150,7 +150,7 @@ export default function App() {
     if (import.meta.env.DEV) console.log("Smelt complete, saving to Firestore...");
     setIsMelting(false);
     fireSound.stop();
-    sizzleSound.play();
+    purrSound.play();
 
     if (!analysis) return;
 
