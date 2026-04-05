@@ -61,7 +61,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
               className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:rounded"
             >
               <ArrowLeft size={14} />
-              RETURN TO FURNACE
+              RETURN TO HOTFIX
             </button>
           </div>
           <div className="flex items-center gap-3">
