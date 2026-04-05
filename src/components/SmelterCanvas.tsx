@@ -173,8 +173,11 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
         if (spriteRef.current) {
           spriteRef.current.x = width * (isMobile ? 0.7 : 0.75);
           spriteRef.current.y = height * 0.5;
-          
-          const targetSize = isMobile ? width * 0.3 : width * 0.25;
+
+          // Image should be no larger than the dragon
+          const dragonVisualHeight = dragonSprite.texture.height * baseScale;
+          const maxSize = dragonVisualHeight;
+          const targetSize = Math.min(isMobile ? width * 0.3 : width * 0.25, maxSize);
           const currentSize = Math.max(spriteRef.current.texture.width, spriteRef.current.texture.height);
           if (currentSize > 0) {
             spriteRef.current.scale.set(targetSize / currentSize);
@@ -227,35 +230,36 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
             img.src = image;
           });
 
-          const texture = PIXI.Texture.from(img);
-          
+          // Crop to AI bounding box if available
+          let texture: PIXI.Texture;
+          if (subjectBox && subjectBox.length === 4) {
+            const [ymin, xmin, ymax, xmax] = subjectBox;
+            const cropX = Math.floor((xmin / 1000) * img.width);
+            const cropY = Math.floor((ymin / 1000) * img.height);
+            const cropW = Math.floor(((xmax - xmin) / 1000) * img.width);
+            const cropH = Math.floor(((ymax - ymin) / 1000) * img.height);
+
+            if (cropW > 0 && cropH > 0) {
+              const cropCanvas = document.createElement('canvas');
+              cropCanvas.width = cropW;
+              cropCanvas.height = cropH;
+              const ctx = cropCanvas.getContext('2d')!;
+              ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+              texture = PIXI.Texture.from(cropCanvas);
+            } else {
+              texture = PIXI.Texture.from(img);
+            }
+          } else {
+            texture = PIXI.Texture.from(img);
+          }
+
           if (spriteRef.current) {
             appRef.current!.stage.removeChild(spriteRef.current);
           }
-          
+
           const sprite = new PIXI.Sprite(texture);
           sprite.anchor.set(0.5, 0.5);
-          sprite.alpha = 1;
-          sprite.visible = true;
 
-          if (import.meta.env.DEV && subjectBox && subjectBox.length === 4) {
-            const [ymin, xmin, ymax, xmax] = subjectBox;
-            const w = img.width;
-            const h = img.height;
-            const cropX = Math.floor((xmin / 1000) * w);
-            const cropY = Math.floor((ymin / 1000) * h);
-            const cropW = Math.floor(((xmax - xmin) / 1000) * w);
-            const cropH = Math.floor(((ymax - ymin) / 1000) * h);
-            
-            if (cropW > 0 && cropH > 0) {
-              const bounds = new PIXI.Graphics();
-              // Bright red targeting box
-              bounds.rect(cropX - w/2, cropY - h/2, cropW, cropH);
-              bounds.stroke({ width: 6, color: 0xff0000, alpha: 0.8 });
-              sprite.addChild(bounds);
-            }
-          }
-          
           const activeColors = getFiveDistinctColors(colors);
           
           const filter = PIXI.Filter.from({
