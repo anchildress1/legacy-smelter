@@ -205,8 +205,9 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         sprite.anchor.set(0.5, 0.5);
         spriteRef.current = sprite;
 
-        // Insert at index 0 (behind everything)
-        state.app.stage.addChildAt(sprite, 0);
+        // Insert at index 1 (behind puddle and dragon, but IN FRONT of goo stream)
+        // Goo stream is at index 0 — it shows through as the image fades
+        state.app.stage.addChildAt(sprite, 1);
 
         if (import.meta.env.DEV) {
           console.log('[SmelterCanvas] Image loaded:', texture.width, 'x', texture.height,
@@ -322,7 +323,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
             const baseScale = Math.min(0.7, (width / 900) * 0.7);
             const dragonRestX = width * 0.38;
             const dragonY = height * 0.55;
-            const imageX = width * 0.76;
+            const imageX = width * 0.65;
             const imageY = height * 0.5;
             const puddleY = height * 0.88;
 
