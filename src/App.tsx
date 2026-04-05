@@ -17,7 +17,7 @@ import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { formatPixels, getFiveDistinctColors, getLogShareLinks } from './lib/utils';
-import { Camera, Upload, X, Flame, RotateCcw, ScrollText } from 'lucide-react';
+import { Camera, Upload, X, Flame, RotateCcw, ChevronRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
 // Audio
@@ -274,13 +274,6 @@ export default function App({ onNavigateManifest }: AppProps) {
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <button
-              onClick={onNavigateManifest}
-              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:rounded"
-            >
-              <ScrollText size={14} />
-              INCIDENT MANIFEST
-            </button>
             <div className="flex items-center gap-3">
               <div className="text-right">
                 <div className="font-mono font-extrabold text-hazard-amber text-lg leading-none tracking-tight">
@@ -292,6 +285,13 @@ export default function App({ onNavigateManifest }: AppProps) {
               </div>
               <div className="hazard-stripe w-2 h-10 rounded-sm shrink-0" aria-hidden="true" />
             </div>
+            <button
+              onClick={onNavigateManifest}
+              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:rounded"
+            >
+              INCIDENT MANIFEST
+              <ChevronRight size={14} />
+            </button>
           </div>
         </div>
       </header>
