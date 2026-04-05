@@ -9,6 +9,8 @@
   --color-concrete-light: #27272a;
   --color-hazard-yellow: #eab308;
   --color-steel-blue: #38bdf8;
+  --color-acid-green: #39ff14;
+  --color-neon-orange: #ff6b00;
 }
 
 @layer base {

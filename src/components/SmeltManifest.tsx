@@ -28,11 +28,11 @@ export const SmeltManifest: React.FC<SmeltManifestProps> = ({ logs }) => {
                 ))}
               </div>
               <div className="pl-4 flex-1">
-                <p className="text-zinc-300 font-mono text-sm leading-tight">
+                <p className="text-acid-green font-mono text-sm leading-tight">
                   {log.damage_report}
                 </p>
                 <div className="mt-2 flex justify-between items-end">
-                  <span className="text-hazard-yellow font-mono text-xs font-bold">
+                  <span className="text-neon-orange font-mono text-xs font-bold">
                     {formatted.value} {formatted.unit} SMELTED
                   </span>
                   <span className="text-zinc-500 font-mono text-[10px]">

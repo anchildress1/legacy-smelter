@@ -15,7 +15,7 @@ export const GlobalStats: React.FC<GlobalStatsProps> = ({ totalPixels }) => {
         <h3 className="text-zinc-400 font-mono text-xs uppercase tracking-widest mb-1">
           GLOBAL SMELT ACCUMULATION
         </h3>
-        <div className="text-4xl font-extrabold font-mono text-steel-blue tracking-tighter">
+        <div className="text-4xl font-extrabold font-mono text-acid-green tracking-tighter">
           {formatted.value}
           <span className="text-sm ml-2 text-zinc-500">{formatted.unit}</span>
         </div>

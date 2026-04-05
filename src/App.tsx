@@ -260,7 +260,7 @@ export default function App() {
                   {isAnalyzing && (
                     <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
                       <div className="w-12 h-12 border-4 border-steel-blue border-t-transparent rounded-full animate-spin mb-4" />
-                      <p className="text-steel-blue font-mono text-xs uppercase animate-pulse">
+                      <p className="text-neon-orange font-mono text-xs uppercase animate-pulse">
                         GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
                       </p>
                     </div>
