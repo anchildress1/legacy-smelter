@@ -22,7 +22,7 @@ export const GlobalStats: React.FC<GlobalStatsProps> = ({ totalPixels }) => {
       </div>
       <div className="mt-4 flex gap-2 items-center">
         <div className="w-2 h-2 rounded-full bg-hazard-yellow animate-pulse" />
-        <div className="text-[10px] font-mono text-zinc-500 uppercase">
+        <div className="text-[10px] font-mono text-zinc-400 uppercase">
           SYSTEM STATUS: OPERATIONAL // SMELTER READY
         </div>
       </div>

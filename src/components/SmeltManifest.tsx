@@ -35,7 +35,7 @@ export const SmeltManifest: React.FC<SmeltManifestProps> = ({ logs }) => {
                   <span className="text-hazard-yellow font-mono text-xs font-bold">
                     {formatted.value} {formatted.unit} SMELTED
                   </span>
-                  <span className="text-zinc-500 font-mono text-[10px]">
+                  <span className="text-zinc-400 font-mono text-[10px]">
                     {new Date(log.timestamp?.toDate?.() || Date.now()).toLocaleTimeString()}
                   </span>
                 </div>
