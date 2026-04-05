@@ -357,7 +357,6 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 dragon.x = dragonRestX;
                 dragon.y = dragonY;
                 dragon.scale.set(-baseScale, baseScale);
-                dragon.scale.y = baseScale * (1 + Math.sin(time * 5) * 0.05);
 
                 // When flame animation finishes, return to idle (melt continues)
                 if (!dragon.playing && dragon.textures === textures.flame) {
