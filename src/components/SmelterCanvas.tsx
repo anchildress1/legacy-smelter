@@ -311,11 +311,14 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         const puddlePaths = Array.from({ length: 8 }, (_, i) =>
           `/assets/liquid/bubbling-puddle/p${i + 1}.png`);
 
-        await PIXI.Assets.load([
-          ...dragonPaths.fly, ...dragonPaths.land, ...dragonPaths.idle,
-          ...dragonPaths.flame, ...puddlePaths,
-        ]);
+        const allPaths = [...dragonPaths.fly, ...dragonPaths.land, ...dragonPaths.idle, ...dragonPaths.flame, ...puddlePaths];
+        await PIXI.Assets.load(allPaths);
         if (destroyed) { app.destroy(); return; }
+
+        const missing = allPaths.filter(p => !PIXI.Assets.get(p));
+        if (missing.length > 0) {
+          throw new Error(`[SmelterCanvas] ${missing.length} sprite(s) failed to load: ${missing.join(', ')}`);
+        }
 
         const textures = {
           fly: dragonPaths.fly.map(f => PIXI.Assets.get(f)),

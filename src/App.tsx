@@ -87,8 +87,14 @@ export default function App() {
         }
       }, 100);
     } catch (err) {
-      console.error("Camera access denied", err);
-      cameraInputRef.current?.click();
+      const name = err instanceof Error ? err.name : '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        // User denied permission — silently fall back to file picker
+        cameraInputRef.current?.click();
+      } else {
+        console.error(`[App] Camera unavailable (${name || 'unknown'}):`, err);
+        setAnalysisError(`CAMERA UNAVAILABLE. USE THE UPLOAD BUTTON INSTEAD.`);
+      }
     }
   };
 
@@ -134,28 +140,35 @@ export default function App() {
     fireSound.stop();
     purrSound.stop();
 
+    const base64Data = base64.split(',')[1];
+    let result: SmeltAnalysis;
     try {
-      const base64Data = base64.split(',')[1];
-      const result = await analyzeLegacyTech(base64Data, mimeType);
+      result = await analyzeLegacyTech(base64Data, mimeType);
+    } catch (error) {
       if (requestId !== activeRequestIdRef.current) return;
-
-      if (import.meta.env.DEV) console.log("Analysis complete:", result);
-      setAnalysis(result);
-      analysisRef.current = result;
+      console.error("Gemini analysis failed", error);
       setIsAnalyzing(false);
+      setCurrentImage(null);
+      setAnalysisError("GEMINI ANALYSIS FAILED. CHECK API KEY AND RETRY.");
+      return;
+    }
 
-      // Imperative: load image into canvas and start animation
+    if (requestId !== activeRequestIdRef.current) return;
+    if (import.meta.env.DEV) console.log("Analysis complete:", result);
+    setAnalysis(result);
+    analysisRef.current = result;
+    setIsAnalyzing(false);
+
+    try {
       activeSmeltRunIdRef.current = requestId;
       await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
     } catch (error) {
       if (requestId !== activeRequestIdRef.current) return;
-
-      console.error("Analysis failed", error);
-      setIsAnalyzing(false);
+      console.error("Canvas render failed", error);
       setCurrentImage(null);
       setAnalysis(null);
       analysisRef.current = null;
-      setAnalysisError("ANALYSIS FAILED. RETRY OR VERIFY GEMINI CONFIGURATION.");
+      setAnalysisError("CANVAS RENDER FAILED. YOUR BROWSER MAY NOT SUPPORT WEBGL.");
     }
   };
 
