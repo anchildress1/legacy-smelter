@@ -214,7 +214,6 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
     if (image && appRef.current && isReady) {
       const loadTexture = async () => {
         try {
-          // Pre-load the image to guarantee we have dimensions
           const img = new Image();
           await new Promise((resolve, reject) => {
             img.onload = resolve;
@@ -228,26 +227,26 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
             appRef.current!.stage.removeChild(spriteRef.current);
           }
           
-          let renderTexture = texture;
+          const sprite = new PIXI.Sprite(texture);
+          sprite.anchor.set(0.5, 1.0);
+
           if (subjectBox && subjectBox.length === 4) {
             const [ymin, xmin, ymax, xmax] = subjectBox;
             const w = img.width;
             const h = img.height;
-            const cropX = Math.max(0, Math.floor((xmin / 1000) * w));
-            const cropY = Math.max(0, Math.floor((ymin / 1000) * h));
-            const cropW = Math.min(w - cropX, Math.floor(((xmax - xmin) / 1000) * w));
-            const cropH = Math.min(h - cropY, Math.floor(((ymax - ymin) / 1000) * h));
+            const cropX = Math.floor((xmin / 1000) * w);
+            const cropY = Math.floor((ymin / 1000) * h);
+            const cropW = Math.floor(((xmax - xmin) / 1000) * w);
+            const cropH = Math.floor(((ymax - ymin) / 1000) * h);
             
             if (cropW > 0 && cropH > 0) {
-              renderTexture = new PIXI.Texture({
-                source: texture.source,
-                frame: new PIXI.Rectangle(cropX, cropY, cropW, cropH)
-              });
+              const bounds = new PIXI.Graphics();
+              // Bright red targeting box
+              bounds.rect(cropX - w/2, cropY - h, cropW, cropH);
+              bounds.stroke({ width: 6, color: 0xff0000, alpha: 0.8 });
+              sprite.addChild(bounds);
             }
           }
-
-          const sprite = new PIXI.Sprite(renderTexture);
-          sprite.anchor.set(0.5, 1.0);
           
           const activeColors = getFiveDistinctColors(colors);
           
@@ -274,7 +273,7 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
           spriteRef.current = sprite;
           appRef.current!.stage.addChild(sprite);
         } catch (err) {
-          console.error("Failed to load or crop texture", err);
+          console.error("Failed to load texture for canvas", err);
         }
       };
       
