@@ -260,8 +260,8 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         if (meltFilterRef.current) {
           try {
             const u = (meltFilterRef.current.resources as any).meltUniforms.uniforms;
-            u.uMeltAmount.value = 0;
-            u.uTime.value = 0;
+            u.uMeltAmount = 0;
+            u.uTime = 0;
           } catch { /* ignore */ }
         }
         beginSequence();
@@ -410,8 +410,8 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 // Advance melt shader on image
                 if (meltFilterRef.current) {
                   const u = (meltFilterRef.current.resources as any).meltUniforms.uniforms;
-                  u.uMeltAmount.value = mp;
-                  u.uTime.value += 0.005 * ticker.deltaTime;
+                  u.uMeltAmount = mp;
+                  u.uTime += 0.005 * ticker.deltaTime;
                 }
 
                 // Hide image when fully melted
