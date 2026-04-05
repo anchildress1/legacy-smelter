@@ -23,9 +23,10 @@ import { Camera, Upload, X, Zap } from 'lucide-react';
 import { cn } from './lib/utils';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
-// Audio Assets (Placeholders)
-const fireSound = new Howl({ src: ['https://www.soundjay.com/free-music/sounds/fire-1.mp3'], loop: true });
-const sizzleSound = new Howl({ src: ['https://www.soundjay.com/mechanical/sounds/sizzling-1.mp3'], loop: true });
+// Audio Assets (Local)
+const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
+const sizzleSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true, volume: 0.4 });
+const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], volume: 0.8 });
 
 export default function App() {
   const [logs, setLogs] = useState<SmeltLog[]>([]);
@@ -106,13 +107,18 @@ export default function App() {
   };
 
   const processImage = async (base64: string, mimeType: string) => {
+    console.log("Processing image...", mimeType);
     setCurrentImage(base64);
     setIsComplete(false);
     setIsAnalyzing(true);
+    sizzleSound.stop();
+    fireSound.stop();
     
     try {
       const base64Data = base64.split(',')[1];
+      console.log("Analyzing with Gemini...");
       const result = await analyzeLegacyTech(base64Data, mimeType);
+      console.log("Analysis complete:", result);
       setAnalysis(result);
       setIsAnalyzing(false);
       startSmelt();
@@ -136,15 +142,16 @@ export default function App() {
   };
 
   const startSmelt = () => {
+    console.log("Starting smelt animation...");
     setIsMelting(true);
     fireSound.play();
-    sizzleSound.play();
   };
 
   const handleSmeltComplete = async () => {
+    console.log("Smelt complete, saving to Firestore...");
     setIsMelting(false);
     fireSound.stop();
-    sizzleSound.stop();
+    sizzleSound.play();
 
     if (!analysis) return;
 
@@ -165,10 +172,12 @@ export default function App() {
       }, { merge: true });
 
       setIsComplete(true);
+      console.log("Final state updated: isComplete=true");
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'smelt_logs / global_stats');
     }
   };
+
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-zinc-100 font-sans">
@@ -199,11 +208,11 @@ export default function App() {
                   />
                   <button 
                     onClick={stopCamera}
-                    className="absolute top-4 right-4 w-10 h-10 bg-zinc-900/80 rounded-full flex items-center justify-center text-zinc-400 hover:text-white z-10"
+                    className="absolute top-4 right-4 w-10 h-10 bg-zinc-900/80 rounded-full flex items-center justify-center text-zinc-400 hover:text-white z-50"
                   >
                     <X size={20} />
                   </button>
-                  <div className="absolute bottom-6 left-0 w-full flex justify-center z-10">
+                  <div className="absolute bottom-6 left-0 w-full flex justify-center z-50">
                     <button 
                       onClick={captureImage}
                       className="w-16 h-16 rounded-full border-4 border-white flex items-center justify-center bg-white/20 hover:bg-white/40 backdrop-blur-sm transition-all"
@@ -238,21 +247,6 @@ export default function App() {
                       CAMERA
                     </button>
                   </div>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleFileSelect} 
-                    className="hidden" 
-                    accept="image/*"
-                  />
-                  <input 
-                    type="file" 
-                    ref={cameraInputRef} 
-                    onChange={handleFileSelect} 
-                    className="hidden" 
-                    accept="image/*"
-                    capture="environment"
-                  />
                 </div>
               ) : (
                 <div className="w-full h-full relative">
@@ -261,43 +255,60 @@ export default function App() {
                     isMelting={isMelting} 
                     onComplete={handleSmeltComplete}
                     colors={analysis?.dominantColors || []}
+                    subjectBox={analysis?.subjectBox || null}
                   />
                   
                   {isAnalyzing && (
-                    <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
+                    <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
                       <div className="w-12 h-12 border-4 border-steel-blue border-t-transparent rounded-full animate-spin mb-4" />
                       <p className="text-steel-blue font-mono text-xs uppercase animate-pulse">
                         GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
                       </p>
                     </div>
                   )}
-
-                  {isComplete && analysis && !isMelting && (
-                    <div className="absolute bottom-0 left-0 w-full p-6 bg-concrete-light/95 backdrop-blur-md border-t border-zinc-700">
-                      <p className="text-zinc-300 font-mono text-sm mb-6 leading-relaxed">
-                        {analysis.damageReport}
-                      </p>
-                      <div className="flex flex-col sm:flex-row gap-4">
-                        <button 
-                          onClick={() => fileInputRef.current?.click()}
-                          className="modern-button flex-1 flex items-center justify-center gap-2"
-                        >
-                          <Upload size={18} />
-                          UPLOAD ANOTHER
-                        </button>
-                        <button 
-                          onClick={startCamera}
-                          className="modern-button flex-1 flex items-center justify-center gap-2 bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700"
-                        >
-                          <Camera size={18} />
-                          CAPTURE NEW
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
+              {/* HIDDEN INPUTS MOVED HERE */}
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileSelect} 
+                className="hidden" 
+                accept="image/*"
+              />
+              <input 
+                type="file" 
+                ref={cameraInputRef} 
+                onChange={handleFileSelect} 
+                className="hidden" 
+                accept="image/*"
+                capture="environment"
+              />
             </div>
+
+            {isComplete && analysis && !isMelting && (
+              <div className="modern-card p-6">
+                <p className="text-zinc-300 font-mono text-sm mb-6 leading-relaxed">
+                  {analysis.damageReport}
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="modern-button flex-1 flex items-center justify-center gap-2"
+                  >
+                    <Upload size={18} />
+                    UPLOAD ANOTHER
+                  </button>
+                  <button 
+                    onClick={startCamera}
+                    className="modern-button flex-1 flex items-center justify-center gap-2 bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700"
+                  >
+                    <Camera size={18} />
+                    CAPTURE NEW
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Column: Stats & Feed */}
@@ -323,3 +334,4 @@ export default function App() {
     </div>
   );
 }
+

@@ -1,6 +1,6 @@
 import React from 'react';
 import { SmeltLog } from '../types';
-import { cn, formatPixels } from '../lib/utils';
+import { cn, formatPixels, getFiveDistinctColors } from '../lib/utils';
 
 interface SmeltManifestProps {
   logs: SmeltLog[];
@@ -15,16 +15,18 @@ export const SmeltManifest: React.FC<SmeltManifestProps> = ({ logs }) => {
       <div className="space-y-4">
         {logs.map((log) => {
           const formatted = formatPixels(log.pixel_count);
+          const finalColors = getFiveDistinctColors(log.dominant_colors);
           
           return (
             <div 
               key={log.id} 
               className="modern-card p-4 flex gap-4 relative overflow-hidden"
             >
-              <div 
-                className="w-4 h-full absolute left-0 top-0" 
-                style={{ backgroundColor: log.dominant_colors[0] }}
-              />
+              <div className="w-4 h-full absolute left-0 top-0 flex flex-col">
+                {finalColors.map((col, idx) => (
+                  <div key={idx} className="flex-1 w-full" style={{ backgroundColor: col }} />
+                ))}
+              </div>
               <div className="pl-4 flex-1">
                 <p className="text-zinc-300 font-mono text-sm leading-tight">
                   {log.damage_report}
