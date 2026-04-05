@@ -17,8 +17,9 @@ This document records intentional changes made during development that diverge f
 
 | Spec | Current | Reason |
 |------|---------|--------|
-| Gemini 1.5 Flash Vision API | `gemini-3.1-flash-lite-preview` | Upgraded to a later, lighter model. |
-| Gemini extracts 5 dominant hex colors | Canvas pixel analysis extracts colors programmatically | Programmatic extraction is faster (no API round-trip), costs nothing, and produces more accurate color clusters. Gemini is still used for the damage report and bounding box. |
+| Gemini 1.5 Flash Vision API | `gemini-2.5-flash` | Upgraded from `gemini-3.1-flash-lite-preview` (unstable preview) to `gemini-2.5-flash` (stable production model). |
+| Gemini extracts 5 dominant hex colors | Canvas pixel analysis extracts colors programmatically, with Gemini fallback blending | Programmatic extraction is faster (no API round-trip), costs nothing, and produces more accurate color clusters. Gemini now also returns colors for creative fallback — blended in when confidence < 45 per spec heuristic. |
+| Simple damage report + bounding box | Enriched 19-field structured response | Expanded to include legacy_infra_class, cursed_dx, smelt_rating, contamination fields, OG share fields, museum captions, and more per `gemini-implementation-and-share-spec.md`. |
 
 ---
 
