@@ -270,6 +270,7 @@ export default function App() {
                     isMelting={isMelting} 
                     onComplete={handleSmeltComplete}
                     colors={analysis?.dominantColors || []}
+                    subjectBox={analysis?.subjectBox || null}
                   />
                   
                   {isAnalyzing && (

@@ -7,6 +7,7 @@ interface SmelterCanvasProps {
   isMelting: boolean;
   onComplete: () => void;
   colors: string[];
+  subjectBox: number[] | null;
 }
 
 const VERT_SHADER = `
@@ -89,6 +90,7 @@ const MELT_SHADER = `
             
             float blend = smoothstep(0.3, 0.8, uMeltAmount);
             baseColor.rgb = mix(baseColor.rgb, puddleColor, blend);
+            baseColor.a = max(baseColor.a, blend);
             
             // Add "slag" glow
             baseColor.rgb += vec3(1.0, 0.3, 0.0) * (1.0 - v) * uMeltAmount * 0.4;
@@ -102,7 +104,7 @@ const MELT_SHADER = `
     }
 `;
 
-export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, onComplete, colors }) => {
+export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, onComplete, colors, subjectBox }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<PIXI.Application | null>(null);
   const spriteRef = useRef<PIXI.Sprite | null>(null);
@@ -210,44 +212,66 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
 
   useEffect(() => {
     if (image && appRef.current && isReady) {
-      try {
-        const texture = PIXI.Texture.from(image);
-        if (spriteRef.current) {
-          appRef.current.stage.removeChild(spriteRef.current);
-        }
-        
-        const sprite = new PIXI.Sprite(texture);
-        sprite.anchor.set(0.5, 1.0);
-        
-        const activeColors = getFiveDistinctColors(colors);
-        
-        const filter = PIXI.Filter.from({
-          gl: {
-            vertex: VERT_SHADER,
-            fragment: MELT_SHADER,
-          },
-          resources: {
-            meltUniforms: {
-              uTime: { value: 0, type: 'f32' },
-              uMeltAmount: { value: 0, type: 'f32' },
-              uColor1: { value: hexToVec3(activeColors[0]), type: 'vec3<f32>' },
-              uColor2: { value: hexToVec3(activeColors[1]), type: 'vec3<f32>' },
-              uColor3: { value: hexToVec3(activeColors[2]), type: 'vec3<f32>' },
-              uColor4: { value: hexToVec3(activeColors[3]), type: 'vec3<f32>' },
-              uColor5: { value: hexToVec3(activeColors[4]), type: 'vec3<f32>' },
+      const loadTexture = async () => {
+        try {
+          const texture = await PIXI.Assets.load(image);
+          if (spriteRef.current) {
+            appRef.current!.stage.removeChild(spriteRef.current);
+          }
+          
+          let renderTexture = texture;
+          if (subjectBox && subjectBox.length === 4) {
+            const [ymin, xmin, ymax, xmax] = subjectBox;
+            const w = texture.width;
+            const h = texture.height;
+            const cropX = Math.max(0, Math.floor((xmin / 1000) * w));
+            const cropY = Math.max(0, Math.floor((ymin / 1000) * h));
+            const cropW = Math.min(w - cropX, Math.floor(((xmax - xmin) / 1000) * w));
+            const cropH = Math.min(h - cropY, Math.floor(((ymax - ymin) / 1000) * h));
+            
+            if (cropW > 0 && cropH > 0) {
+              renderTexture = new PIXI.Texture({
+                source: texture.source,
+                frame: new PIXI.Rectangle(cropX, cropY, cropW, cropH)
+              });
             }
           }
-        });
-        
-        sprite.filters = [filter];
-        filterRef.current = filter;
-        spriteRef.current = sprite;
-        appRef.current.stage.addChild(sprite);
-      } catch (err) {
-        console.error("Failed to create texture from image", err);
-      }
+
+          const sprite = new PIXI.Sprite(renderTexture);
+          sprite.anchor.set(0.5, 1.0);
+          
+          const activeColors = getFiveDistinctColors(colors);
+          
+          const filter = PIXI.Filter.from({
+            gl: {
+              vertex: VERT_SHADER,
+              fragment: MELT_SHADER,
+            },
+            resources: {
+              meltUniforms: {
+                uTime: { value: 0, type: 'f32' },
+                uMeltAmount: { value: 0, type: 'f32' },
+                uColor1: { value: hexToVec3(activeColors[0]), type: 'vec3<f32>' },
+                uColor2: { value: hexToVec3(activeColors[1]), type: 'vec3<f32>' },
+                uColor3: { value: hexToVec3(activeColors[2]), type: 'vec3<f32>' },
+                uColor4: { value: hexToVec3(activeColors[3]), type: 'vec3<f32>' },
+                uColor5: { value: hexToVec3(activeColors[4]), type: 'vec3<f32>' },
+              }
+            }
+          });
+          
+          sprite.filters = [filter];
+          filterRef.current = filter;
+          spriteRef.current = sprite;
+          appRef.current!.stage.addChild(sprite);
+        } catch (err) {
+          console.error("Failed to load or crop texture", err);
+        }
+      };
+      
+      loadTexture();
     }
-  }, [image, isReady, colors]);
+  }, [image, isReady, colors, subjectBox]);
 
   useEffect(() => {
     if (isMelting && filterRef.current && appRef.current) {
