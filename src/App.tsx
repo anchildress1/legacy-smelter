@@ -334,10 +334,34 @@ export default function App() {
 
             {/* Damage report + actions */}
             {isComplete && analysis && (
-              <div className="modern-card p-6">
-                <p className="text-ash-white font-mono text-sm leading-relaxed mb-4">
-                  {analysis.damageReport}
-                </p>
+              <div className="modern-card p-6 space-y-4">
+                {/* Classification header */}
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
+                      {analysis.legacyInfraClass}
+                    </p>
+                    <p className="text-ash-white font-mono text-sm leading-relaxed mt-1">
+                      {analysis.damageReport}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-mono text-concrete-light bg-hazard-amber px-2 py-1 rounded uppercase whitespace-nowrap font-bold">
+                    {analysis.smeltRating}
+                  </span>
+                </div>
+
+                {/* Diagnostic details */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] font-mono">
+                  <span className="text-dead-gray uppercase">DIAGNOSIS</span>
+                  <span className="text-stone-gray">{analysis.cursedDx}</span>
+                  <span className="text-dead-gray uppercase">CONTAMINATION</span>
+                  <span className="text-stone-gray">{analysis.dominantContamination}</span>
+                  <span className="text-dead-gray uppercase">ROOT CAUSE</span>
+                  <span className="text-stone-gray">{analysis.rootCause}</span>
+                  <span className="text-dead-gray uppercase">SALVAGEABILITY</span>
+                  <span className="text-stone-gray">{analysis.salvageability}</span>
+                </div>
+
                 <div className="flex gap-3">
                   <button
                     onClick={handleReplay}

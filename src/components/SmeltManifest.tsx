@@ -28,9 +28,19 @@ export const SmeltManifest: React.FC<SmeltManifestProps> = ({ logs }) => {
                 ))}
               </div>
               <div className="pl-4 flex-1">
+                {log.legacy_infra_class && (
+                  <p className="text-hazard-amber font-mono text-[10px] uppercase tracking-widest mb-1">
+                    {log.legacy_infra_class}
+                  </p>
+                )}
                 <p className="text-ash-white font-mono text-sm leading-tight">
                   {log.damage_report}
                 </p>
+                {log.cursed_dx && (
+                  <p className="text-dead-gray font-mono text-[10px] mt-1 italic">
+                    Dx: {log.cursed_dx}
+                  </p>
+                )}
                 <div className="mt-2 flex justify-between items-end">
                   <span className="text-hazard-amber font-mono text-xs font-bold">
                     {formatted.value} {formatted.unit} SMELTED
