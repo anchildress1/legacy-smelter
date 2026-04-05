@@ -124,7 +124,7 @@ Requirements:
 Return the result in JSON format.`;
 
 export async function analyzeLegacyTech(base64Image: string, mimeType: string): Promise<SmeltAnalysis> {
-  const model = "gemini-2.5-flash";
+  const model = "gemini-2.0-flash-lite";
 
   let actualPixelCount = 2073600;
   let programmaticColors: string[] = [];
