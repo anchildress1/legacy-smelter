@@ -85,6 +85,7 @@ export default function App() {
     if (videoRef.current?.srcObject) {
       const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
       tracks.forEach(track => track.stop());
+      videoRef.current.srcObject = null;
     }
     setIsCameraActive(false);
   };
