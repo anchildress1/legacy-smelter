@@ -7,7 +7,7 @@
   
   --color-concrete: #18181b;
   --color-concrete-light: #27272a;
-  --color-hazard-yellow: #eab308;
+  --color-hazard-yellow: #ffe200;
   --color-steel-blue: #38bdf8;
   --color-acid-green: #39ff14;
   --color-neon-orange: #ff6b00;
@@ -31,8 +31,8 @@
   .hazard-stripe {
     background: repeating-linear-gradient(
       -45deg,
-      #eab308,
-      #eab308 10px,
+      #ffe200,
+      #ffe200 10px,
       #18181b 10px,
       #18181b 20px
     );
