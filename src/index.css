@@ -4,35 +4,50 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  
-  --color-concrete: #18181b;
-  --color-concrete-light: #27272a;
-  --color-hazard-yellow: #eab308;
-  --color-steel-blue: #38bdf8;
+
+  /* Backgrounds — warm ash tones, layered elevation, no cold gray or pure black */
+  --color-concrete: #1a1917;        /* Soot Black    — base background */
+  --color-concrete-mid: #242220;    /* Furnace Dark  — header, footer */
+  --color-concrete-light: #2e2c29;  /* Slag Concrete — card surfaces */
+  --color-concrete-border: #3d3b38; /* Weathered Steel — borders, dividers */
+
+  /* Primary accent — one color, owns all highlights */
+  --color-hazard-amber: #f5c842;    /* Hazard Amber — brand, buttons, labels */
+
+  /* Status indicator — OPERATIONAL dot only, never used as accent */
+  --color-coolant-green: #5a9e72;   /* Coolant Green */
+
+  /* Slag/heat — animation and active states only, not UI chrome */
+  --color-molten-orange: #e8622a;   /* Molten Orange — active smelting */
+  --color-slag-yellow: #e8d44d;     /* Slag Yellow   — particle effects */
+
+  /* Text hierarchy — warm tones */
+  --color-ash-white: #e8e4dc;       /* primary text */
+  --color-stone-gray: #b0aaa4;      /* secondary/de-emphasized text */
 }
 
 @layer base {
   body {
-    @apply bg-concrete text-zinc-100 font-sans selection:bg-steel-blue selection:text-white;
+    @apply bg-concrete text-ash-white font-sans selection:bg-hazard-amber selection:text-zinc-950;
   }
 }
 
 @layer components {
   .modern-card {
-    @apply bg-concrete-light border border-zinc-700 shadow-xl rounded-xl;
+    @apply bg-concrete-light border border-concrete-border shadow-xl rounded-xl;
   }
-  
+
   .modern-button {
-    @apply bg-hazard-yellow text-zinc-950 font-bold px-6 py-3 rounded-lg shadow-md hover:bg-yellow-400 active:scale-95 transition-all uppercase tracking-wide;
+    @apply bg-hazard-amber text-zinc-950 font-bold px-6 py-3 rounded-lg shadow-md hover:brightness-110 active:scale-95 transition-all uppercase tracking-wide;
   }
-  
+
   .hazard-stripe {
     background: repeating-linear-gradient(
       -45deg,
-      #eab308,
-      #eab308 10px,
-      #18181b 10px,
-      #18181b 20px
+      #f5c842,
+      #f5c842 10px,
+      #1a1917 10px,
+      #1a1917 20px
     );
   }
 }
