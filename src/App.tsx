@@ -19,7 +19,7 @@ import { SmeltLog, GlobalStats as GlobalStatsType } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { SmeltManifest } from './components/SmeltManifest';
 import { GlobalStats } from './components/GlobalStats';
-import { Camera, Upload, X, Zap, RotateCcw } from 'lucide-react';
+import { Camera, Upload, X, Zap, RotateCcw, Share2, Check, Copy } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
 // Audio
@@ -35,6 +35,7 @@ export default function App() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
+  const [shareState, setShareState] = useState<'idle' | 'sharing' | 'copied'>('idle');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -183,6 +184,57 @@ export default function App() {
     canvasRef.current?.replay();
   };
 
+  const handleShare = async () => {
+    if (!analysis || shareState === 'sharing') return;
+    setShareState('sharing');
+
+    const shareText = `${analysis.shareQuote}\n\n${analysis.damageReport}`;
+    const blob = await canvasRef.current?.captureFrame();
+
+    // Try Web Share API with image (mobile-first)
+    if (navigator.share && blob) {
+      try {
+        const file = new File([blob], 'legacy-smelt.png', { type: 'image/png' });
+        await navigator.share({
+          title: analysis.ogHeadline,
+          text: shareText,
+          files: [file],
+        });
+        setShareState('idle');
+        return;
+      } catch (err) {
+        // User cancelled or share failed — fall through to clipboard
+        if ((err as DOMException).name === 'AbortError') {
+          setShareState('idle');
+          return;
+        }
+      }
+    }
+
+    // Try Web Share API without image
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: analysis.ogHeadline,
+          text: shareText,
+        });
+        setShareState('idle');
+        return;
+      } catch {
+        // Fall through to clipboard
+      }
+    }
+
+    // Clipboard fallback
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setShareState('copied');
+      setTimeout(() => setShareState('idle'), 2000);
+    } catch {
+      setShareState('idle');
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       {/* Header */}
@@ -280,19 +332,34 @@ export default function App() {
               )}
             </div>
 
-            {/* Damage report + replay */}
+            {/* Damage report + actions */}
             {isComplete && analysis && (
               <div className="modern-card p-6">
                 <p className="text-ash-white font-mono text-sm leading-relaxed mb-4">
                   {analysis.damageReport}
                 </p>
-                <button
-                  onClick={handleReplay}
-                  className="modern-button flex items-center justify-center gap-2"
-                >
-                  <RotateCcw size={18} />
-                  REPLAY SMELT
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleReplay}
+                    className="modern-button flex-1 flex items-center justify-center gap-2"
+                  >
+                    <RotateCcw size={18} />
+                    REPLAY
+                  </button>
+                  <button
+                    onClick={handleShare}
+                    disabled={shareState === 'sharing'}
+                    className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-hazard-amber hover:brightness-110 disabled:opacity-50"
+                  >
+                    {shareState === 'copied' ? (
+                      <><Check size={18} /> COPIED</>
+                    ) : shareState === 'sharing' ? (
+                      <><Share2 size={18} className="animate-pulse" /> SHARING...</>
+                    ) : (
+                      <><Share2 size={18} /> SHARE</>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </div>

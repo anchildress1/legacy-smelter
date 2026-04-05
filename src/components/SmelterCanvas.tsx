@@ -5,6 +5,7 @@ import { getFiveDistinctColors } from '../lib/utils';
 export interface SmelterCanvasHandle {
   loadAndSmelt: (imageUrl: string, subjectBox: number[] | null, colors: string[]) => Promise<void>;
   replay: () => void;
+  captureFrame: () => Promise<Blob | null>;
 }
 
 interface SmelterCanvasProps {
@@ -208,6 +209,14 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
 
       replay: () => {
         beginSequence();
+      },
+
+      captureFrame: async () => {
+        if (!ps.current) return null;
+        const canvas = ps.current.app.canvas as HTMLCanvasElement;
+        return new Promise<Blob | null>((resolve) => {
+          canvas.toBlob((blob) => resolve(blob), 'image/png');
+        });
       },
     }));
 
