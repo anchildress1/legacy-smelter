@@ -25,7 +25,7 @@ import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 // Audio
 const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false, volume: 0.5 });
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
-const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true, volume: 0.4 });
+const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
 
 export default function App() {
   const [logs, setLogs] = useState<SmeltLog[]>([]);
