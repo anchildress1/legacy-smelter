@@ -27,84 +27,6 @@ export interface SmeltAnalysis {
   subjectBox: number[]; // [ymin, xmin, ymax, xmax] 0-1000
 }
 
-// Static fallback palette — used when programmatic extraction yields too few colors
-const FALLBACK_COLORS_VIBRANT = ["#ff6b35", "#00c3f5", "#4db542", "#fb0094", "#ffc800"];
-
-function extractDominantColors(img: HTMLImageElement, count: number): string[] {
-  const canvas = document.createElement("canvas");
-  const MAX_DIM = 200;
-  let w = img.width;
-  let h = img.height;
-  if (w > h && w > MAX_DIM) {
-    h = Math.floor(h * (MAX_DIM / w));
-    w = MAX_DIM;
-  } else if (h > w && h > MAX_DIM) {
-    w = Math.floor(w * (MAX_DIM / h));
-    h = MAX_DIM;
-  }
-
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return [];
-
-  ctx.drawImage(img, 0, 0, w, h);
-  const data = ctx.getImageData(0, 0, w, h).data;
-  const colorMap: Record<string, { r: number, g: number, b: number, score: number }> = {};
-
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i+1];
-    const b = data[i+2];
-    const a = data[i+3];
-    if (a < 128) continue;
-
-    // Calculate saturation-based weight to suppress grays
-    const max = Math.max(r, g, b) / 255;
-    const min = Math.min(r, g, b) / 255;
-    const saturation = max === 0 ? 0 : (max - min) / max;
-    // Boost score significantly for vibrant colors
-    const weight = 1 + (saturation * 5);
-
-    const qR = Math.floor(r / 16) * 16;
-    const qG = Math.floor(g / 16) * 16;
-    const qB = Math.floor(b / 16) * 16;
-    const key = `${qR},${qG},${qB}`;
-
-    if (!colorMap[key]) {
-      colorMap[key] = { r: qR, g: qG, b: qB, score: 0 };
-    }
-    colorMap[key].score += weight;
-  }
-
-  const sortedClusters = Object.values(colorMap).sort((a, b) => b.score - a.score);
-  const distinctColors: string[] = [];
-  const minDistance = 40;
-
-  for (const cluster of sortedClusters) {
-    if (distinctColors.length >= count) break;
-    let isDistinct = true;
-    for (const existingHex of distinctColors) {
-      const er = parseInt(existingHex.slice(1, 3), 16);
-      const eg = parseInt(existingHex.slice(3, 5), 16);
-      const eb = parseInt(existingHex.slice(5, 7), 16);
-      const dist = Math.sqrt(Math.pow(cluster.r - er, 2) + Math.pow(cluster.g - eg, 2) + Math.pow(cluster.b - eb, 2));
-      if (dist < minDistance) {
-        isDistinct = false;
-        break;
-      }
-    }
-
-    if (isDistinct) {
-      const hex = "#" + [cluster.r, cluster.g, cluster.b]
-        .map(c => Math.min(255, c + 8).toString(16).padStart(2, "0"))
-        .join("");
-      distinctColors.push(hex);
-    }
-  }
-  return distinctColors;
-}
-
 const GEMINI_PROMPT = `You are the analysis engine for **Legacy Smelter**, a satirical web app that "solves" problematic legacy systems by smelting screenshots and old technology into molten slag.
 
 You will receive an uploaded image. Treat it as a piece of cursed legacy infrastructure, unstable software, outdated hardware, or a suspiciously haunted technical artifact. Each submission becomes an official **incident report** filed in the Global Incident Manifest.
@@ -127,7 +49,6 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
   const model = "gemini-3.1-flash-lite-preview";
 
   let actualPixelCount = 2073600;
-  let programmaticColors: string[] = [];
 
   if (typeof window !== "undefined") {
     try {
@@ -138,9 +59,8 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
         img.src = `data:${mimeType};base64,${base64Image}`;
       });
       actualPixelCount = img.width * img.height;
-      programmaticColors = extractDominantColors(img, 5);
     } catch (err) {
-      console.warn("Failed to calculate programmatic image properties", err);
+      console.warn("Failed to calculate pixel count", err);
     }
   }
 
@@ -216,18 +136,17 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
 
   const result = JSON.parse(response.text || "{}");
 
-  // Colors: programmatic extraction is primary source of truth.
-  // Deduplicate; if fewer than 5 distinct colors, fill from fallback.
   const hexRegex = /^#([0-9a-f]{6})$/i;
-  const unique = Array.from(new Set(programmaticColors.filter(c => hexRegex.test(c))));
-  const finalColors = Array.from(new Set([...unique, ...FALLBACK_COLORS_VIBRANT])).slice(0, 5);
+  const dominantColors = Array.isArray(result.dominant_hex_colors)
+    ? result.dominant_hex_colors.filter((c: unknown) => typeof c === "string" && hexRegex.test(c))
+    : [];
 
   const damageReport = String(result.damage_report || "LEGACY HARDWARE PURGED. SMELT IMMINENT.");
 
   return {
     legacyInfraClass: String(result.legacy_infra_class || "Unclassified Legacy Artifact"),
     legacyInfraDescription: String(result.legacy_infra_description || "Origin unknown. Smelt recommended."),
-    dominantColors: finalColors,
+    dominantColors,
     paletteName: String(result.palette_name || "Standard Slag Spectrum"),
     cursedDx: String(result.cursed_dx || "Chronic Legacy Retention"),
     smeltRating: String(result.smelt_rating || "High Priority Smelt"),
