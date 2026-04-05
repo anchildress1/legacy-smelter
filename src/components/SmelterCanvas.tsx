@@ -126,7 +126,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
 
       // Hide liquid sprites
       gooStream.visible = false;
-      gooStream.filters = [];
+      gooStream.tint = 0xffffff;
       puddle.visible = false;
       puddle.filters = [];
 
@@ -276,7 +276,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         // Goo stream — vertical liquid flow, hidden initially
         const gooStream = new PIXI.AnimatedSprite(textures.goo);
         gooStream.animationSpeed = 0.12;
-        gooStream.anchor.set(0.5, 0);
+        gooStream.anchor.set(0.5, 1); // bottom-center: shrinks from top, stays connected to puddle
         gooStream.visible = false;
         gooStream.loop = true;
 
@@ -361,10 +361,8 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                   meltProgressRef.current = 0;
                   setDragonTex(textures.flame, false);
 
-                  // Apply palette-swap shader to goo stream
-                  if (puddleFilterRef.current) {
-                    gooStream.filters = [puddleFilterRef.current];
-                  }
+                  // Tint goo stream with first AI color
+                  gooStream.tint = meltColorsRef.current[0];
 
                   cbRef.current.onFireStart?.();
                 }
@@ -417,17 +415,18 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                     ? spriteRef.current.texture.width * imgS : 150;
                   const imgH = spriteRef.current
                     ? spriteRef.current.texture.height * imgS : 100;
+                  const streamBottom = puddleY;
                   const streamTop = imageY + imgH / 2;
-                  const streamHeight = puddleY - streamTop;
+                  const streamHeight = streamBottom - streamTop;
 
-                  // Stream shrinks from top as pour ends (anchor is at top)
+                  // Stream shrinks from top as pour ends (anchor at bottom stays at puddle)
                   const retract = smoothstep(0.5, 0.75, mp);
                   const visibleHeight = streamHeight * (1 - retract);
                   const streamScaleY = Math.max(visibleHeight / 512, 0.01);
                   const streamScaleX = Math.max(imgW * 0.7 / 320, 0.15);
 
                   gooStream.x = imageX;
-                  gooStream.y = streamTop;
+                  gooStream.y = streamBottom;
                   gooStream.scale.set(streamScaleX, streamScaleY);
                 }
 
