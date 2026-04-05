@@ -156,6 +156,13 @@ export default function App() {
         pixel_count: analysis.pixelCount,
         damage_report: analysis.damageReport,
         dominant_colors: analysis.dominantColors,
+        legacy_infra_class: analysis.legacyInfraClass,
+        cursed_dx: analysis.cursedDx,
+        smelt_rating: analysis.smeltRating,
+        palette_name: analysis.paletteName,
+        og_headline: analysis.ogHeadline,
+        og_description: analysis.ogDescription,
+        share_quote: analysis.shareQuote,
         timestamp: serverTimestamp(),
         uid: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
       });
