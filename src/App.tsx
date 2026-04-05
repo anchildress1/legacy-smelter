@@ -235,7 +235,7 @@ export default function App({ onNavigateManifest }: AppProps) {
       setTimeout(() => {
         setLoadingPostMortem(false);
         setShowReport(true);
-      }, 2200);
+      }, 4500);
     } catch (error) {
       setLoadingPostMortem(false);
       handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
@@ -380,7 +380,7 @@ export default function App({ onNavigateManifest }: AppProps) {
 
               {/* Post-smelt controls — replay + view report */}
               {isComplete && !loadingPostMortem && !isPlaying && (
-                <div className="absolute inset-0 z-40 flex items-center justify-center gap-3">
+                <div className="absolute inset-0 z-40 bg-concrete/70 backdrop-blur-sm flex items-center justify-center gap-3">
                   <button
                     onClick={handleReplay}
                     className="modern-button flex items-center gap-2 text-sm bg-concrete/80 text-hazard-amber border border-concrete-border backdrop-blur-sm hover:bg-concrete/90"
