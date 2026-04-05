@@ -17,7 +17,7 @@ import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { formatPixels, getFiveDistinctColors, getLogShareLinks } from './lib/utils';
-import { Camera, Upload, X, Zap, RotateCcw, ScrollText } from 'lucide-react';
+import { Camera, Upload, X, Flame, RotateCcw, ScrollText } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
 // Audio
@@ -342,10 +342,16 @@ export default function App({ onNavigateManifest }: AppProps) {
               {!currentImage && !isCameraActive && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center">
-                    <Zap className="text-hazard-amber mx-auto mb-3" size={32} />
+                    <Flame className="text-hazard-amber mx-auto mb-3" size={32} />
                     <p className="text-stone-gray font-mono text-xs uppercase">
-                      INPUT LEGACY HARDWARE FOR SMELTING
+                      INPUT LEGACY INFRA FOR HOTFIX
                     </p>
+                    <div className="flex gap-2 items-center justify-center mt-3">
+                      <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse" />
+                      <span className="text-[10px] font-mono text-stone-gray uppercase">
+                        HOTFIX STATUS: NOMINAL
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -419,20 +425,11 @@ export default function App({ onNavigateManifest }: AppProps) {
               <div className="hazard-stripe h-1.5 w-full" />
               <div className="p-4 md:p-5">
                 <h2 className="text-hazard-amber font-mono text-[10px] uppercase tracking-widest mb-1">
-                  CUMULATIVE THERMAL DESTRUCTION INDEX
+                  DECOMMISSION INDEX
                 </h2>
-                <div className="flex items-baseline gap-3 md:block">
-                  <div className="text-3xl md:text-4xl font-extrabold font-mono text-hazard-amber tracking-tighter">
-                    {formatted.value}
-                    <span className="text-sm ml-2 text-stone-gray">{formatted.unit}</span>
-                  </div>
-                  {/* Status line — inline on narrow, block on md+ */}
-                  <div className="flex gap-2 items-center md:mt-4">
-                    <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse" />
-                    <div className="text-[10px] font-mono text-stone-gray uppercase hidden md:block">
-                      FURNACE STATUS: NOMINAL // AWAITING DIRECTIVES
-                    </div>
-                  </div>
+                <div className="text-3xl md:text-4xl font-extrabold font-mono text-hazard-amber tracking-tighter">
+                  {formatted.value}
+                  <span className="text-sm ml-2 text-stone-gray">{formatted.unit}</span>
                 </div>
               </div>
             </div>
@@ -494,8 +491,8 @@ export default function App({ onNavigateManifest }: AppProps) {
                   );
                 })}
                 {recentLogs.length === 0 && (
-                  <div className="text-stone-gray font-mono text-center py-6 italic text-xs">
-                    NO INCIDENTS ON RECORD. FURNACE IDLE.
+                  <div className="text-stone-gray font-mono text-center py-6 text-xs uppercase">
+                    NO INCIDENTS ON RECORD. HOTFIX STATUS: PENDING
                   </div>
                 )}
               </div>

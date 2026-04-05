@@ -70,7 +70,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
                 {formatted.value} <span className="text-xs text-stone-gray font-bold">{formatted.unit}</span>
               </div>
               <div className="text-[11px] md:text-[10px] font-mono text-stone-gray uppercase tracking-wide md:tracking-widest mt-0.5">
-                CUMULATIVE THERMAL DESTRUCTION INDEX
+                DECOMMISSION INDEX
               </div>
             </div>
             <div className="hazard-stripe w-2 h-10 rounded-sm shrink-0" aria-hidden="true" />
@@ -85,7 +85,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             GLOBAL INCIDENT MANIFEST
           </h1>
           <p className="text-stone-gray font-mono text-xs md:text-[11px] uppercase tracking-wide leading-relaxed mt-1">
-            ARCHIVAL LOG OF ALL THERMAL DECOMMISSION EVENTS // SELECT ENTRY TO INSPECT FULL POSTMORTEM
+            SELECT ENTRY TO INSPECT POSTMORTEM
           </p>
           <div className="hazard-stripe h-1 w-full mt-4 rounded-sm" />
         </div>
@@ -150,10 +150,16 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
           {logs.length === 0 && (
             <div className="modern-card p-12 text-center">
-              <Flame size={32} className="text-stone-gray mx-auto mb-3" />
+              <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
               <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
-                NO INCIDENTS ON RECORD. FURNACE IDLE.
+                NO INCIDENTS ON RECORD.
               </p>
+              <div className="flex gap-2 items-center justify-center mt-3">
+                <div className="w-2 h-2 rounded-full bg-hazard-amber animate-pulse" />
+                <span className="text-[10px] font-mono text-stone-gray uppercase">
+                  HOTFIX STATUS: PENDING
+                </span>
+              </div>
             </div>
           )}
         </div>
