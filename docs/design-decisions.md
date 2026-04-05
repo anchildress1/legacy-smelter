@@ -26,7 +26,7 @@ This document records intentional changes made during development that diverge f
 
 | Spec | Current | Reason |
 |------|---------|--------|
-| Acid Green (data text), Neon Pink (accents), Neon Orange (highlights) | Steel-blue, hazard-yellow | Pure neon clashed with the blue dragon palette. Steel-blue complements the dragon's coloring. **Color scheme is not final.** |
+| Acid Green (data text), Neon Pink (accents), Neon Orange (highlights) | Hazard-amber, ash-white | Pure neon clashed with the final UI direction. Hazard-amber preserves the warning/industrial feel, while ash-white improves contrast and readability. **Color scheme is not final.** |
 | Public feed: 5 most recent entries | 10 most recent entries | More context in the live feed is more interesting for a shared experience. |
 
 ---
@@ -35,4 +35,4 @@ This document records intentional changes made during development that diverge f
 
 | Spec | Current | Reason |
 |------|---------|--------|
-| Dragon enter (fly-in) animation | Dragon starts in idle standing position | Deferred; standing-with-flames is acceptable for this version. Fly-in assets exist and can be wired later. |
+| Dragon enter (fly-in) animation | Dragon performs a fly-in → land → melt sequence before settling into the standing-with-flames state | The entrance animation is now implemented in `SmelterCanvas`, so this is no longer deferred. |
