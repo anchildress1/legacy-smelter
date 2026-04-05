@@ -16,13 +16,13 @@ import {
 } from './firebase';
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
 import { SmeltLog, GlobalStats as GlobalStatsType } from './types';
-import { SmelterCanvas } from './components/SmelterCanvas';
+import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { SmeltManifest } from './components/SmeltManifest';
 import { GlobalStats } from './components/GlobalStats';
-import { Camera, Upload, X, Zap } from 'lucide-react';
+import { Camera, Upload, X, Zap, RotateCcw } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
-// Audio Assets (Local)
+// Audio
 const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false, volume: 0.5 });
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true, volume: 0.4 });
@@ -31,7 +31,6 @@ export default function App() {
   const [logs, setLogs] = useState<SmeltLog[]>([]);
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isMelting, setIsMelting] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
@@ -40,6 +39,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<SmelterCanvasHandle>(null);
 
   useEffect(() => {
     const logsQuery = query(collection(db, 'smelt_logs'), orderBy('timestamp', 'desc'), limit(10));
@@ -77,7 +77,6 @@ export default function App() {
       }, 100);
     } catch (err) {
       console.error("Camera access denied", err);
-      // Fallback to native input capture if getUserMedia fails
       cameraInputRef.current?.click();
     }
   };
@@ -117,12 +116,13 @@ export default function App() {
 
     try {
       const base64Data = base64.split(',')[1];
-      if (import.meta.env.DEV) console.log("Analyzing with Gemini...");
       const result = await analyzeLegacyTech(base64Data, mimeType);
       if (import.meta.env.DEV) console.log("Analysis complete:", result);
       setAnalysis(result);
       setIsAnalyzing(false);
-      startSmelt();
+
+      // Imperative: load image into canvas and start animation
+      await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
     } catch (error) {
       console.error("Analysis failed", error);
       setIsAnalyzing(false);
@@ -132,7 +132,7 @@ export default function App() {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    e.target.value = ''; // Reset input so same file can be selected again
+    e.target.value = '';
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -142,21 +142,15 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  const startSmelt = () => {
-    if (import.meta.env.DEV) console.log("Starting smelt animation...");
-    setIsMelting(true);
-  };
-
   const handleSmeltComplete = async () => {
-    if (import.meta.env.DEV) console.log("Smelt complete, saving to Firestore...");
-    setIsMelting(false);
+    if (import.meta.env.DEV) console.log("Smelt complete");
     fireSound.stop();
     purrSound.play();
 
-    if (!analysis) return;
+    // Skip Firestore write on replay (isComplete already true)
+    if (isComplete || !analysis) return;
 
     try {
-      // Update Firestore
       const logRef = doc(collection(db, 'smelt_logs'));
       await setDoc(logRef, {
         pixel_count: analysis.pixelCount,
@@ -172,12 +166,15 @@ export default function App() {
       }, { merge: true });
 
       setIsComplete(true);
-      if (import.meta.env.DEV) console.log("Final state updated: isComplete=true");
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'smelt_logs / global_stats');
     }
   };
 
+  const handleReplay = () => {
+    purrSound.stop();
+    canvasRef.current?.replay();
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
@@ -217,32 +214,15 @@ export default function App() {
             </div>
 
             {/* Hidden file inputs */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileSelect}
-              className="hidden"
-              accept="image/*"
-            />
-            <input
-              type="file"
-              ref={cameraInputRef}
-              onChange={handleFileSelect}
-              className="hidden"
-              accept="image/*"
-              capture="environment"
-            />
+            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" />
+            <input type="file" ref={cameraInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" capture="environment" />
 
             {/* Animation Window */}
             <div className="modern-card aspect-video relative overflow-hidden bg-concrete">
               {/* Camera overlay */}
               {isCameraActive && (
                 <div className="absolute inset-0 bg-black z-30">
-                  <video
-                    ref={videoRef}
-                    playsInline
-                    className="w-full h-full object-cover"
-                  />
+                  <video ref={videoRef} playsInline className="w-full h-full object-cover" />
                   <button
                     onClick={stopCamera}
                     className="absolute top-4 right-4 w-10 h-10 bg-concrete-mid/80 rounded-full flex items-center justify-center text-stone-gray hover:text-ash-white z-50"
@@ -260,7 +240,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* Empty state placeholder */}
+              {/* Empty state */}
               {!currentImage && !isCameraActive && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center">
@@ -275,13 +255,10 @@ export default function App() {
               {/* PixiJS Canvas */}
               {currentImage && (
                 <SmelterCanvas
-                  image={currentImage}
-                  isMelting={isMelting}
+                  ref={canvasRef}
                   onComplete={handleSmeltComplete}
                   onFlyInStart={() => flyInSound.play()}
                   onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
-                  colors={analysis?.dominantColors || []}
-                  subjectBox={analysis?.subjectBox || null}
                 />
               )}
 
@@ -296,12 +273,19 @@ export default function App() {
               )}
             </div>
 
-            {/* Damage report — post-smelt */}
-            {isComplete && analysis && !isMelting && (
+            {/* Damage report + replay */}
+            {isComplete && analysis && (
               <div className="modern-card p-6">
-                <p className="text-ash-white font-mono text-sm leading-relaxed">
+                <p className="text-ash-white font-mono text-sm leading-relaxed mb-4">
                   {analysis.damageReport}
                 </p>
+                <button
+                  onClick={handleReplay}
+                  className="modern-button flex items-center justify-center gap-2"
+                >
+                  <RotateCcw size={18} />
+                  REPLAY SMELT
+                </button>
               </div>
             )}
           </div>
@@ -319,10 +303,10 @@ export default function App() {
       <footer className="p-6 bg-concrete-mid border-t border-concrete-border mt-auto">
         <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-xs font-mono text-dead-gray uppercase tracking-widest">
-            © 2026 Ashley Childress
+            &copy; 2026 Ashley Childress
           </p>
           <p className="text-xs font-mono text-dead-gray uppercase tracking-widest">
-            Powered by Gemini & Google AI Studio
+            Powered by Gemini &amp; Google AI Studio
           </p>
         </div>
       </footer>
