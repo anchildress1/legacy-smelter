@@ -402,12 +402,14 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                   }
                 }
 
-                // --- Goo stream: starts with fire, fades out later ---
-                const gooAlpha = smoothstep(0.05, 0.25, mp) * (1 - smoothstep(0.55, 0.8, mp));
-                gooStream.visible = gooAlpha > 0.01;
-                if (gooStream.visible) {
+                // --- Goo stream: solid pour, shrinks away top-to-bottom ---
+                const pourStart = 0.05;
+                const pourEnd = 0.75;
+                const pourVisible = mp >= pourStart && mp < pourEnd;
+                gooStream.visible = pourVisible;
+                if (pourVisible) {
                   if (!gooStream.playing) gooStream.play();
-                  gooStream.alpha = gooAlpha;
+                  gooStream.alpha = 1; // fully opaque, no overlay
 
                   const imgS = spriteRef.current
                     ? getImgScale(baseScale, spriteRef.current) : baseScale * 0.3;
@@ -417,8 +419,11 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                     ? spriteRef.current.texture.height * imgS : 100;
                   const streamTop = imageY + imgH / 2;
                   const streamHeight = puddleY - streamTop;
-                  const streamScaleY = Math.max(streamHeight / 512, 0.1);
-                  // Width matches the image it melted from
+
+                  // Stream shrinks from top as pour ends (anchor is at top)
+                  const retract = smoothstep(0.5, 0.75, mp);
+                  const visibleHeight = streamHeight * (1 - retract);
+                  const streamScaleY = Math.max(visibleHeight / 512, 0.01);
                   const streamScaleX = Math.max(imgW * 0.7 / 320, 0.15);
 
                   gooStream.x = imageX;
