@@ -276,7 +276,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         // Goo stream — vertical liquid flow, hidden initially
         const gooStream = new PIXI.AnimatedSprite(textures.goo);
         gooStream.animationSpeed = 0.12;
-        gooStream.anchor.set(0.5, 1); // bottom-center: shrinks from top, stays connected to puddle
+        gooStream.anchor.set(0.5, 0); // top-center: pours downward from image
         gooStream.visible = false;
         gooStream.loop = true;
 
@@ -400,14 +400,12 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                   }
                 }
 
-                // --- Goo stream: solid pour, shrinks away top-to-bottom ---
-                const pourStart = 0.05;
-                const pourEnd = 0.75;
-                const pourVisible = mp >= pourStart && mp < pourEnd;
+                // --- Goo stream: pours down from image, retracts top-down ---
+                const pourVisible = mp >= 0.05 && mp < 0.75;
                 gooStream.visible = pourVisible;
                 if (pourVisible) {
                   if (!gooStream.playing) gooStream.play();
-                  gooStream.alpha = 1; // fully opaque, no overlay
+                  gooStream.alpha = 1;
 
                   const imgS = spriteRef.current
                     ? getImgScale(baseScale, spriteRef.current) : baseScale * 0.3;
@@ -415,18 +413,22 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                     ? spriteRef.current.texture.width * imgS : 150;
                   const imgH = spriteRef.current
                     ? spriteRef.current.texture.height * imgS : 100;
-                  const streamBottom = puddleY;
                   const streamTop = imageY + imgH / 2;
-                  const streamHeight = streamBottom - streamTop;
-
-                  // Stream shrinks from top as pour ends (anchor at bottom stays at puddle)
-                  const retract = smoothstep(0.5, 0.75, mp);
-                  const visibleHeight = streamHeight * (1 - retract);
-                  const streamScaleY = Math.max(visibleHeight / 512, 0.01);
+                  const streamHeight = puddleY - streamTop;
                   const streamScaleX = Math.max(imgW * 0.7 / 320, 0.15);
 
+                  // Phase 1 (0.05→0.3): pour grows downward from image
+                  const growFrac = smoothstep(0.05, 0.3, mp);
+                  // Phase 2 (0.5→0.75): retracts from top, bottom stays at puddle
+                  const retractFrac = smoothstep(0.5, 0.75, mp);
+
+                  const visibleFrac = growFrac * (1 - retractFrac);
+                  const streamScaleY = Math.max((streamHeight * visibleFrac) / 512, 0.01);
+
+                  // During retract, shift top edge downward to keep bottom at puddleY
+                  const topOffset = streamHeight * growFrac * retractFrac;
                   gooStream.x = imageX;
-                  gooStream.y = streamBottom;
+                  gooStream.y = streamTop + topOffset;
                   gooStream.scale.set(streamScaleX, streamScaleY);
                 }
 
