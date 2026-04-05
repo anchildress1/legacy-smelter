@@ -290,25 +290,26 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
   }, [image, isReady, colors, subjectBox]);
 
   useEffect(() => {
-    if (isMelting && filterRef.current && appRef.current) {
-      let meltAmount = 0;
-      const ticker = (t: PIXI.Ticker) => {
-        meltAmount += 0.008 * t.deltaTime;
-        if (filterRef.current) {
-          const uniforms = (filterRef.current.resources as any).meltUniforms.uniforms;
-          uniforms.uMeltAmount.value = Math.min(meltAmount, 1);
-          uniforms.uTime.value += 0.008 * t.deltaTime;
-        }
-        
-        if (meltAmount >= 1) {
-          appRef.current?.ticker.remove(ticker);
-          onComplete();
-        }
-      };
-      
-      appRef.current.ticker.add(ticker);
-    }
-  }, [isMelting]);
+    if (!isMelting || !filterRef.current || !appRef.current) return;
+    const app = appRef.current;
+    let meltAmount = 0;
+    const ticker = (t: PIXI.Ticker) => {
+      meltAmount += 0.008 * t.deltaTime;
+      if (filterRef.current) {
+        const uniforms = (filterRef.current.resources as any).meltUniforms.uniforms;
+        uniforms.uMeltAmount.value = Math.min(meltAmount, 1);
+        uniforms.uTime.value += 0.008 * t.deltaTime;
+      }
+      if (meltAmount >= 1) {
+        app.ticker.remove(ticker);
+        onComplete();
+      }
+    };
+    app.ticker.add(ticker);
+    return () => {
+      app.ticker.remove(ticker);
+    };
+  }, [isMelting]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div ref={containerRef} className="w-full h-full relative overflow-hidden pointer-events-none" />;
 };
