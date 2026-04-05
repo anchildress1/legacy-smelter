@@ -6,9 +6,13 @@ interface SmelterCanvasProps {
   image: string | null;
   isMelting: boolean;
   onComplete: () => void;
+  onFlyInStart?: () => void;
+  onFireStart?: () => void;
   colors: string[];
   subjectBox: number[] | null;
 }
+
+type AnimPhase = 'waiting' | 'flying_in' | 'landing' | 'fire_breathing' | 'complete';
 
 const VERT_SHADER = `
     attribute vec2 aPosition;
@@ -65,57 +69,81 @@ const MELT_SHADER = `
 
     void main(void) {
         vec2 uv = vTextureCoord;
-        
-        // Initial heat distortion
+
+        // Heat distortion
         float distortion = sin(uv.y * 15.0 + uTime * 8.0) * 0.02 * uMeltAmount;
         uv.x += distortion;
-        
-        // Downward melting effect
+
+        // Downward melting
         float meltOffset = random(vec2(uv.x, 0.0)) * uMeltAmount * 0.8;
         uv.y -= meltOffset;
-        
+
         vec4 baseColor = texture2D(uTexture, uv);
-        
-        // Transition to Voronoi Marble Pattern
+
+        // Transition to marble puddle
         if (uMeltAmount > 0.3) {
             float v = voronoi(uv * 5.0 + uTime * 0.5);
             float marble = sin(v * 10.0 + uTime) * 0.5 + 0.5;
-            
+
+            // Smooth color blending between palette colors
             vec3 puddleColor;
-            if (marble < 0.2) puddleColor = uColor1;
-            else if (marble < 0.4) puddleColor = uColor2;
-            else if (marble < 0.6) puddleColor = uColor3;
-            else if (marble < 0.8) puddleColor = uColor4;
-            else puddleColor = uColor5;
-            
+            float m5 = marble * 5.0;
+            if (m5 < 1.0) puddleColor = mix(uColor1, uColor2, m5);
+            else if (m5 < 2.0) puddleColor = mix(uColor2, uColor3, m5 - 1.0);
+            else if (m5 < 3.0) puddleColor = mix(uColor3, uColor4, m5 - 2.0);
+            else if (m5 < 4.0) puddleColor = mix(uColor4, uColor5, m5 - 3.0);
+            else puddleColor = mix(uColor5, uColor1, m5 - 4.0);
+
             float blend = smoothstep(0.3, 0.8, uMeltAmount);
             baseColor.rgb = mix(baseColor.rgb, puddleColor, blend);
             baseColor.a = max(baseColor.a, blend);
-            
-            // Add "slag" glow
-            baseColor.rgb += vec3(1.0, 0.3, 0.0) * (1.0 - v) * uMeltAmount * 0.4;
+
+            // Slag glow fades as melt completes, leaving clean puddle
+            float glowFade = 1.0 - smoothstep(0.7, 1.0, uMeltAmount);
+            baseColor.rgb += vec3(1.0, 0.3, 0.0) * (1.0 - v) * uMeltAmount * 0.4 * glowFade;
         }
-        
-        // Fade out edges as it "liquefies"
-        float edgeAlpha = 1.0 - smoothstep(0.7, 1.0, uMeltAmount);
-        baseColor.a *= edgeAlpha;
-        
+
         gl_FragColor = baseColor;
     }
 `;
 
-export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, onComplete, colors, subjectBox }) => {
+/** Calculate image scale capped to dragon visual height */
+function getImageScale(
+  sprite: PIXI.Sprite,
+  dragon: PIXI.AnimatedSprite,
+  baseScale: number,
+  isMobile: boolean,
+  canvasWidth: number,
+): number {
+  const dragonVisualHeight = dragon.texture.height * baseScale;
+  const targetSize = Math.min(isMobile ? canvasWidth * 0.3 : canvasWidth * 0.25, dragonVisualHeight);
+  const currentSize = Math.max(sprite.texture.width, sprite.texture.height);
+  return currentSize > 0 ? targetSize / currentSize : 1;
+}
+
+export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
+  image, isMelting, onComplete, onFlyInStart, onFireStart, colors, subjectBox,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<PIXI.Application | null>(null);
   const spriteRef = useRef<PIXI.Sprite | null>(null);
   const filterRef = useRef<PIXI.Filter | null>(null);
   const dragonRef = useRef<PIXI.AnimatedSprite | null>(null);
+  const phaseRef = useRef<AnimPhase>('waiting');
+  const meltAmountRef = useRef(0);
+  const flyProgressRef = useRef(0);
   const isMeltingRef = useRef(isMelting);
+  const cbRef = useRef({ onComplete, onFlyInStart, onFireStart });
+  const texturesRef = useRef<{
+    fly: PIXI.Texture[]; land: PIXI.Texture[];
+    idle: PIXI.Texture[]; flame: PIXI.Texture[];
+  } | null>(null);
   const [isReady, setIsReady] = useState(false);
 
-  useEffect(() => {
-    isMeltingRef.current = isMelting;
-  }, [isMelting]);
+  // Keep refs in sync with props
+  useEffect(() => { isMeltingRef.current = isMelting; }, [isMelting]);
+  useEffect(() => { cbRef.current = { onComplete, onFlyInStart, onFireStart }; },
+    [onComplete, onFlyInStart, onFireStart]);
 
   const hexToVec3 = (hex: string) => {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -124,6 +152,21 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
     return [r, g, b];
   };
 
+  /** Kick off the fly-in → land → fire sequence */
+  const startSequence = () => {
+    if (phaseRef.current !== 'waiting' || !dragonRef.current) return;
+    phaseRef.current = 'flying_in';
+    flyProgressRef.current = 0;
+    dragonRef.current.visible = true;
+    cbRef.current.onFlyInStart?.();
+  };
+
+  // Trigger sequence when isMelting becomes true (if sprite is ready)
+  useEffect(() => {
+    if (isMelting && spriteRef.current) startSequence();
+  }, [isMelting]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Initialize PixiJS and load all dragon frame sets
   useEffect(() => {
     const initPixi = async () => {
       if (!containerRef.current) return;
@@ -134,186 +177,263 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
         backgroundAlpha: 0,
         antialias: true,
       });
-      
       containerRef.current.appendChild(app.canvas);
       appRef.current = app;
 
-      const idleFrames = Array.from({ length: 20 }, (_, i) => 
-        `/assets/dragon/__dragon_01_blue_idle_standing_${i.toString().padStart(3, '0')}.png`
-      );
+      const flyPaths = Array.from({ length: 8 }, (_, i) =>
+        `/assets/dragon/__dragon_01_blue_flying_${i.toString().padStart(3, '0')}.png`);
+      const landPaths = Array.from({ length: 12 }, (_, i) =>
+        `/assets/dragon/__dragon_01_blue_land_${i.toString().padStart(3, '0')}.png`);
+      const idlePaths = Array.from({ length: 20 }, (_, i) =>
+        `/assets/dragon/__dragon_01_blue_idle_standing_${i.toString().padStart(3, '0')}.png`);
+      const flamePaths = Array.from({ length: 20 }, (_, i) =>
+        `/assets/dragon/__dragon_01_blue_standing_flame_with_flame_${i.toString().padStart(3, '0')}.png`);
 
-      const meltFrames = Array.from({ length: 20 }, (_, i) => 
-        `/assets/dragon/__dragon_01_blue_standing_flame_with_flame_${i.toString().padStart(3, '0')}.png`
-      );
+      await PIXI.Assets.load([...flyPaths, ...landPaths, ...idlePaths, ...flamePaths]);
 
-      await PIXI.Assets.load([...idleFrames, ...meltFrames]);
-
-      const idleTextures = idleFrames.map(f => PIXI.Assets.get(f));
-      const meltTextures = meltFrames.map(f => PIXI.Assets.get(f));
-
-      const dragonSprite = new PIXI.AnimatedSprite(idleTextures);
-      dragonSprite.animationSpeed = 0.3;
-      dragonSprite.anchor.set(0.5);
-      dragonRef.current = dragonSprite;
-      app.stage.addChild(dragonSprite);
-
-      const updatePositions = () => {
-        const { width, height } = app.screen;
-        const isMobile = width < 768;
-        
-        dragonSprite.x = width * (isMobile ? 0.3 : 0.25);
-        dragonSprite.y = height * 0.5;
-        const baseScale = isMobile ? 0.5 : 0.7;
-        dragonSprite.scale.set(baseScale);
-        
-        if (isMeltingRef.current) {
-          dragonSprite.scale.y = baseScale * (1 + Math.sin(time * 5) * 0.05);
-        }
-        
-        if (spriteRef.current) {
-          spriteRef.current.x = width * (isMobile ? 0.7 : 0.75);
-          spriteRef.current.y = height * 0.5;
-
-          // Image should be no larger than the dragon
-          const dragonVisualHeight = dragonSprite.texture.height * baseScale;
-          const maxSize = dragonVisualHeight;
-          const targetSize = Math.min(isMobile ? width * 0.3 : width * 0.25, maxSize);
-          const currentSize = Math.max(spriteRef.current.texture.width, spriteRef.current.texture.height);
-          if (currentSize > 0) {
-            spriteRef.current.scale.set(targetSize / currentSize);
-          }
-        }
+      const textures = {
+        fly: flyPaths.map(f => PIXI.Assets.get(f)),
+        land: landPaths.map(f => PIXI.Assets.get(f)),
+        idle: idlePaths.map(f => PIXI.Assets.get(f)),
+        flame: flamePaths.map(f => PIXI.Assets.get(f)),
       };
+      texturesRef.current = textures;
 
-      dragonSprite.play();
+      // Dragon starts hidden
+      const dragon = new PIXI.AnimatedSprite(textures.idle);
+      dragon.animationSpeed = 0.3;
+      dragon.anchor.set(0.5);
+      dragon.visible = false;
+      dragonRef.current = dragon;
+      app.stage.addChild(dragon);
 
       let time = 0;
+
       app.ticker.add((ticker) => {
         time += 0.05 * ticker.deltaTime;
-        
-        if (isMeltingRef.current) {
-          if (dragonSprite.textures !== meltTextures) {
-            dragonSprite.textures = meltTextures;
-            dragonSprite.animationSpeed = 0.2;
-            dragonSprite.loop = false;
-            dragonSprite.gotoAndPlay(0);
+        const { width, height } = app.screen;
+        const isMobile = width < 768;
+        const baseScale = isMobile ? 0.5 : 0.7;
+        const dragonRestX = width * (isMobile ? 0.3 : 0.25);
+        const dragonY = height * 0.5;
+        const imageX = width * (isMobile ? 0.7 : 0.75);
+        const imageY = height * 0.5;
+
+        // ── Dragon state machine ──
+        switch (phaseRef.current) {
+          case 'waiting':
+            break;
+
+          case 'flying_in': {
+            dragon.visible = true;
+            if (dragon.textures !== textures.fly) {
+              dragon.textures = textures.fly;
+              dragon.animationSpeed = 0.4;
+              dragon.loop = true;
+              dragon.play();
+            }
+            flyProgressRef.current += 0.012 * ticker.deltaTime;
+            const t = Math.min(flyProgressRef.current, 1);
+            const eased = 1 - Math.pow(1 - t, 3);
+            const startX = width + 100;
+            dragon.x = startX + (dragonRestX - startX) * eased;
+            dragon.y = dragonY;
+            dragon.scale.set(-baseScale, baseScale); // mirrored (faces left)
+
+            if (t >= 1) {
+              phaseRef.current = 'landing';
+              dragon.textures = textures.land;
+              dragon.animationSpeed = 0.3;
+              dragon.loop = false;
+              dragon.scale.set(baseScale); // un-mirror (face right toward image)
+              dragon.x = dragonRestX;
+              dragon.gotoAndPlay(0);
+              dragon.onComplete = () => {
+                phaseRef.current = 'fire_breathing';
+                meltAmountRef.current = 0;
+                dragon.textures = textures.flame;
+                dragon.animationSpeed = 0.2;
+                dragon.loop = true;
+                dragon.gotoAndPlay(0);
+                dragon.onComplete = null;
+                cbRef.current.onFireStart?.();
+              };
+            }
+            break;
           }
-        } else {
-          if (dragonSprite.textures !== idleTextures) {
-            dragonSprite.textures = idleTextures;
-            dragonSprite.play();
+
+          case 'landing':
+            dragon.x = dragonRestX;
+            dragon.y = dragonY;
+            dragon.scale.set(baseScale);
+            break;
+
+          case 'fire_breathing': {
+            dragon.x = dragonRestX;
+            dragon.y = dragonY;
+            dragon.scale.set(baseScale);
+            dragon.scale.y = baseScale * (1 + Math.sin(time * 5) * 0.05);
+
+            meltAmountRef.current += 0.008 * ticker.deltaTime;
+            const melt = Math.min(meltAmountRef.current, 1);
+
+            if (filterRef.current) {
+              const u = (filterRef.current.resources as any).meltUniforms.uniforms;
+              u.uMeltAmount.value = melt;
+              u.uTime.value += 0.008 * ticker.deltaTime;
+            }
+
+            // Squash image into puddle
+            if (spriteRef.current) {
+              const squish = 1.0 - melt * 0.65; // 1.0 → 0.35
+              const s = getImageScale(spriteRef.current, dragon, baseScale, isMobile, width);
+              spriteRef.current.scale.x = s;
+              spriteRef.current.scale.y = s * squish;
+              spriteRef.current.x = imageX;
+              const fullH = spriteRef.current.texture.height * s;
+              spriteRef.current.y = imageY + (fullH - fullH * squish) / 2;
+            }
+
+            if (melt >= 1) {
+              phaseRef.current = 'complete';
+              dragon.textures = textures.idle;
+              dragon.animationSpeed = 0.3;
+              dragon.loop = true;
+              dragon.play();
+              cbRef.current.onComplete();
+            }
+            break;
+          }
+
+          case 'complete': {
+            dragon.x = dragonRestX;
+            dragon.y = dragonY;
+            dragon.scale.set(baseScale);
+
+            // Subtle puddle animation
+            if (filterRef.current) {
+              const u = (filterRef.current.resources as any).meltUniforms.uniforms;
+              u.uTime.value += 0.003 * ticker.deltaTime;
+            }
+
+            // Maintain puddle shape
+            if (spriteRef.current) {
+              const s = getImageScale(spriteRef.current, dragon, baseScale, isMobile, width);
+              spriteRef.current.scale.x = s;
+              spriteRef.current.scale.y = s * 0.35;
+              spriteRef.current.x = imageX;
+              const fullH = spriteRef.current.texture.height * s;
+              spriteRef.current.y = imageY + (fullH - fullH * 0.35) / 2;
+            }
+            break;
           }
         }
-        updatePositions();
+
+        // ── Image positioning (pre-melt phases) ──
+        if (
+          spriteRef.current &&
+          phaseRef.current !== 'fire_breathing' &&
+          phaseRef.current !== 'complete'
+        ) {
+          spriteRef.current.x = imageX;
+          spriteRef.current.y = imageY;
+          const s = getImageScale(spriteRef.current, dragon, baseScale, isMobile, width);
+          spriteRef.current.scale.set(s);
+        }
       });
 
       setIsReady(true);
     };
 
     initPixi();
-
     return () => {
-      if (appRef.current) {
-        appRef.current.destroy(true, { children: true, texture: true });
-      }
+      appRef.current?.destroy(true, { children: true, texture: true });
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load and crop image texture
   useEffect(() => {
-    if (image && appRef.current && isReady) {
-      const loadTexture = async () => {
-        try {
-          const img = new Image();
-          await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-            img.src = image;
-          });
+    if (!image || !appRef.current || !isReady) return;
 
-          // Crop to AI bounding box if available
-          let texture: PIXI.Texture;
-          if (subjectBox && subjectBox.length === 4) {
-            const [ymin, xmin, ymax, xmax] = subjectBox;
-            const cropX = Math.floor((xmin / 1000) * img.width);
-            const cropY = Math.floor((ymin / 1000) * img.height);
-            const cropW = Math.floor(((xmax - xmin) / 1000) * img.width);
-            const cropH = Math.floor(((ymax - ymin) / 1000) * img.height);
+    // Reset animation state for new image
+    phaseRef.current = 'waiting';
+    flyProgressRef.current = 0;
+    meltAmountRef.current = 0;
+    if (dragonRef.current) dragonRef.current.visible = false;
 
-            if (cropW > 0 && cropH > 0) {
-              const cropCanvas = document.createElement('canvas');
-              cropCanvas.width = cropW;
-              cropCanvas.height = cropH;
-              const ctx = cropCanvas.getContext('2d')!;
-              ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-              texture = PIXI.Texture.from(cropCanvas);
-            } else {
-              texture = PIXI.Texture.from(img);
-            }
+    const loadTexture = async () => {
+      try {
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = image;
+        });
+
+        // Crop to AI bounding box
+        let texture: PIXI.Texture;
+        if (subjectBox && subjectBox.length === 4) {
+          const [ymin, xmin, ymax, xmax] = subjectBox;
+          const cropX = Math.floor((xmin / 1000) * img.width);
+          const cropY = Math.floor((ymin / 1000) * img.height);
+          const cropW = Math.floor(((xmax - xmin) / 1000) * img.width);
+          const cropH = Math.floor(((ymax - ymin) / 1000) * img.height);
+
+          if (cropW > 0 && cropH > 0) {
+            const c = document.createElement('canvas');
+            c.width = cropW;
+            c.height = cropH;
+            c.getContext('2d')!.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+            texture = PIXI.Texture.from(c);
           } else {
             texture = PIXI.Texture.from(img);
           }
-
-          if (spriteRef.current) {
-            appRef.current!.stage.removeChild(spriteRef.current);
-          }
-
-          const sprite = new PIXI.Sprite(texture);
-          sprite.anchor.set(0.5, 0.5);
-
-          const activeColors = getFiveDistinctColors(colors);
-          
-          const filter = PIXI.Filter.from({
-            gl: {
-              vertex: VERT_SHADER,
-              fragment: MELT_SHADER,
-            },
-            resources: {
-              meltUniforms: {
-                uTime: { value: 0, type: 'f32' },
-                uMeltAmount: { value: 0, type: 'f32' },
-                uColor1: { value: hexToVec3(activeColors[0]), type: 'vec3<f32>' },
-                uColor2: { value: hexToVec3(activeColors[1]), type: 'vec3<f32>' },
-                uColor3: { value: hexToVec3(activeColors[2]), type: 'vec3<f32>' },
-                uColor4: { value: hexToVec3(activeColors[3]), type: 'vec3<f32>' },
-                uColor5: { value: hexToVec3(activeColors[4]), type: 'vec3<f32>' },
-              }
-            }
-          });
-          
-          sprite.filters = [filter];
-          filterRef.current = filter;
-          spriteRef.current = sprite;
-          appRef.current!.stage.addChild(sprite);
-        } catch (err) {
-          console.error("Failed to load texture for canvas", err);
+        } else {
+          texture = PIXI.Texture.from(img);
         }
-      };
-      
-      loadTexture();
-    }
-  }, [image, isReady, colors, subjectBox]);
 
-  useEffect(() => {
-    if (!isMelting || !filterRef.current || !appRef.current) return;
-    const app = appRef.current;
-    let meltAmount = 0;
-    const ticker = (t: PIXI.Ticker) => {
-      meltAmount += 0.008 * t.deltaTime;
-      if (filterRef.current) {
-        const uniforms = (filterRef.current.resources as any).meltUniforms.uniforms;
-        uniforms.uMeltAmount.value = Math.min(meltAmount, 1);
-        uniforms.uTime.value += 0.008 * t.deltaTime;
-      }
-      if (meltAmount >= 1) {
-        app.ticker.remove(ticker);
-        onComplete();
+        if (spriteRef.current) {
+          appRef.current!.stage.removeChild(spriteRef.current);
+        }
+
+        const sprite = new PIXI.Sprite(texture);
+        sprite.anchor.set(0.5, 0.5);
+
+        const activeColors = getFiveDistinctColors(colors);
+        const filter = PIXI.Filter.from({
+          gl: { vertex: VERT_SHADER, fragment: MELT_SHADER },
+          resources: {
+            meltUniforms: {
+              uTime: { value: 0, type: 'f32' },
+              uMeltAmount: { value: 0, type: 'f32' },
+              uColor1: { value: hexToVec3(activeColors[0]), type: 'vec3<f32>' },
+              uColor2: { value: hexToVec3(activeColors[1]), type: 'vec3<f32>' },
+              uColor3: { value: hexToVec3(activeColors[2]), type: 'vec3<f32>' },
+              uColor4: { value: hexToVec3(activeColors[3]), type: 'vec3<f32>' },
+              uColor5: { value: hexToVec3(activeColors[4]), type: 'vec3<f32>' },
+            },
+          },
+        });
+
+        sprite.filters = [filter];
+        filterRef.current = filter;
+        spriteRef.current = sprite;
+        appRef.current!.stage.addChild(sprite);
+
+        // Dragon renders on top of image
+        if (dragonRef.current) {
+          appRef.current!.stage.addChild(dragonRef.current);
+        }
+
+        // If isMelting is already true (texture loaded after flag was set), start now
+        if (isMeltingRef.current) startSequence();
+      } catch (err) {
+        console.error('Failed to load texture for canvas', err);
       }
     };
-    app.ticker.add(ticker);
-    return () => {
-      app.ticker.remove(ticker);
-    };
-  }, [isMelting]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div ref={containerRef} className="w-full h-full relative overflow-hidden pointer-events-none" />;
+    loadTexture();
+  }, [image, isReady, colors, subjectBox]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return <div ref={containerRef} className="absolute inset-0 overflow-hidden" />;
 };

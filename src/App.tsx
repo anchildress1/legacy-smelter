@@ -23,6 +23,7 @@ import { Camera, Upload, X, Zap } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
 // Audio Assets (Local)
+const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false, volume: 0.5 });
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true, volume: 0.4 });
 
@@ -110,8 +111,9 @@ export default function App() {
     setCurrentImage(base64);
     setIsComplete(false);
     setIsAnalyzing(true);
-    purrSound.stop();
+    flyInSound.stop();
     fireSound.stop();
+    purrSound.stop();
 
     try {
       const base64Data = base64.split(',')[1];
@@ -143,7 +145,6 @@ export default function App() {
   const startSmelt = () => {
     if (import.meta.env.DEV) console.log("Starting smelt animation...");
     setIsMelting(true);
-    fireSound.play();
   };
 
   const handleSmeltComplete = async () => {
@@ -279,6 +280,8 @@ export default function App() {
                   image={currentImage}
                   isMelting={isMelting}
                   onComplete={handleSmeltComplete}
+                  onFlyInStart={() => flyInSound.play()}
+                  onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
                   colors={analysis?.dominantColors || []}
                   subjectBox={analysis?.subjectBox || null}
                 />
