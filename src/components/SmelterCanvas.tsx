@@ -320,9 +320,9 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
             time += 0.05 * ticker.deltaTime;
             const { width, height } = app.screen;
             const baseScale = Math.min(0.7, (width / 900) * 0.7);
-            const dragonRestX = width * 0.25;
+            const dragonRestX = width * 0.32;
             const dragonY = height * 0.55;
-            const imageX = width * 0.72;
+            const imageX = width * 0.76;
             const imageY = height * 0.5;
             const puddleY = height * 0.88;
 
