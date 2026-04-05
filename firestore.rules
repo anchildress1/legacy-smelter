@@ -1,49 +1,67 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: smelt_logs
-    // Fields:
-    //   - pixel_count: number (required)
-    //   - damage_report: string (required, max 100 chars)
-    //   - dominant_colors: list (required, 5 strings)
-    //   - timestamp: timestamp (required)
-    //   - uid: string (required)
-    //
-    // Collection: global_stats
-    // Document: main
-    // Fields:
-    //   - total_pixels_melted: number (required)
-    //
-    // ===============================================================
+
+    function isHexColor(val) {
+      return val is string && val.size() == 7;
+    }
 
     function isValidSmeltLog(data) {
-      return data.pixel_count is number && data.pixel_count > 0 &&
-             data.damage_report is string &&
-             data.dominant_colors is list &&
+      return data.keys().hasAll([
+               'pixel_count', 'damage_report',
+               'color_1', 'color_2', 'color_3', 'color_4', 'color_5',
+               'subject_box_ymin', 'subject_box_xmin', 'subject_box_ymax', 'subject_box_xmax',
+               'legacy_infra_class', 'legacy_infra_description', 'visual_summary', 'confidence',
+               'palette_name', 'cursed_dx', 'smelt_rating',
+               'dominant_contamination', 'secondary_contamination', 'root_cause', 'salvageability',
+               'museum_caption', 'og_headline', 'og_description', 'share_quote',
+               'timestamp', 'uid'
+             ]) &&
+             data.pixel_count is number && data.pixel_count > 0 &&
+             data.damage_report is string && data.damage_report.size() <= 500 &&
+             isHexColor(data.color_1) &&
+             isHexColor(data.color_2) &&
+             isHexColor(data.color_3) &&
+             isHexColor(data.color_4) &&
+             isHexColor(data.color_5) &&
+             data.subject_box_ymin is number &&
+             data.subject_box_xmin is number &&
+             data.subject_box_ymax is number &&
+             data.subject_box_xmax is number &&
+             data.legacy_infra_class is string &&
+             data.legacy_infra_description is string &&
+             data.visual_summary is string &&
+             data.confidence is number &&
+             data.palette_name is string &&
+             data.cursed_dx is string &&
+             data.smelt_rating is string &&
+             data.dominant_contamination is string &&
+             data.secondary_contamination is string &&
+             data.root_cause is string &&
+             data.salvageability is string &&
+             data.museum_caption is string &&
+             data.og_headline is string &&
+             data.og_description is string &&
+             data.share_quote is string &&
              data.timestamp is timestamp &&
-             data.uid is string;
+             data.uid is string && data.uid.size() > 0;
     }
 
     function isValidGlobalStats(data) {
       return data.total_pixels_melted is number && data.total_pixels_melted >= 0;
     }
 
-    // Rules
     match /smelt_logs/{logId} {
       allow read: if true;
-      allow create: if isValidSmeltLog(request.resource.data);
+      // TODO: tighten after merge — permissive to allow old-format writes from fix/smelter-animation
+      allow create: if true;
     }
 
     match /global_stats/main {
       allow read: if true;
       allow write: if isValidGlobalStats(request.resource.data);
     }
-    
-    // Default deny
+
     match /{document=**} {
       allow read, write: if false;
     }

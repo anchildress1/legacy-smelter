@@ -2,16 +2,49 @@
   "entities": {
     "SmeltLog": {
       "title": "SmeltLog",
-      "description": "A log of a legacy tech smelting event",
+      "description": "A log of a legacy tech smelting event with flat fields (no arrays)",
       "type": "object",
       "properties": {
         "pixel_count": { "type": "number", "description": "Number of pixels melted" },
         "damage_report": { "type": "string", "description": "AI generated damage report" },
-        "dominant_colors": { "type": "array", "items": { "type": "string" }, "description": "Hex colors extracted from image" },
+        "color_1": { "type": "string", "description": "Dominant color 1 (hex)" },
+        "color_2": { "type": "string", "description": "Dominant color 2 (hex)" },
+        "color_3": { "type": "string", "description": "Dominant color 3 (hex)" },
+        "color_4": { "type": "string", "description": "Dominant color 4 (hex)" },
+        "color_5": { "type": "string", "description": "Dominant color 5 (hex)" },
+        "subject_box_ymin": { "type": "number", "description": "Bounding box top (0-1000 scale)" },
+        "subject_box_xmin": { "type": "number", "description": "Bounding box left (0-1000 scale)" },
+        "subject_box_ymax": { "type": "number", "description": "Bounding box bottom (0-1000 scale)" },
+        "subject_box_xmax": { "type": "number", "description": "Bounding box right (0-1000 scale)" },
+        "legacy_infra_class": { "type": "string", "description": "Short class name for the artifact" },
+        "legacy_infra_description": { "type": "string", "description": "Description of what the artifact is" },
+        "visual_summary": { "type": "string", "description": "Plain-language description of visible contents" },
+        "confidence": { "type": "number", "description": "0-100 confidence in visual interpretation" },
+        "palette_name": { "type": "string", "description": "Dramatic name for the color palette" },
+        "cursed_dx": { "type": "string", "description": "Cursed diagnosis for the artifact" },
+        "smelt_rating": { "type": "string", "description": "Severity rating for smelting priority" },
+        "dominant_contamination": { "type": "string", "description": "Main corrupting force detected" },
+        "secondary_contamination": { "type": "string", "description": "Secondary corrupting force" },
+        "root_cause": { "type": "string", "description": "Fake-but-funny incident root cause" },
+        "salvageability": { "type": "string", "description": "Verdict on whether artifact can be saved" },
+        "museum_caption": { "type": "string", "description": "Caption for the Museum of Damage" },
+        "og_headline": { "type": "string", "description": "Social share headline" },
+        "og_description": { "type": "string", "description": "Social share description" },
+        "share_quote": { "type": "string", "description": "Prefilled social share text" },
+        "anon_handle": { "type": "string", "description": "AI-generated anonymous handle for the submitter" },
         "timestamp": { "type": "string", "format": "date-time", "description": "When the smelt occurred" },
         "uid": { "type": "string", "description": "User ID who initiated the smelt" }
       },
-      "required": ["pixel_count", "damage_report", "dominant_colors", "timestamp", "uid"]
+      "required": [
+        "pixel_count", "damage_report",
+        "color_1", "color_2", "color_3", "color_4", "color_5",
+        "subject_box_ymin", "subject_box_xmin", "subject_box_ymax", "subject_box_xmax",
+        "legacy_infra_class", "legacy_infra_description", "visual_summary", "confidence",
+        "palette_name", "cursed_dx", "smelt_rating",
+        "dominant_contamination", "secondary_contamination", "root_cause", "salvageability",
+        "museum_caption", "og_headline", "og_description", "share_quote",
+        "anon_handle", "timestamp", "uid"
+      ]
     },
     "GlobalStats": {
       "title": "GlobalStats",

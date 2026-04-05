@@ -12,7 +12,6 @@ export interface SmeltAnalysis {
   visualSummary: string;
   confidence: number;
   dominantColors: string[];
-  dominantColorsFallback: string[];
   paletteName: string;
   cursedDx: string;
   smeltRating: string;
@@ -25,9 +24,14 @@ export interface SmeltAnalysis {
   ogHeadline: string;
   ogDescription: string;
   shareQuote: string;
+  anonHandle: string;
   pixelCount: number;
   subjectBox: number[]; // [ymin, xmin, ymax, xmax] 0-1000
 }
+
+// Static fallback palette — used when programmatic extraction yields too few colors
+// or when AI confidence is low and we need to blend
+const FALLBACK_COLORS_VIBRANT = ["#ff6b35", "#00c3f5", "#4db542", "#fb0094", "#ffc800"];
 
 function extractDominantColors(img: HTMLImageElement, count: number): string[] {
   const canvas = document.createElement("canvas");
@@ -168,11 +172,6 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
             items: { type: Type.STRING },
             description: "Exactly 5 visually grounded dominant hex colors from the image"
           },
-          dominant_hex_colors_fallback: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-            description: "Exactly 5 fallback hex colors if primary palette is too muted"
-          },
           palette_name: { type: Type.STRING, description: "Short dramatic name for the color palette" },
           cursed_dx: { type: Type.STRING, description: "Cursed diagnosis for the artifact" },
           smelt_rating: { type: Type.STRING, description: "Severity rating for how badly this needs smelting" },
@@ -183,8 +182,8 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
           damage_report: { type: Type.STRING, description: "Punchy one-line damage report for result cards" },
           museum_caption: { type: Type.STRING, description: "Longer caption for the public Museum of Damage" },
           og_headline: { type: Type.STRING, description: "Short social-share-friendly headline" },
-          og_description: { type: Type.STRING, description: "Short social-share-friendly description" },
           share_quote: { type: Type.STRING, description: "Punchy line for prefilled social share text" },
+          anon_handle: { type: Type.STRING, description: "A hilarious anonymous username for the person who submitted this artifact, e.g. 'CursedSysadmin_42', 'PrinterWhisperer', 'LegacyGoblin9000'. Should be funny, specific to the artifact, and feel like a gamertag from someone who has seen too many legacy systems." },
           subject_box: {
             type: Type.ARRAY,
             items: { type: Type.NUMBER },
@@ -193,11 +192,11 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
         },
         required: [
           "legacy_infra_class", "legacy_infra_description", "visual_summary",
-          "confidence", "dominant_hex_colors", "dominant_hex_colors_fallback",
+          "confidence", "dominant_hex_colors",
           "palette_name", "cursed_dx", "smelt_rating",
           "dominant_contamination", "secondary_contamination", "root_cause",
           "salvageability", "damage_report", "museum_caption",
-          "og_headline", "og_description", "share_quote", "subject_box"
+          "og_headline", "share_quote", "anon_handle", "subject_box"
         ]
       }
     }
@@ -205,22 +204,23 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
 
   const result = JSON.parse(response.text || "{}");
 
-  // Use programmatic colors as primary (faster, more accurate), Gemini colors as creative fallback
-  // Spec heuristic: if confidence < 45, blend 2 programmatic with 3 fallback
-  const geminiColors: string[] = Array.isArray(result.dominant_hex_colors) ? result.dominant_hex_colors : [];
-  const geminiFallback: string[] = Array.isArray(result.dominant_hex_colors_fallback) ? result.dominant_hex_colors_fallback : [];
+  // Colors: programmatic extraction is primary source of truth.
+  // AI colors are NOT used for rendering — only programmatic or static fallback.
+  // Blending heuristic: if confidence < 45, blend 2 programmatic with 3 static fallback.
   const confidence = typeof result.confidence === "number" ? result.confidence : 50;
 
   let finalColors: string[];
   if (programmaticColors.length >= 3) {
     if (confidence < 45) {
-      finalColors = [...programmaticColors.slice(0, 2), ...geminiFallback.slice(0, 3)];
+      finalColors = [...programmaticColors.slice(0, 2), ...FALLBACK_COLORS_VIBRANT.slice(0, 3)];
     } else {
       finalColors = programmaticColors;
     }
   } else {
-    finalColors = geminiColors.length >= 5 ? geminiColors : geminiFallback;
+    finalColors = FALLBACK_COLORS_VIBRANT;
   }
+
+  const damageReport = String(result.damage_report || "LEGACY HARDWARE PURGED. SMELT IMMINENT.");
 
   return {
     legacyInfraClass: String(result.legacy_infra_class || "Unclassified Legacy Artifact"),
@@ -228,7 +228,6 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
     visualSummary: String(result.visual_summary || "Visual analysis inconclusive."),
     confidence,
     dominantColors: finalColors,
-    dominantColorsFallback: geminiFallback,
     paletteName: String(result.palette_name || "Standard Slag Spectrum"),
     cursedDx: String(result.cursed_dx || "Chronic Legacy Retention"),
     smeltRating: String(result.smelt_rating || "High Priority Smelt"),
@@ -236,11 +235,12 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
     secondaryContamination: String(result.secondary_contamination || "ambient technical debt"),
     rootCause: String(result.root_cause || "Unauthorized backwards compatibility"),
     salvageability: String(result.salvageability || "Unsalvageable"),
-    damageReport: String(result.damage_report || "LEGACY HARDWARE PURGED. SMELT IMMINENT."),
+    damageReport,
     museumCaption: String(result.museum_caption || "A relic of uncertain provenance, ceremonially destroyed."),
     ogHeadline: String(result.og_headline || "Legacy Smelter: Dragon Intervention Complete"),
-    ogDescription: String(result.og_description || "Another piece of legacy tech reduced to ceremonial slag."),
+    ogDescription: damageReport,
     shareQuote: String(result.share_quote || "I just smelted legacy tech with a dragon. You're welcome."),
+    anonHandle: String(result.anon_handle || "AnonymousSmelter"),
     pixelCount: actualPixelCount,
     subjectBox: Array.isArray(result.subject_box) && result.subject_box.length === 4 ? result.subject_box : [100, 100, 900, 900]
   };

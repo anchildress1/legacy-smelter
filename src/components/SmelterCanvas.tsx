@@ -391,8 +391,8 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
 
               if (filterRef.current) {
                 const u = (filterRef.current.resources as any).meltUniforms.uniforms;
-                u.uMeltAmount.value = melt;
-                u.uTime.value += 0.005 * ticker.deltaTime;
+                u.uMeltAmount = melt;
+                u.uTime += 0.005 * ticker.deltaTime;
               }
 
               if (spriteRef.current) {
@@ -421,7 +421,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
               if (!dragon.playing) dragon.play();
 
               if (filterRef.current) {
-                (filterRef.current.resources as any).meltUniforms.uniforms.uTime.value += 0.003 * ticker.deltaTime;
+                (filterRef.current.resources as any).meltUniforms.uniforms.uTime += 0.003 * ticker.deltaTime;
               }
               if (spriteRef.current) {
                 const s = imgScale(height, spriteRef.current);

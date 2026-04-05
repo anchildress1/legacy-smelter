@@ -31,6 +31,14 @@
   body {
     @apply bg-concrete text-ash-white font-sans selection:bg-hazard-amber selection:text-zinc-950;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 @layer components {
@@ -39,7 +47,7 @@
   }
 
   .modern-button {
-    @apply bg-hazard-amber text-zinc-950 font-bold px-6 py-3 rounded-lg shadow-md hover:brightness-110 active:scale-95 transition-all uppercase tracking-wide;
+    @apply bg-hazard-amber text-zinc-950 font-bold px-6 py-3 rounded-lg shadow-md hover:brightness-110 active:scale-95 transition-all uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-offset-2 focus-visible:ring-offset-concrete-light;
   }
 
   .hazard-stripe {

@@ -8,18 +8,16 @@ import {
   orderBy,
   limit,
   doc,
-  getDoc,
   setDoc,
-  updateDoc,
   increment,
   serverTimestamp
 } from './firebase';
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
-import { SmeltLog, GlobalStats as GlobalStatsType } from './types';
+import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
-import { SmeltManifest } from './components/SmeltManifest';
-import { GlobalStats } from './components/GlobalStats';
-import { Camera, Upload, X, Zap, RotateCcw, Share2, Check, Copy } from 'lucide-react';
+import { IncidentReportOverlay } from './components/IncidentReportOverlay';
+import { formatPixels, getFiveDistinctColors } from './lib/utils';
+import { Camera, Upload, X, Zap, RotateCcw, ScrollText } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
 // Audio
@@ -27,15 +25,21 @@ const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true, volume: 0.4 });
 
-export default function App() {
-  const [logs, setLogs] = useState<SmeltLog[]>([]);
+interface AppProps {
+  onNavigateManifest: () => void;
+}
+
+export default function App({ onNavigateManifest }: AppProps) {
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
+  const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [loadingPostMortem, setLoadingPostMortem] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
-  const [shareState, setShareState] = useState<'idle' | 'sharing' | 'copied'>('idle');
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -43,16 +47,8 @@ export default function App() {
   const canvasRef = useRef<SmelterCanvasHandle>(null);
 
   useEffect(() => {
-    const logsQuery = query(collection(db, 'smelt_logs'), orderBy('timestamp', 'desc'), limit(10));
-    const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
-      const newLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SmeltLog));
-      setLogs(newLogs);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'smelt_logs');
-    });
-
     const statsDoc = doc(db, 'global_stats', 'main');
-    const unsubscribeStats = onSnapshot(statsDoc, (snapshot) => {
+    const unsubStats = onSnapshot(statsDoc, (snapshot) => {
       if (snapshot.exists()) {
         setGlobalStats(snapshot.data() as GlobalStatsType);
       }
@@ -60,10 +56,19 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'global_stats/main');
     });
 
-    return () => {
-      unsubscribeLogs();
-      unsubscribeStats();
-    };
+    const logsQuery = query(
+      collection(db, 'smelt_logs'),
+      orderBy('timestamp', 'desc'),
+      limit(3)
+    );
+    const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
+      const entries = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SmeltLog));
+      setRecentLogs(entries);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'smelt_logs');
+    });
+
+    return () => { unsubStats(); unsubLogs(); };
   }, []);
 
   const startCamera = async () => {
@@ -110,6 +115,9 @@ export default function App() {
     if (import.meta.env.DEV) console.log("Processing image...", mimeType);
     setCurrentImage(base64);
     setIsComplete(false);
+    setShowReport(false);
+    setLoadingPostMortem(false);
+    setIsPlaying(false);
     setIsAnalyzing(true);
     flyInSound.stop();
     fireSound.stop();
@@ -122,7 +130,6 @@ export default function App() {
       setAnalysis(result);
       setIsAnalyzing(false);
 
-      // Imperative: load image into canvas and start animation
       await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
     } catch (error) {
       console.error("Analysis failed", error);
@@ -147,23 +154,44 @@ export default function App() {
     if (import.meta.env.DEV) console.log("Smelt complete");
     fireSound.stop();
     purrSound.play();
+    setIsPlaying(false);
 
-    // Skip Firestore write on replay (isComplete already true)
     if (isComplete || !analysis) return;
 
+    setLoadingPostMortem(true);
+
     try {
+      const colors = analysis.dominantColors;
+      const box = analysis.subjectBox;
       const logRef = doc(collection(db, 'smelt_logs'));
       await setDoc(logRef, {
         pixel_count: analysis.pixelCount,
         damage_report: analysis.damageReport,
-        dominant_colors: analysis.dominantColors,
+        color_1: colors[0] || '',
+        color_2: colors[1] || '',
+        color_3: colors[2] || '',
+        color_4: colors[3] || '',
+        color_5: colors[4] || '',
+        subject_box_ymin: box[0] ?? 100,
+        subject_box_xmin: box[1] ?? 100,
+        subject_box_ymax: box[2] ?? 900,
+        subject_box_xmax: box[3] ?? 900,
         legacy_infra_class: analysis.legacyInfraClass,
+        legacy_infra_description: analysis.legacyInfraDescription,
+        visual_summary: analysis.visualSummary,
+        confidence: analysis.confidence,
+        palette_name: analysis.paletteName,
         cursed_dx: analysis.cursedDx,
         smelt_rating: analysis.smeltRating,
-        palette_name: analysis.paletteName,
+        dominant_contamination: analysis.dominantContamination,
+        secondary_contamination: analysis.secondaryContamination,
+        root_cause: analysis.rootCause,
+        salvageability: analysis.salvageability,
+        museum_caption: analysis.museumCaption,
         og_headline: analysis.ogHeadline,
         og_description: analysis.ogDescription,
         share_quote: analysis.shareQuote,
+        anon_handle: analysis.anonHandle,
         timestamp: serverTimestamp(),
         uid: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
       });
@@ -174,101 +202,81 @@ export default function App() {
       }, { merge: true });
 
       setIsComplete(true);
+
+      setTimeout(() => {
+        setLoadingPostMortem(false);
+        setShowReport(true);
+      }, 2200);
     } catch (error) {
+      setLoadingPostMortem(false);
       handleFirestoreError(error, OperationType.WRITE, 'smelt_logs / global_stats');
     }
   };
 
   const handleReplay = () => {
     purrSound.stop();
+    setShowReport(false);
+    setIsPlaying(true);
     canvasRef.current?.replay();
   };
 
-  const handleShare = async () => {
-    if (!analysis || shareState === 'sharing') return;
-    setShareState('sharing');
-
-    const shareText = `${analysis.shareQuote}\n\n${analysis.damageReport}`;
-    const blob = await canvasRef.current?.captureFrame();
-
-    // Try Web Share API with image (mobile-first)
-    if (navigator.share && blob) {
-      try {
-        const file = new File([blob], 'legacy-smelt.png', { type: 'image/png' });
-        await navigator.share({
-          title: analysis.ogHeadline,
-          text: shareText,
-          files: [file],
-        });
-        setShareState('idle');
-        return;
-      } catch (err) {
-        // User cancelled or share failed — fall through to clipboard
-        if ((err as DOMException).name === 'AbortError') {
-          setShareState('idle');
-          return;
-        }
-      }
-    }
-
-    // Try Web Share API without image
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: analysis.ogHeadline,
-          text: shareText,
-        });
-        setShareState('idle');
-        return;
-      } catch {
-        // Fall through to clipboard
-      }
-    }
-
-    // Clipboard fallback
-    try {
-      await navigator.clipboard.writeText(shareText);
-      setShareState('copied');
-      setTimeout(() => setShareState('idle'), 2000);
-    } catch {
-      setShareState('idle');
-    }
+  const getShareText = () => {
+    if (!analysis) return '';
+    return `${analysis.shareQuote}\n\n${analysis.damageReport}`;
   };
+
+  const shareLinks = analysis ? [
+    { label: 'X', href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(getShareText())}` },
+    { label: 'REDDIT', href: `https://www.reddit.com/submit?title=${encodeURIComponent(analysis.ogHeadline)}&selftext=true&text=${encodeURIComponent(getShareText())}` },
+    { label: 'BLUESKY', href: `https://bsky.app/intent/compose?text=${encodeURIComponent(getShareText())}` },
+    { label: 'LINKEDIN', href: `https://www.linkedin.com/shareArticle?mini=true&title=${encodeURIComponent(analysis.ogHeadline)}&summary=${encodeURIComponent(getShareText())}` },
+  ] : [];
+
+  const formatted = formatPixels(globalStats.total_pixels_melted);
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
-      {/* Header */}
-      <header className="p-6 border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto w-full flex justify-between items-center">
+      {/* Header — clean original style */}
+      <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto w-full flex justify-between items-center px-6 py-4">
           <h1 className="text-2xl font-black font-mono tracking-tighter uppercase">
             LEGACY <span className="text-hazard-amber">SMELTER</span>
           </h1>
-          <div className="text-hazard-amber font-mono text-xs uppercase font-bold">
-            [ ACCESS_GRANTED ]
+          <div className="flex items-center gap-4">
+            <button
+              onClick={onNavigateManifest}
+              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider"
+            >
+              <ScrollText size={14} />
+              INCIDENT MANIFEST
+            </button>
+            <span className="text-stone-gray font-mono text-xs tracking-widest hidden sm:inline">
+              [ ACCESS_GRANTED ]
+            </span>
           </div>
         </div>
       </header>
 
       <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
 
           {/* Left Column: Smelter Area */}
-          <div className="lg:col-span-7 space-y-4">
-            {/* Controls — always visible */}
+          <div className="md:col-span-7 space-y-4">
+            {/* Controls */}
             <div className="flex gap-3">
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="modern-button flex-1 flex items-center justify-center gap-2"
               >
                 <Upload size={18} />
-                UPLOAD
+                SUBMIT ARTIFACT
               </button>
               <button
                 onClick={startCamera}
                 className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-concrete-border hover:brightness-110"
               >
                 <Camera size={18} />
-                CAMERA
+                DEPLOY FIELD SCANNER
               </button>
             </div>
 
@@ -304,8 +312,8 @@ export default function App() {
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center">
                     <Zap className="text-hazard-amber mx-auto mb-3" size={32} />
-                    <p className="text-stone-gray font-mono text-xs uppercase">
-                      INPUT LEGACY HARDWARE FOR SMELTING
+                    <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
+                      FURNACE IDLE // AWAITING CONDEMNED INFRASTRUCTURE
                     </p>
                   </div>
                 </div>
@@ -325,73 +333,131 @@ export default function App() {
               {isAnalyzing && (
                 <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
                   <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
-                  <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
-                    GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
+                  <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse tracking-wider">
+                    GEMINI_CORE: SCANNING CONDEMNED INFRASTRUCTURE...
                   </p>
                 </div>
               )}
-            </div>
 
-            {/* Damage report + actions */}
-            {isComplete && analysis && (
-              <div className="modern-card p-6 space-y-4">
-                {/* Classification header */}
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
-                      {analysis.legacyInfraClass}
-                    </p>
-                    <p className="text-ash-white font-mono text-sm leading-relaxed mt-1">
-                      {analysis.damageReport}
+              {/* Loading post-mortem overlay */}
+              {loadingPostMortem && !showReport && (
+                <div className="absolute inset-x-0 bottom-0 z-40 flex items-end justify-center pb-6">
+                  <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border">
+                    <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse tracking-widest">
+                      COMPILING INCIDENT POSTMORTEM // STAND BY
                     </p>
                   </div>
-                  <span className="text-[10px] font-mono text-concrete-light bg-hazard-amber px-2 py-1 rounded uppercase whitespace-nowrap font-bold">
-                    {analysis.smeltRating}
-                  </span>
                 </div>
+              )}
 
-                {/* Diagnostic details */}
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] font-mono">
-                  <span className="text-dead-gray uppercase">DIAGNOSIS</span>
-                  <span className="text-stone-gray">{analysis.cursedDx}</span>
-                  <span className="text-dead-gray uppercase">CONTAMINATION</span>
-                  <span className="text-stone-gray">{analysis.dominantContamination}</span>
-                  <span className="text-dead-gray uppercase">ROOT CAUSE</span>
-                  <span className="text-stone-gray">{analysis.rootCause}</span>
-                  <span className="text-dead-gray uppercase">SALVAGEABILITY</span>
-                  <span className="text-stone-gray">{analysis.salvageability}</span>
-                </div>
-
-                <div className="flex gap-3">
+              {/* Post-smelt controls — replay + view report */}
+              {isComplete && !loadingPostMortem && !isPlaying && (
+                <div className="absolute inset-0 z-40 flex items-center justify-center gap-3">
                   <button
                     onClick={handleReplay}
-                    className="modern-button flex-1 flex items-center justify-center gap-2"
+                    className="modern-button flex items-center gap-2 text-sm bg-concrete/80 text-hazard-amber border border-concrete-border backdrop-blur-sm hover:bg-concrete/90"
                   >
-                    <RotateCcw size={18} />
+                    <RotateCcw size={16} aria-hidden="true" />
                     REPLAY
                   </button>
-                  <button
-                    onClick={handleShare}
-                    disabled={shareState === 'sharing'}
-                    className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-hazard-amber hover:brightness-110 disabled:opacity-50"
-                  >
-                    {shareState === 'copied' ? (
-                      <><Check size={18} /> COPIED</>
-                    ) : shareState === 'sharing' ? (
-                      <><Share2 size={18} className="animate-pulse" /> SHARING...</>
-                    ) : (
-                      <><Share2 size={18} /> SHARE</>
-                    )}
-                  </button>
+                  {!showReport && (
+                    <button
+                      onClick={() => setShowReport(true)}
+                      className="modern-button flex items-center gap-2 text-sm"
+                    >
+                      VIEW POSTMORTEM
+                    </button>
+                  )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          {/* Right Column: Stats & Feed */}
-          <div className="lg:col-span-5 space-y-8">
-            <GlobalStats totalPixels={globalStats.total_pixels_melted} />
-            <SmeltManifest logs={logs} />
+          {/* Right Column: Global Stats + Recent Incidents */}
+          <div className="md:col-span-5 space-y-4">
+            {/* Stats card — compact inline below md, full card at md+ */}
+            <div className="modern-card relative overflow-hidden">
+              <div className="hazard-stripe h-1.5 w-full" />
+              <div className="p-4 md:p-5">
+                <h2 className="text-hazard-amber font-mono text-[10px] uppercase tracking-widest mb-1">
+                  CUMULATIVE THERMAL DESTRUCTION INDEX
+                </h2>
+                <div className="flex items-baseline gap-3 md:block">
+                  <div className="text-3xl md:text-4xl font-extrabold font-mono text-hazard-amber tracking-tighter">
+                    {formatted.value}
+                    <span className="text-sm ml-2 text-stone-gray">{formatted.unit}</span>
+                  </div>
+                  {/* Status line — inline on narrow, block on md+ */}
+                  <div className="flex gap-2 items-center md:mt-4">
+                    <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse" />
+                    <div className="text-[10px] font-mono text-stone-gray uppercase hidden md:block">
+                      FURNACE STATUS: NOMINAL // AWAITING DIRECTIVES
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent incidents — hidden below md to save vertical space in embed/stacked view */}
+            <div className="hidden md:block">
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-hazard-amber font-mono text-sm uppercase tracking-widest font-bold">
+                  RECENT INCIDENTS
+                </h2>
+                <button
+                  onClick={onNavigateManifest}
+                  className="text-stone-gray hover:text-hazard-amber transition-colors font-mono text-[10px] uppercase tracking-wider"
+                >
+                  VIEW ALL
+                </button>
+              </div>
+              <div className="space-y-3">
+                {recentLogs.map((log) => {
+                  const fmt = formatPixels(log.pixel_count);
+                  const rawColors = [log.color_1, log.color_2, log.color_3, log.color_4, log.color_5];
+                  const finalColors = getFiveDistinctColors(rawColors);
+
+                  return (
+                    <div
+                      key={log.id}
+                      className="modern-card relative overflow-hidden flex"
+                    >
+                      {/* Color strip */}
+                      <div className="w-2 shrink-0 flex flex-col" aria-hidden="true">
+                        {finalColors.map((col, idx) => (
+                          <div key={idx} className="flex-1" style={{ backgroundColor: col }} />
+                        ))}
+                      </div>
+                      <div className="p-3 flex-1 min-w-0">
+                        {log.legacy_infra_class && (
+                          <p className="text-hazard-amber font-mono text-[10px] uppercase tracking-widest">
+                            {log.legacy_infra_class}
+                          </p>
+                        )}
+                        <p className="text-ash-white font-mono text-xs leading-snug mt-0.5 line-clamp-2">
+                          {log.damage_report}
+                        </p>
+                        <div className="mt-1.5 flex justify-between items-end">
+                          <span className="text-hazard-amber font-mono text-[10px] font-bold">
+                            {fmt.value} {fmt.unit}
+                          </span>
+                          <span className="text-dead-gray font-mono text-[10px]">
+                            {log.timestamp?.toDate
+                              ? new Date(log.timestamp.toDate()).toLocaleTimeString()
+                              : '—'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {recentLogs.length === 0 && (
+                  <div className="text-dead-gray font-mono text-center py-6 italic text-xs">
+                    NO INCIDENTS ON RECORD. FURNACE IDLE.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
         </div>
@@ -400,14 +466,23 @@ export default function App() {
       {/* Footer */}
       <footer className="p-6 bg-concrete-mid border-t border-concrete-border mt-auto">
         <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-xs font-mono text-dead-gray uppercase tracking-widest">
+          <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
             &copy; 2026 Ashley Childress
           </p>
-          <p className="text-xs font-mono text-dead-gray uppercase tracking-widest">
-            Powered by Gemini | Built with Google AI Studio, Gemini &amp; Claude
+          <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
+            Powered by Gemini
           </p>
         </div>
       </footer>
+
+      {/* Post-mortem overlay */}
+      {showReport && analysis && (
+        <IncidentReportOverlay
+          analysis={analysis}
+          shareLinks={shareLinks}
+          onClose={() => setShowReport(false)}
+        />
+      )}
     </div>
   );
 }
