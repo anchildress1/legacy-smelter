@@ -306,7 +306,7 @@ export default function App() {
             &copy; 2026 Ashley Childress
           </p>
           <p className="text-xs font-mono text-dead-gray uppercase tracking-widest">
-            Built with Google AI Studio, Gemini &amp; Claude
+            Powered by Gemini | Built with Google AI Studio, Gemini &amp; Claude
           </p>
         </div>
       </footer>
