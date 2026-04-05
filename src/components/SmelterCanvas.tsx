@@ -152,7 +152,7 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
       const meltTextures = meltFrames.map(f => PIXI.Assets.get(f));
 
       const dragonSprite = new PIXI.AnimatedSprite(idleTextures);
-      dragonSprite.animationSpeed = 0.5;
+      dragonSprite.animationSpeed = 0.3;
       dragonSprite.anchor.set(0.5);
       dragonRef.current = dragonSprite;
       app.stage.addChild(dragonSprite);
@@ -186,9 +186,11 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
         if (isMeltingRef.current) {
           if (dragonSprite.textures !== meltTextures) {
             dragonSprite.textures = meltTextures;
-            dragonSprite.play();
+            dragonSprite.animationSpeed = 0.2;
+            dragonSprite.loop = false;
+            dragonSprite.gotoAndPlay(0);
           }
-          dragonSprite.scale.y *= (1 + Math.sin(time * 5) * 0.005);
+          dragonSprite.scale.y *= (1 + Math.sin(time * 5) * 0.003);
         } else {
           if (dragonSprite.textures !== idleTextures) {
             dragonSprite.textures = idleTextures;
@@ -228,7 +230,9 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
           }
           
           const sprite = new PIXI.Sprite(texture);
-          sprite.anchor.set(0.5, 1.0);
+          sprite.anchor.set(0.5, 0.5);
+          sprite.alpha = 1;
+          sprite.visible = true;
 
           if (subjectBox && subjectBox.length === 4) {
             const [ymin, xmin, ymax, xmax] = subjectBox;
@@ -242,7 +246,7 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
             if (cropW > 0 && cropH > 0) {
               const bounds = new PIXI.Graphics();
               // Bright red targeting box
-              bounds.rect(cropX - w/2, cropY - h, cropW, cropH);
+              bounds.rect(cropX - w/2, cropY - h/2, cropW, cropH);
               bounds.stroke({ width: 6, color: 0xff0000, alpha: 0.8 });
               sprite.addChild(bounds);
             }
@@ -285,11 +289,11 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
     if (isMelting && filterRef.current && appRef.current) {
       let meltAmount = 0;
       const ticker = (t: PIXI.Ticker) => {
-        meltAmount += 0.015 * t.deltaTime;
+        meltAmount += 0.008 * t.deltaTime;
         if (filterRef.current) {
           const uniforms = (filterRef.current.resources as any).meltUniforms.uniforms;
           uniforms.uMeltAmount = Math.min(meltAmount, 1);
-          uniforms.uTime += 0.01 * t.deltaTime;
+          uniforms.uTime += 0.008 * t.deltaTime;
         }
         
         if (meltAmount >= 1) {
