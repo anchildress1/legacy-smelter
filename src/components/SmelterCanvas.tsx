@@ -300,7 +300,9 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
           try {
             time += 0.05 * ticker.deltaTime;
             const { width, height } = app.screen;
-            const baseScale = (height * 0.4) / DRAGON_TEX_H;
+            // Dragon at 0.7 for desktop, scale down proportionally for smaller canvases
+          // Never scale UP (causes pixelation)
+          const baseScale = Math.min(0.7, (width / 900) * 0.7);
             const dragonRestX = width * 0.25;
             const dragonY = height * 0.55;
             const imageX = width * 0.72;
@@ -371,7 +373,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 // Squash image into puddle
                 if (spriteRef.current) {
                   const squish = 1.0 - melt * 0.65;
-                  const s = imgScale(height, spriteRef.current);
+                  const s = imgScale(baseScale, spriteRef.current);
                   spriteRef.current.scale.x = s;
                   spriteRef.current.scale.y = s * squish;
                   spriteRef.current.x = imageX;
@@ -398,7 +400,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                   (filterRef.current.resources as any).meltUniforms.uniforms.uTime.value += 0.003 * ticker.deltaTime;
                 }
                 if (spriteRef.current) {
-                  const s = imgScale(height, spriteRef.current);
+                  const s = imgScale(baseScale, spriteRef.current);
                   spriteRef.current.scale.x = s;
                   spriteRef.current.scale.y = s * 0.35;
                   spriteRef.current.x = imageX;
@@ -413,7 +415,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
             if (spriteRef.current && phaseRef.current === 'flying_in') {
               spriteRef.current.x = imageX;
               spriteRef.current.y = imageY;
-              spriteRef.current.scale.set(imgScale(height, spriteRef.current));
+              spriteRef.current.scale.set(imgScale(baseScale, spriteRef.current));
             }
           } catch (err) {
             console.error('[SmelterCanvas] Ticker error:', err);
@@ -437,8 +439,10 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
 
 SmelterCanvas.displayName = 'SmelterCanvas';
 
-function imgScale(canvasH: number, sprite: PIXI.Sprite): number {
-  const target = canvasH * 0.35;
+/** Scale image to ~60% of dragon's visual height */
+function imgScale(baseScale: number, sprite: PIXI.Sprite): number {
+  const dragonVisualH = DRAGON_TEX_H * baseScale;
+  const target = dragonVisualH * 0.6;
   const max = Math.max(sprite.texture.width, sprite.texture.height);
   return max > 0 ? target / max : 1;
 }
