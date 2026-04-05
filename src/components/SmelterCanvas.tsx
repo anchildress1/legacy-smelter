@@ -29,6 +29,22 @@ function hexToInt(hex: string): number {
   return parseInt(hex.slice(1), 16);
 }
 
+/** Ensure a color is bright enough for the puddle (min luminance ~30%) */
+function ensureBright(color: number): number {
+  let r = (color >> 16) & 0xff;
+  let g = (color >> 8) & 0xff;
+  let b = color & 0xff;
+  const lum = (r * 0.299 + g * 0.587 + b * 0.114);
+  if (lum < 80) {
+    // Boost toward a brighter version of the same hue
+    const boost = 80 / Math.max(lum, 1);
+    r = Math.min(255, Math.round(r * boost + 40));
+    g = Math.min(255, Math.round(g * boost + 40));
+    b = Math.min(255, Math.round(b * boost + 40));
+  }
+  return (r << 16) | (g << 8) | b;
+}
+
 interface PixiState {
   app: PIXI.Application;
   dragon: PIXI.AnimatedSprite;
@@ -98,7 +114,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         // Pick 3 random colors from AI palette for liquid tinting
         const palette = getFiveDistinctColors(colors);
         const shuffled = [...palette].sort(() => Math.random() - 0.5);
-        meltColorsRef.current = shuffled.slice(0, 3).map(hexToInt);
+        meltColorsRef.current = shuffled.slice(0, 3).map(h => ensureBright(hexToInt(h)));
 
         // Load the image
         const img = new Image();
@@ -371,24 +387,24 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 const ph = 170 * puddleScale;
                 const [pc1, pc2, pc3] = meltColorsRef.current;
 
-                // Color base: 3 overlapping ellipses
+                // Color base: 3 tightly overlapping ellipses
                 puddleBase.visible = puddleAlpha > 0.01;
                 if (puddleBase.visible) {
                   puddleBase.clear();
                   puddleBase.alpha = puddleAlpha;
-                  puddleBase.ellipse(imageX - pw * 0.12, puddleY, pw * 0.42, ph * 0.9);
-                  puddleBase.fill({ color: pc1, alpha: 0.8 });
-                  puddleBase.ellipse(imageX + pw * 0.05, puddleY + 2, pw * 0.48, ph);
+                  puddleBase.ellipse(imageX - 8, puddleY, pw * 0.46, ph);
+                  puddleBase.fill({ color: pc1, alpha: 0.85 });
+                  puddleBase.ellipse(imageX + 3, puddleY + 1, pw * 0.48, ph * 0.95);
                   puddleBase.fill({ color: pc2, alpha: 0.7 });
-                  puddleBase.ellipse(imageX + pw * 0.18, puddleY - 2, pw * 0.38, ph * 0.85);
+                  puddleBase.ellipse(imageX + 10, puddleY - 1, pw * 0.44, ph * 0.9);
                   puddleBase.fill({ color: pc3, alpha: 0.75 });
                 }
 
-                // Animated texture overlay for surface detail
+                // Animated texture overlay — low alpha so colors show through
                 puddle.visible = puddleAlpha > 0.01;
                 if (puddle.visible) {
                   if (!puddle.playing) puddle.play();
-                  puddle.alpha = puddleAlpha * 0.35;
+                  puddle.alpha = puddleAlpha * 0.2;
                   puddle.tint = 0xffffff;
                   puddle.x = imageX;
                   puddle.y = puddleY;
@@ -416,11 +432,11 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 const [cc1, cc2, cc3] = meltColorsRef.current;
 
                 puddleBase.clear();
-                puddleBase.ellipse(imageX - cpw * 0.12, puddleY, cpw * 0.42, cph * 0.9);
-                puddleBase.fill({ color: cc1, alpha: 0.8 });
-                puddleBase.ellipse(imageX + cpw * 0.05, puddleY + 2, cpw * 0.48, cph);
+                puddleBase.ellipse(imageX - 8, puddleY, cpw * 0.46, cph);
+                puddleBase.fill({ color: cc1, alpha: 0.85 });
+                puddleBase.ellipse(imageX + 3, puddleY + 1, cpw * 0.48, cph * 0.95);
                 puddleBase.fill({ color: cc2, alpha: 0.7 });
-                puddleBase.ellipse(imageX + cpw * 0.18, puddleY - 2, cpw * 0.38, cph * 0.85);
+                puddleBase.ellipse(imageX + 10, puddleY - 1, cpw * 0.44, cph * 0.9);
                 puddleBase.fill({ color: cc3, alpha: 0.75 });
 
                 if (!puddle.playing) puddle.play();
