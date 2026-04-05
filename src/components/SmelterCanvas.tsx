@@ -282,7 +282,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
 
         // Bubbling puddle — recolored via palette-swap shader
         const puddle = new PIXI.AnimatedSprite(textures.puddleTex);
-        puddle.animationSpeed = 0.08; // slow gentle bubbles
+        puddle.animationSpeed = 0.03; // very slow pops
         puddle.anchor.set(0.5, 0.5);
         puddle.visible = false;
         puddle.loop = true;
@@ -411,12 +411,15 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
 
                   const imgS = spriteRef.current
                     ? getImgScale(baseScale, spriteRef.current) : baseScale * 0.3;
+                  const imgW = spriteRef.current
+                    ? spriteRef.current.texture.width * imgS : 150;
                   const imgH = spriteRef.current
                     ? spriteRef.current.texture.height * imgS : 100;
                   const streamTop = imageY + imgH / 2;
                   const streamHeight = puddleY - streamTop;
                   const streamScaleY = Math.max(streamHeight / 512, 0.1);
-                  const streamScaleX = streamScaleY * 0.4;
+                  // Width matches the image it melted from
+                  const streamScaleX = Math.max(imgW * 0.7 / 320, 0.15);
 
                   gooStream.x = imageX;
                   gooStream.y = streamTop;
