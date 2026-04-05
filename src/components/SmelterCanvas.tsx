@@ -15,8 +15,8 @@ interface SmelterCanvasProps {
 
 type AnimPhase = 'empty' | 'flying_in' | 'landing' | 'melting' | 'complete';
 
-// Palette-swap shader: remaps puddle sprite luminance to 3 AI colors
-const PUDDLE_VERT = `
+// Standard PixiJS v8 vertex shader for filters
+const FILTER_VERT = `
     attribute vec2 aPosition;
     varying vec2 vTextureCoord;
     uniform vec4 uInputSize;
@@ -30,6 +30,44 @@ const PUDDLE_VERT = `
         vTextureCoord = aPosition * (uOutputFrame.zw * uInputSize.zw);
     }
 `;
+
+// Melt shader: heat distortion + downward drip + fade out
+const MELT_FRAG = `
+    precision highp float;
+    varying vec2 vTextureCoord;
+    uniform sampler2D uTexture;
+    uniform float uTime;
+    uniform float uMeltAmount;
+
+    float random(vec2 st) {
+        return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+    }
+
+    void main(void) {
+        vec2 uv = vTextureCoord;
+
+        // Heat distortion
+        float distortion = sin(uv.y * 15.0 + uTime * 8.0) * 0.02 * uMeltAmount;
+        uv.x += distortion;
+
+        // Downward drip
+        float meltOffset = random(vec2(uv.x, 0.0)) * uMeltAmount * 0.8;
+        uv.y -= meltOffset;
+
+        vec4 baseColor = texture2D(uTexture, uv);
+
+        // Orange heat tint
+        float tintStrength = uMeltAmount * 0.6;
+        baseColor.rgb = mix(baseColor.rgb, vec3(1.0, 0.4, 0.0), tintStrength);
+
+        // Fade out
+        baseColor.a *= 1.0 - smoothstep(0.3, 1.0, uMeltAmount);
+
+        gl_FragColor = baseColor;
+    }
+`;
+
+// Palette-swap shader: remaps puddle sprite luminance to 3 AI colors
 const PUDDLE_FRAG = `
     precision highp float;
     varying vec2 vTextureCoord;
@@ -49,7 +87,7 @@ const PUDDLE_FRAG = `
 
 const DRAGON_TEX_H = 672;
 const ANIM_SPEED = 0.2;
-const FLY_SPEED = 0.005;  // ~3.3s
+const FLY_SPEED = 0.005;
 const MELT_SPEED = 0.0025; // ~6.7s — slow burn
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
@@ -65,14 +103,12 @@ function intToVec3(c: number): [number, number, number] {
   return [((c >> 16) & 0xff) / 255, ((c >> 8) & 0xff) / 255, (c & 0xff) / 255];
 }
 
-/** Ensure a color is bright enough for the puddle (min luminance ~30%) */
 function ensureBright(color: number): number {
   let r = (color >> 16) & 0xff;
   let g = (color >> 8) & 0xff;
   let b = color & 0xff;
   const lum = (r * 0.299 + g * 0.587 + b * 0.114);
   if (lum < 80) {
-    // Boost toward a brighter version of the same hue
     const boost = 80 / Math.max(lum, 1);
     r = Math.min(255, Math.round(r * boost + 40));
     g = Math.min(255, Math.round(g * boost + 40));
@@ -84,14 +120,12 @@ function ensureBright(color: number): number {
 interface PixiState {
   app: PIXI.Application;
   dragon: PIXI.AnimatedSprite;
-  gooStream: PIXI.AnimatedSprite;
   puddle: PIXI.AnimatedSprite;
   textures: {
     fly: PIXI.Texture[];
     land: PIXI.Texture[];
     idle: PIXI.Texture[];
     flame: PIXI.Texture[];
-    goo: PIXI.Texture[];
     puddleTex: PIXI.Texture[];
   };
 }
@@ -101,11 +135,11 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
     const containerRef = useRef<HTMLDivElement>(null);
     const ps = useRef<PixiState | null>(null);
     const spriteRef = useRef<PIXI.Sprite | null>(null);
+    const meltFilterRef = useRef<PIXI.Filter | null>(null);
+    const puddleFilterRef = useRef<PIXI.Filter | null>(null);
     const phaseRef = useRef<AnimPhase>('empty');
     const meltProgressRef = useRef(0);
     const flyProgressRef = useRef(0);
-    const meltColorsRef = useRef<number[]>([0x888888, 0x888888, 0x888888]);
-    const puddleFilterRef = useRef<PIXI.Filter | null>(null);
     const cbRef = useRef({ onComplete, onFlyInStart, onFireStart });
     const readyResolveRef = useRef<() => void>(undefined);
     const readyPromiseRef = useRef<Promise<void>>(new Promise(() => {}));
@@ -114,19 +148,17 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
       cbRef.current = { onComplete, onFlyInStart, onFireStart };
     }, [onComplete, onFlyInStart, onFireStart]);
 
-    /** Reset all melt visuals and start the fly-in sequence */
     const beginSequence = () => {
       if (!ps.current || !spriteRef.current) return;
-      const { dragon, gooStream, puddle } = ps.current;
+      const { dragon, puddle } = ps.current;
 
-      // Reset image sprite
+      // Reset image
       spriteRef.current.visible = true;
       spriteRef.current.alpha = 1;
       spriteRef.current.tint = 0xffffff;
+      spriteRef.current.filters = [];
 
-      // Hide liquid sprites
-      gooStream.visible = false;
-      gooStream.tint = 0xffffff;
+      // Hide puddle
       puddle.visible = false;
       puddle.filters = [];
 
@@ -143,18 +175,16 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         await readyPromiseRef.current;
         const state = ps.current!;
 
-        // Pick 3 colors from AI palette for puddle recoloring
+        // Pick 3 colors for puddle
         const palette = getFiveDistinctColors(colors);
         const shuffled = [...palette].sort(() => Math.random() - 0.5);
         const picked = shuffled.slice(0, Math.min(3, shuffled.length)).map(h => ensureBright(hexToInt(h)));
-        // Pad to 3 if fewer available
         while (picked.length < 3) picked.push(picked[0] || 0xcccccc);
-        meltColorsRef.current = picked;
 
         // Create puddle palette-swap filter
         try {
           puddleFilterRef.current = PIXI.Filter.from({
-            gl: { vertex: PUDDLE_VERT, fragment: PUDDLE_FRAG },
+            gl: { vertex: FILTER_VERT, fragment: PUDDLE_FRAG },
             resources: {
               puddleUniforms: {
                 uColor1: { value: intToVec3(picked[0]), type: 'vec3<f32>' },
@@ -168,7 +198,23 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
           puddleFilterRef.current = null;
         }
 
-        // Load the image
+        // Create melt filter for image dissolution
+        try {
+          meltFilterRef.current = PIXI.Filter.from({
+            gl: { vertex: FILTER_VERT, fragment: MELT_FRAG },
+            resources: {
+              meltUniforms: {
+                uTime: { value: 0, type: 'f32' },
+                uMeltAmount: { value: 0, type: 'f32' },
+              },
+            },
+          });
+        } catch (err) {
+          console.error('[SmelterCanvas] Melt filter failed:', err);
+          meltFilterRef.current = null;
+        }
+
+        // Load image
         const img = new Image();
         img.crossOrigin = 'anonymous';
         await new Promise<void>((resolve, reject) => {
@@ -177,7 +223,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
           img.src = imageUrl;
         });
 
-        // Create texture — crop via PixiJS frame Rectangle
+        // Crop via PixiJS frame Rectangle
         const baseTex = PIXI.Texture.from(img);
         let texture = baseTex;
         if (subjectBox && subjectBox.length === 4) {
@@ -194,35 +240,34 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
           }
         }
 
-        // Remove old sprite
         if (spriteRef.current) {
           state.app.stage.removeChild(spriteRef.current);
           spriteRef.current = null;
         }
 
-        // Create image sprite
         const sprite = new PIXI.Sprite(texture);
         sprite.anchor.set(0.5, 0.5);
         spriteRef.current = sprite;
 
-        // Insert at index 1 (behind puddle and dragon, but IN FRONT of goo stream)
-        // Goo stream is at index 0 — it shows through as the image fades
-        state.app.stage.addChildAt(sprite, 1);
-
-        if (import.meta.env.DEV) {
-          console.log('[SmelterCanvas] Image loaded:', texture.width, 'x', texture.height,
-            subjectBox ? '(cropped)' : '(full)');
-        }
+        // Image behind puddle and dragon
+        state.app.stage.addChildAt(sprite, 0);
 
         beginSequence();
       },
 
       replay: () => {
+        // Reset melt filter uniforms
+        if (meltFilterRef.current) {
+          try {
+            const u = (meltFilterRef.current.resources as any).meltUniforms.uniforms;
+            u.uMeltAmount.value = 0;
+            u.uTime.value = 0;
+          } catch { /* ignore */ }
+        }
         beginSequence();
       },
     }));
 
-    // Single init effect
     useEffect(() => {
       let destroyed = false;
       readyPromiseRef.current = new Promise<void>(r => { readyResolveRef.current = r; });
@@ -239,7 +284,6 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         if (destroyed) { app.destroy(); return; }
         containerRef.current.appendChild(app.canvas);
 
-        // Dragon frame paths
         const dragonPaths = {
           fly: Array.from({ length: 8 }, (_, i) =>
             `/assets/dragon/__dragon_01_blue_flying_${i.toString().padStart(3, '0')}.png`),
@@ -250,16 +294,12 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
           flame: Array.from({ length: 20 }, (_, i) =>
             `/assets/dragon/__dragon_01_blue_standing_flame_with_flame_${i.toString().padStart(3, '0')}.png`),
         };
-
-        // Liquid frame paths
-        const gooPaths = Array.from({ length: 8 }, (_, i) =>
-          `/assets/liquid/goo-tiles/g${i + 1}.png`);
         const puddlePaths = Array.from({ length: 8 }, (_, i) =>
           `/assets/liquid/bubbling-puddle/p${i + 1}.png`);
 
         await PIXI.Assets.load([
           ...dragonPaths.fly, ...dragonPaths.land, ...dragonPaths.idle, ...dragonPaths.flame,
-          ...gooPaths, ...puddlePaths,
+          ...puddlePaths,
         ]);
         if (destroyed) { app.destroy(); return; }
 
@@ -268,27 +308,15 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
           land: dragonPaths.land.map(f => PIXI.Assets.get(f)),
           idle: dragonPaths.idle.map(f => PIXI.Assets.get(f)),
           flame: dragonPaths.flame.map(f => PIXI.Assets.get(f)),
-          goo: gooPaths.map(f => PIXI.Assets.get(f)),
           puddleTex: puddlePaths.map(f => PIXI.Assets.get(f)),
         };
 
-        // --- Create display objects ---
-
-        // Goo stream — vertical liquid flow, hidden initially
-        const gooStream = new PIXI.AnimatedSprite(textures.goo);
-        gooStream.animationSpeed = 0.12;
-        gooStream.anchor.set(0.5, 0); // top-center: pours downward from image
-        gooStream.visible = false;
-        gooStream.loop = true;
-
-        // Bubbling puddle — recolored via palette-swap shader
         const puddle = new PIXI.AnimatedSprite(textures.puddleTex);
         puddle.animationSpeed = 0.05;
         puddle.anchor.set(0.5, 0.5);
         puddle.visible = false;
         puddle.loop = true;
 
-        // Dragon
         const dragon = new PIXI.AnimatedSprite(textures.idle);
         dragon.animationSpeed = ANIM_SPEED;
         dragon.anchor.set(0.5);
@@ -296,14 +324,12 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         dragon.loop = true;
         dragon.play();
 
-        // Z-order: [image@0 later] → gooStream → puddle → dragon
-        app.stage.addChild(gooStream);
+        // Z-order: [image@0 later] → puddle → dragon
         app.stage.addChild(puddle);
         app.stage.addChild(dragon);
 
-        ps.current = { app, dragon, gooStream, puddle, textures };
+        ps.current = { app, dragon, puddle, textures };
 
-        /** Swap dragon textures and guarantee it keeps playing */
         const setDragonTex = (tex: PIXI.Texture[], loop: boolean) => {
           if (dragon.textures !== tex) {
             dragon.textures = tex;
@@ -324,7 +350,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
             const dragonRestX = width * 0.38;
             const dragonY = height * 0.55;
             const imageX = width * 0.65;
-            const imageY = height * 0.5;
+            const imageY = height * 0.45;
             const puddleY = height * 0.88;
 
             switch (phaseRef.current) {
@@ -334,14 +360,12 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
               case 'flying_in': {
                 dragon.visible = true;
                 setDragonTex(textures.fly, true);
-
                 flyProgressRef.current += FLY_SPEED * ticker.deltaTime;
                 const t = Math.min(flyProgressRef.current, 1);
                 const eased = 1 - Math.pow(1 - t, 3);
                 dragon.x = (width + 200) + (dragonRestX - width - 200) * eased;
                 dragon.y = dragonY;
                 dragon.scale.set(baseScale);
-
                 if (t >= 1) {
                   phaseRef.current = 'landing';
                   setDragonTex(textures.land, false);
@@ -355,15 +379,15 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 dragon.x = dragonRestX;
                 dragon.y = dragonY;
                 dragon.scale.set(-baseScale, baseScale);
-
                 if (!dragon.playing) {
-                  // Fire + melt start simultaneously
                   phaseRef.current = 'melting';
                   meltProgressRef.current = 0;
                   setDragonTex(textures.flame, false);
 
-                  // Tint goo stream with first AI color
-                  gooStream.tint = meltColorsRef.current[0];
+                  // Apply melt shader to image
+                  if (spriteRef.current && meltFilterRef.current) {
+                    spriteRef.current.filters = [meltFilterRef.current];
+                  }
 
                   cbRef.current.onFireStart?.();
                 }
@@ -375,7 +399,6 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 dragon.y = dragonY;
                 dragon.scale.set(-baseScale, baseScale);
 
-                // When flame finishes, return to idle (melt continues)
                 if (!dragon.playing && dragon.textures === textures.flame) {
                   setDragonTex(textures.idle, true);
                 }
@@ -384,54 +407,27 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 meltProgressRef.current += MELT_SPEED * ticker.deltaTime;
                 const mp = Math.min(meltProgressRef.current, 1);
 
-                // --- Image fade: slow alpha dissolve + orange tint + drift ---
-                const fadeAmount = smoothstep(0, 0.6, mp);
+                // Advance melt shader on image
+                if (meltFilterRef.current) {
+                  const u = (meltFilterRef.current.resources as any).meltUniforms.uniforms;
+                  u.uMeltAmount.value = mp;
+                  u.uTime.value += 0.005 * ticker.deltaTime;
+                }
+
+                // Hide image when fully melted
                 if (spriteRef.current) {
-                  if (fadeAmount < 0.99) {
+                  if (mp >= 0.95) {
+                    spriteRef.current.visible = false;
+                  } else {
                     const s = getImgScale(baseScale, spriteRef.current);
-                    spriteRef.current.alpha = 1 - fadeAmount;
-                    const tintG = Math.round(255 - fadeAmount * 155);
-                    const tintB = Math.round(255 - fadeAmount * 255);
-                    spriteRef.current.tint = (0xff << 16) | (tintG << 8) | tintB;
                     spriteRef.current.x = imageX;
                     spriteRef.current.y = imageY;
                     spriteRef.current.scale.set(s);
-                  } else {
-                    spriteRef.current.visible = false;
                   }
                 }
 
-                // --- Goo stream: pours down from image, disappears when puddle forms ---
-                const pourVisible = mp >= 0.05 && mp < 0.5;
-                gooStream.visible = pourVisible;
-                if (pourVisible) {
-                  if (!gooStream.playing) gooStream.play();
-                  gooStream.alpha = 1;
-
-                  const imgS = spriteRef.current
-                    ? getImgScale(baseScale, spriteRef.current) : baseScale * 0.3;
-                  const imgW = spriteRef.current
-                    ? spriteRef.current.texture.width * imgS : 150;
-                  const imgH = spriteRef.current
-                    ? spriteRef.current.texture.height * imgS : 100;
-                  const streamTop = imageY + imgH / 2;
-                  const streamHeight = puddleY - streamTop;
-                  const streamScaleX = Math.max(imgW * 0.5 / 320, 0.1);
-
-                  // Pour grows downward from image toward puddle
-                  const growFrac = smoothstep(0.05, 0.3, mp);
-                  const streamScaleY = Math.max((streamHeight * growFrac) / 512, 0.01);
-
-                  gooStream.x = imageX;
-                  gooStream.y = streamTop;
-                  gooStream.scale.set(streamScaleX, streamScaleY);
-                }
-
-                // --- Puddle: sprite recolored via palette-swap shader ---
-                const puddleAlpha = smoothstep(0.25, 0.5, mp);
-                const puddleTargetW = width * 0.3;
-                const puddleScale = puddleTargetW / 885;
-
+                // Puddle fades in
+                const puddleAlpha = smoothstep(0.3, 0.6, mp);
                 puddle.visible = puddleAlpha > 0.01;
                 if (puddle.visible) {
                   if (!puddle.playing) puddle.play();
@@ -441,12 +437,11 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                   puddle.alpha = puddleAlpha;
                   puddle.x = imageX;
                   puddle.y = puddleY;
-                  puddle.scale.set(puddleScale);
+                  puddle.scale.set((width * 0.3) / 885);
                 }
 
                 if (mp >= 1) {
                   phaseRef.current = 'complete';
-                  gooStream.visible = false;
                   cbRef.current.onComplete();
                 }
                 break;
@@ -458,17 +453,15 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 dragon.scale.set(-baseScale, baseScale);
                 if (!dragon.playing) dragon.play();
 
-                // Puddle persists
                 if (!puddle.playing) puddle.play();
-                const cps = (width * 0.3) / 885;
                 puddle.x = imageX;
                 puddle.y = puddleY;
-                puddle.scale.set(cps);
+                puddle.scale.set((width * 0.3) / 885);
                 break;
               }
             }
 
-            // Image positioning (pre-melt phases)
+            // Image positioning (pre-melt)
             if (
               spriteRef.current &&
               (phaseRef.current === 'flying_in' || phaseRef.current === 'landing')
@@ -499,7 +492,6 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
 
 SmelterCanvas.displayName = 'SmelterCanvas';
 
-/** Scale image to ~60% of dragon's visual height */
 function getImgScale(baseScale: number, sprite: PIXI.Sprite): number {
   const dragonVisualH = DRAGON_TEX_H * baseScale;
   const target = dragonVisualH * 0.6;
