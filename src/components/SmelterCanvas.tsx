@@ -163,7 +163,12 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
         
         dragonSprite.x = width * (isMobile ? 0.3 : 0.25);
         dragonSprite.y = height * 0.5;
-        dragonSprite.scale.set(isMobile ? 0.5 : 0.7);
+        const baseScale = isMobile ? 0.5 : 0.7;
+        dragonSprite.scale.set(baseScale);
+        
+        if (isMeltingRef.current) {
+          dragonSprite.scale.y = baseScale * (1 + Math.sin(time * 5) * 0.05);
+        }
         
         if (spriteRef.current) {
           spriteRef.current.x = width * (isMobile ? 0.7 : 0.75);
@@ -190,7 +195,6 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
             dragonSprite.loop = false;
             dragonSprite.gotoAndPlay(0);
           }
-          dragonSprite.scale.y *= (1 + Math.sin(time * 5) * 0.003);
         } else {
           if (dragonSprite.textures !== idleTextures) {
             dragonSprite.textures = idleTextures;
@@ -234,7 +238,7 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
           sprite.alpha = 1;
           sprite.visible = true;
 
-          if (subjectBox && subjectBox.length === 4) {
+          if (import.meta.env.DEV && subjectBox && subjectBox.length === 4) {
             const [ymin, xmin, ymax, xmax] = subjectBox;
             const w = img.width;
             const h = img.height;
@@ -292,8 +296,8 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
         meltAmount += 0.008 * t.deltaTime;
         if (filterRef.current) {
           const uniforms = (filterRef.current.resources as any).meltUniforms.uniforms;
-          uniforms.uMeltAmount = Math.min(meltAmount, 1);
-          uniforms.uTime += 0.008 * t.deltaTime;
+          uniforms.uMeltAmount.value = Math.min(meltAmount, 1);
+          uniforms.uTime.value += 0.008 * t.deltaTime;
         }
         
         if (meltAmount >= 1) {

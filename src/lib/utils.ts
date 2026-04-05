@@ -17,8 +17,13 @@ export function formatPixels(pixels: number): { value: string, unit: string } {
 export const FALLBACK_COLORS = ["#ffff00", "#00c3f5", "#4db542", "#fb0094", "#fc9103"];
 
 export function getFiveDistinctColors(colors: string[]): string[] {
-  const normalizedColors = (colors || []).map(c => typeof c === 'string' ? c.toLowerCase().trim() : c);
-  const uniqueSrc = Array.from(new Set(normalizedColors));
+  const hexRegex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+  const validColors = (colors || [])
+    .filter(c => typeof c === 'string')
+    .map(c => c.toLowerCase().trim())
+    .filter(c => hexRegex.test(c));
+    
+  const uniqueSrc = Array.from(new Set(validColors));
   const combined = Array.from(new Set([...uniqueSrc, ...FALLBACK_COLORS]));
   return combined.slice(0, 5);
 }

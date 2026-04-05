@@ -1,6 +1,6 @@
 import React from 'react';
 import { SmeltLog } from '../types';
-import { cn, formatPixels, getFiveDistinctColors } from '../lib/utils';
+import { formatPixels, getFiveDistinctColors } from '../lib/utils';
 
 interface SmeltManifestProps {
   logs: SmeltLog[];

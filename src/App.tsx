@@ -20,13 +20,11 @@ import { SmelterCanvas } from './components/SmelterCanvas';
 import { SmeltManifest } from './components/SmeltManifest';
 import { GlobalStats } from './components/GlobalStats';
 import { Camera, Upload, X, Zap } from 'lucide-react';
-import { cn } from './lib/utils';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
 // Audio Assets (Local)
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const sizzleSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true, volume: 0.4 });
-const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], volume: 0.8 });
 
 export default function App() {
   const [logs, setLogs] = useState<SmeltLog[]>([]);
@@ -107,7 +105,7 @@ export default function App() {
   };
 
   const processImage = async (base64: string, mimeType: string) => {
-    console.log("Processing image...", mimeType);
+    if (import.meta.env.DEV) console.log("Processing image...", mimeType);
     setCurrentImage(base64);
     setIsComplete(false);
     setIsAnalyzing(true);
@@ -116,9 +114,9 @@ export default function App() {
     
     try {
       const base64Data = base64.split(',')[1];
-      console.log("Analyzing with Gemini...");
+      if (import.meta.env.DEV) console.log("Analyzing with Gemini...");
       const result = await analyzeLegacyTech(base64Data, mimeType);
-      console.log("Analysis complete:", result);
+      if (import.meta.env.DEV) console.log("Analysis complete:", result);
       setAnalysis(result);
       setIsAnalyzing(false);
       startSmelt();
@@ -142,13 +140,13 @@ export default function App() {
   };
 
   const startSmelt = () => {
-    console.log("Starting smelt animation...");
+    if (import.meta.env.DEV) console.log("Starting smelt animation...");
     setIsMelting(true);
     fireSound.play();
   };
 
   const handleSmeltComplete = async () => {
-    console.log("Smelt complete, saving to Firestore...");
+    if (import.meta.env.DEV) console.log("Smelt complete, saving to Firestore...");
     setIsMelting(false);
     fireSound.stop();
     sizzleSound.play();
@@ -172,7 +170,7 @@ export default function App() {
       }, { merge: true });
 
       setIsComplete(true);
-      console.log("Final state updated: isComplete=true");
+      if (import.meta.env.DEV) console.log("Final state updated: isComplete=true");
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'smelt_logs / global_stats');
     }

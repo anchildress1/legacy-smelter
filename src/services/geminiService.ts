@@ -1,6 +1,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || "" });
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+if (!apiKey) {
+  throw new Error("Missing VITE_GEMINI_API_KEY environment variable. Gemini analysis will not work.");
+}
+const ai = new GoogleGenAI({ apiKey });
 
 export interface SmeltAnalysis {
   dominantColors: string[];
