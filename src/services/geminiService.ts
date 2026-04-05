@@ -124,7 +124,7 @@ Requirements:
 Return the result in JSON format.`;
 
 export async function analyzeLegacyTech(base64Image: string, mimeType: string): Promise<SmeltAnalysis> {
-  const model = "gemini-2.0-flash-lite";
+  const model = "gemini-3.1-flash-lite-preview";
 
   let actualPixelCount = 2073600;
   let programmaticColors: string[] = [];
@@ -144,7 +144,7 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
     }
   }
 
-  const response = await ai.models.generateContent({
+  const requestConfig = {
     model,
     contents: [
       {
@@ -194,7 +194,25 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
         ]
       }
     }
-  });
+  };
+
+  const MAX_RETRIES = 3;
+  let lastError: unknown;
+  let response;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+      console.warn(`[geminiService] Retry attempt ${attempt} of ${MAX_RETRIES - 1}`);
+    }
+    try {
+      response = await ai.models.generateContent(requestConfig);
+      break;
+    } catch (err) {
+      lastError = err;
+      console.error(`[geminiService] Attempt ${attempt + 1} failed:`, err);
+    }
+  }
+  if (!response) throw lastError;
 
   const result = JSON.parse(response.text || "{}");
 
