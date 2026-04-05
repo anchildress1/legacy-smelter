@@ -28,8 +28,8 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
   }
 
   const prompt = `Analyze this piece of legacy technology. 
-  1. Extract 5 dominant hex colors that represent its decay, rust, or outdated materials without duplicates.
-  2. Generate a chaotic, industrial damage report (max 20 words) describing its reduction to smelted materials. Example: "12.1M pixels of cursed machinery successfully smelted!"
+  1. Extract 5 dominant hex colors that represent the object's decay, rust, or outdated materials without duplicates. Prefer colors that are not black or white, unless those are primary colors of the object.
+  2. Generate a chaotic, industrial damage report (max 20 words) describing the object's reduction to smelted materials. Example: "12.1M pixels of cursed machinery successfully smelted!"
   3. Return a bounding box [ymin, xmin, ymax, xmax] using a 1000x1000 grid representing the primary subject of the image to smelt.
   
   Return the result in JSON format.`;
@@ -71,7 +71,7 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
 
   const result = JSON.parse(response.text || "{}");
   return {
-    dominantColors: Array.isArray(result.dominantColors) ? result.dominantColors : ["#eab308", "#38bdf8", "#27272a", "#18181b", "#52525b"],
+    dominantColors: Array.isArray(result.dominantColors) ? result.dominantColors : [],
     damageReport: String(result.damageReport || "LEGACY HARDWARE PURGED. SMELT IMMINENT."),
     pixelCount: actualPixelCount,
     subjectBox: Array.isArray(result.subjectBox) && result.subjectBox.length === 4 ? result.subjectBox : [100, 100, 900, 900]
