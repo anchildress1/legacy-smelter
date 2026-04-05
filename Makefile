@@ -1,4 +1,4 @@
-.PHONY: dev, ai-checks
+.PHONY: dev ai-checks
 
 dev:
 	npm run dev
