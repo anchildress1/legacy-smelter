@@ -196,10 +196,49 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
           {/* Left Column: Smelter Area */}
-          <div className="lg:col-span-7 space-y-6">
-            <div className="modern-card aspect-video relative flex items-center justify-center overflow-hidden">
-              {isCameraActive ? (
-                <div className="w-full h-full relative bg-black">
+          <div className="lg:col-span-7 space-y-4">
+            {/* Controls — always visible */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isAnalyzing || isMelting}
+                className="modern-button flex-1 flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <Upload size={18} />
+                UPLOAD
+              </button>
+              <button
+                onClick={startCamera}
+                disabled={isAnalyzing || isMelting}
+                className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-concrete-border hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <Camera size={18} />
+                CAMERA
+              </button>
+            </div>
+
+            {/* Hidden file inputs */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              className="hidden"
+              accept="image/*"
+            />
+            <input
+              type="file"
+              ref={cameraInputRef}
+              onChange={handleFileSelect}
+              className="hidden"
+              accept="image/*"
+              capture="environment"
+            />
+
+            {/* Animation Window */}
+            <div className="modern-card aspect-video relative overflow-hidden bg-concrete">
+              {/* Camera overlay */}
+              {isCameraActive && (
+                <div className="absolute inset-0 bg-black z-30">
                   <video
                     ref={videoRef}
                     playsInline
@@ -220,92 +259,48 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-              ) : !currentImage ? (
-                <div className="text-center p-8 w-full max-w-md">
-                  <div className="mb-6 flex justify-center">
-                    <div className="w-16 h-16 rounded-full bg-concrete-mid flex items-center justify-center">
-                      <Zap className="text-hazard-amber" size={32} />
-                    </div>
-                  </div>
-                  <p className="text-stone-gray font-mono text-sm uppercase mb-8">
-                    INPUT LEGACY HARDWARE FOR SMELTING
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-4 w-full">
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="modern-button flex-1 flex items-center justify-center gap-2"
-                    >
-                      <Upload size={20} />
-                      UPLOAD
-                    </button>
-                    <button
-                      onClick={startCamera}
-                      className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-concrete-border hover:brightness-110"
-                    >
-                      <Camera size={20} />
-                      CAMERA
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full h-full relative">
-                  <SmelterCanvas
-                    image={currentImage}
-                    isMelting={isMelting}
-                    onComplete={handleSmeltComplete}
-                    colors={analysis?.dominantColors || []}
-                    subjectBox={analysis?.subjectBox || null}
-                  />
+              )}
 
-                  {isAnalyzing && (
-                    <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
-                      <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
-                      <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
-                        GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
-                      </p>
-                    </div>
-                  )}
+              {/* Empty state placeholder */}
+              {!currentImage && !isCameraActive && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <Zap className="text-hazard-amber mx-auto mb-3" size={32} />
+                    <p className="text-stone-gray font-mono text-xs uppercase">
+                      INPUT LEGACY HARDWARE FOR SMELTING
+                    </p>
+                  </div>
                 </div>
               )}
-              {/* HIDDEN INPUTS */}
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                className="hidden"
-                accept="image/*"
-              />
-              <input
-                type="file"
-                ref={cameraInputRef}
-                onChange={handleFileSelect}
-                className="hidden"
-                accept="image/*"
-                capture="environment"
-              />
+
+              {/* PixiJS Canvas */}
+              {currentImage && (
+                <SmelterCanvas
+                  image={currentImage}
+                  isMelting={isMelting}
+                  onComplete={handleSmeltComplete}
+                  colors={analysis?.dominantColors || []}
+                  subjectBox={analysis?.subjectBox || null}
+                />
+              )}
+
+              {/* Analyzing overlay */}
+              {isAnalyzing && (
+                <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
+                  <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
+                  <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
+                    GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
+                  </p>
+                </div>
+              )}
             </div>
 
+            {/* Damage report — post-smelt */}
             {isComplete && analysis && !isMelting && (
               <div className="modern-card p-6">
-                <p className="text-ash-white font-mono text-sm mb-6 leading-relaxed">
+                <p className="text-ash-white font-mono text-sm leading-relaxed">
                   {analysis.damageReport}
                 </p>
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="modern-button flex-1 flex items-center justify-center gap-2"
-                  >
-                    <Upload size={18} />
-                    UPLOAD ANOTHER
-                  </button>
-                  <button
-                    onClick={startCamera}
-                    className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-concrete-border hover:brightness-110"
-                  >
-                    <Camera size={18} />
-                    CAPTURE NEW
-                  </button>
-                </div>
               </div>
             )}
           </div>
