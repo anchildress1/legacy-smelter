@@ -142,6 +142,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
     const flyProgressRef = useRef(0);
     const cbRef = useRef({ onComplete, onFlyInStart, onFireStart });
     const readyResolveRef = useRef<() => void>(undefined);
+    const readyRejectRef = useRef<(err: unknown) => void>(undefined);
     const readyPromiseRef = useRef<Promise<void>>(new Promise(() => {}));
 
     useEffect(() => {
@@ -270,7 +271,9 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
             const u = (meltFilterRef.current.resources as any).meltUniforms.uniforms;
             u.uMeltAmount = 0;
             u.uTime = 0;
-          } catch { /* ignore */ }
+          } catch (err) {
+            console.error('[SmelterCanvas] replay: failed to reset melt filter uniforms:', err);
+          }
         }
         beginSequence();
       },
@@ -278,7 +281,10 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
 
     useEffect(() => {
       let destroyed = false;
-      readyPromiseRef.current = new Promise<void>(r => { readyResolveRef.current = r; });
+      readyPromiseRef.current = new Promise<void>((resolve, reject) => {
+        readyResolveRef.current = resolve;
+        readyRejectRef.current = reject;
+      });
 
       const initPixi = async () => {
         if (!containerRef.current || destroyed) return;
@@ -490,7 +496,10 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         readyResolveRef.current?.();
       };
 
-      initPixi();
+      initPixi().catch((err) => {
+        console.error('[SmelterCanvas] initPixi failed — PixiJS could not initialize:', err);
+        readyRejectRef.current?.(err);
+      });
       return () => {
         destroyed = true;
         ps.current?.app.destroy(true, { children: true, texture: true });

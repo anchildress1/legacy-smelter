@@ -112,6 +112,10 @@ export default function App() {
         const base64 = canvas.toDataURL('image/jpeg');
         stopCamera();
         processImage(base64, 'image/jpeg');
+      } else {
+        console.error('[App] captureImage: failed to get 2D canvas context');
+        setAnalysisError('CAMERA CAPTURE FAILED. USE THE UPLOAD BUTTON INSTEAD.');
+        stopCamera();
       }
     }
   };
@@ -165,6 +169,10 @@ export default function App() {
       const base64 = event.target?.result as string;
       processImage(base64, file.type);
     };
+    reader.onerror = () => {
+      console.error('[App] FileReader failed:', reader.error);
+      setAnalysisError('FILE READ FAILED. THE FILE MAY BE CORRUPT OR INACCESSIBLE.');
+    };
     reader.readAsDataURL(file);
   };
 
@@ -194,11 +202,11 @@ export default function App() {
       await setDoc(statsRef, {
         total_pixels_melted: increment(completedAnalysis.pixelCount)
       }, { merge: true });
-
-      setIsComplete(true);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'smelt_logs / global_stats');
     }
+    // Show damage report regardless of whether Firestore write succeeded
+    setIsComplete(true);
   };
 
   const handleReplay = () => {
