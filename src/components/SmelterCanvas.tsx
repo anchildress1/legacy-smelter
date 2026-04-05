@@ -214,7 +214,16 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
     if (image && appRef.current && isReady) {
       const loadTexture = async () => {
         try {
-          const texture = await PIXI.Assets.load(image);
+          // Pre-load the image to guarantee we have dimensions
+          const img = new Image();
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = image;
+          });
+
+          const texture = PIXI.Texture.from(img);
+          
           if (spriteRef.current) {
             appRef.current!.stage.removeChild(spriteRef.current);
           }
@@ -222,8 +231,8 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({ image, isMelting, 
           let renderTexture = texture;
           if (subjectBox && subjectBox.length === 4) {
             const [ymin, xmin, ymax, xmax] = subjectBox;
-            const w = texture.width;
-            const h = texture.height;
+            const w = img.width;
+            const h = img.height;
             const cropX = Math.max(0, Math.floor((xmin / 1000) * w));
             const cropY = Math.max(0, Math.floor((ymin / 1000) * h));
             const cropW = Math.min(w - cropX, Math.floor(((xmax - xmin) / 1000) * w));
