@@ -247,21 +247,6 @@ export default function App() {
                       CAMERA
                     </button>
                   </div>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleFileSelect} 
-                    className="hidden" 
-                    accept="image/*"
-                  />
-                  <input 
-                    type="file" 
-                    ref={cameraInputRef} 
-                    onChange={handleFileSelect} 
-                    className="hidden" 
-                    accept="image/*"
-                    capture="environment"
-                  />
                 </div>
               ) : (
                 <div className="w-full h-full relative">
@@ -283,6 +268,22 @@ export default function App() {
                   )}
                 </div>
               )}
+              {/* HIDDEN INPUTS MOVED HERE */}
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileSelect} 
+                className="hidden" 
+                accept="image/*"
+              />
+              <input 
+                type="file" 
+                ref={cameraInputRef} 
+                onChange={handleFileSelect} 
+                className="hidden" 
+                accept="image/*"
+                capture="environment"
+              />
             </div>
 
             {isComplete && analysis && !isMelting && (

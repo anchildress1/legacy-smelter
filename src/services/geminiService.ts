@@ -29,7 +29,7 @@ function extractDominantColors(img: HTMLImageElement, count: number): string[] {
   
   ctx.drawImage(img, 0, 0, w, h);
   const data = ctx.getImageData(0, 0, w, h).data;
-  const colorMap: Record<string, { r: number, g: number, b: number, count: number }> = {};
+  const colorMap: Record<string, { r: number, g: number, b: number, score: number }> = {};
   
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i];
@@ -38,18 +38,25 @@ function extractDominantColors(img: HTMLImageElement, count: number): string[] {
     const a = data[i+3];
     if (a < 128) continue;
     
+    // Calculate saturation-based weight to suppress grays
+    const max = Math.max(r, g, b) / 255;
+    const min = Math.min(r, g, b) / 255;
+    const saturation = max === 0 ? 0 : (max - min) / max;
+    // Boost score significantly for vibrant colors
+    const weight = 1 + (saturation * 5); 
+    
     const qR = Math.floor(r / 16) * 16;
     const qG = Math.floor(g / 16) * 16;
     const qB = Math.floor(b / 16) * 16;
     const key = `${qR},${qG},${qB}`;
     
     if (!colorMap[key]) {
-      colorMap[key] = { r: qR, g: qG, b: qB, count: 0 };
+      colorMap[key] = { r: qR, g: qG, b: qB, score: 0 };
     }
-    colorMap[key].count++;
+    colorMap[key].score += weight;
   }
   
-  const sortedClusters = Object.values(colorMap).sort((a, b) => b.count - a.count);
+  const sortedClusters = Object.values(colorMap).sort((a, b) => b.score - a.score);
   const distinctColors: string[] = [];
   const minDistance = 40;
   
