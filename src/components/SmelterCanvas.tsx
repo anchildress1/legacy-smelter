@@ -17,8 +17,8 @@ type AnimPhase = 'empty' | 'flying_in' | 'landing' | 'melting' | 'complete';
 
 const DRAGON_TEX_H = 672;
 const ANIM_SPEED = 0.2;
-const FLY_SPEED = 0.007;  // ~2.4s
-const MELT_SPEED = 0.004; // ~4.2s
+const FLY_SPEED = 0.005;  // ~3.3s
+const MELT_SPEED = 0.0025; // ~6.7s — slow burn
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
@@ -34,6 +34,7 @@ interface PixiState {
   dragon: PIXI.AnimatedSprite;
   gooStream: PIXI.AnimatedSprite;
   puddle: PIXI.AnimatedSprite;
+  puddleBase: PIXI.Graphics;
   burnMask: PIXI.Graphics;
   textures: {
     fly: PIXI.Texture[];
@@ -65,7 +66,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
     /** Reset all melt visuals and start the fly-in sequence */
     const beginSequence = () => {
       if (!ps.current || !spriteRef.current) return;
-      const { dragon, gooStream, puddle, burnMask } = ps.current;
+      const { dragon, gooStream, puddle, puddleBase, burnMask } = ps.current;
 
       // Reset image sprite
       spriteRef.current.visible = true;
@@ -77,6 +78,8 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
       // Hide liquid sprites
       gooStream.visible = false;
       puddle.visible = false;
+      puddleBase.visible = false;
+      puddleBase.clear();
       burnMask.clear();
 
       phaseRef.current = 'flying_in';
@@ -213,7 +216,11 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         gooStream.visible = false;
         gooStream.loop = true;
 
-        // Bubbling puddle — hidden initially
+        // Puddle color base — 3 overlapping colored ellipses
+        const puddleBase = new PIXI.Graphics();
+        puddleBase.visible = false;
+
+        // Bubbling puddle — surface detail layer (bubbles/ripples), hidden initially
         const puddle = new PIXI.AnimatedSprite(textures.puddleTex);
         puddle.animationSpeed = ANIM_SPEED;
         puddle.anchor.set(0.5, 0.5);
@@ -228,13 +235,14 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         dragon.loop = true;
         dragon.play();
 
-        // Z-order: [image@0 later] → burnMask → gooStream → puddle → dragon
+        // Z-order: [image@0 later] → burnMask → gooStream → puddleBase → puddle → dragon
         app.stage.addChild(burnMask);
         app.stage.addChild(gooStream);
+        app.stage.addChild(puddleBase);
         app.stage.addChild(puddle);
         app.stage.addChild(dragon);
 
-        ps.current = { app, dragon, gooStream, puddle, burnMask, textures };
+        ps.current = { app, dragon, gooStream, puddle, puddleBase, burnMask, textures };
 
         /** Swap dragon textures and guarantee it keeps playing */
         const setDragonTex = (tex: PIXI.Texture[], loop: boolean) => {
@@ -295,10 +303,8 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                   meltProgressRef.current = 0;
                   setDragonTex(textures.flame, false);
 
-                  // Tint liquid sprites with AI colors
-                  const [c1, c2] = meltColorsRef.current;
-                  gooStream.tint = c1;
-                  puddle.tint = c2;
+                  // Tint goo stream with first AI color
+                  gooStream.tint = meltColorsRef.current[0];
 
                   cbRef.current.onFireStart?.();
                 }
@@ -310,7 +316,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 dragon.y = dragonY;
                 dragon.scale.set(-baseScale, baseScale);
 
-                // When flame animation finishes, return to idle (melt continues)
+                // When flame finishes, return to idle (melt continues)
                 if (!dragon.playing && dragon.textures === textures.flame) {
                   setDragonTex(textures.idle, true);
                 }
@@ -319,25 +325,24 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 meltProgressRef.current += MELT_SPEED * ticker.deltaTime;
                 const mp = Math.min(meltProgressRef.current, 1);
 
-                // --- Image fade: alpha dissolve + orange tint + downward drift ---
-                const fadeAmount = smoothstep(0, 0.55, mp);
+                // --- Image fade: slow alpha dissolve + orange tint + drift ---
+                const fadeAmount = smoothstep(0, 0.6, mp);
                 if (spriteRef.current) {
                   if (fadeAmount < 0.99) {
                     const s = getImgScale(baseScale, spriteRef.current);
                     spriteRef.current.alpha = 1 - fadeAmount;
-                    // Tint toward orange as it dissolves
                     const tintG = Math.round(255 - fadeAmount * 155);
                     const tintB = Math.round(255 - fadeAmount * 255);
                     spriteRef.current.tint = (0xff << 16) | (tintG << 8) | tintB;
                     spriteRef.current.x = imageX;
-                    spriteRef.current.y = imageY + fadeAmount * 40; // drift down
+                    spriteRef.current.y = imageY + fadeAmount * 40;
                     spriteRef.current.scale.set(s);
                   } else {
                     spriteRef.current.visible = false;
                   }
                 }
 
-                // --- Goo stream: starts early with fire, fades out later ---
+                // --- Goo stream: starts with fire, fades out later ---
                 const gooAlpha = smoothstep(0.05, 0.25, mp) * (1 - smoothstep(0.55, 0.8, mp));
                 gooStream.visible = gooAlpha > 0.01;
                 if (gooStream.visible) {
@@ -358,15 +363,33 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                   gooStream.scale.set(streamScaleX, streamScaleY);
                 }
 
-                // --- Puddle: fades in and persists ---
+                // --- Puddle: 3-color Graphics base + animated sprite overlay ---
                 const puddleAlpha = smoothstep(0.25, 0.5, mp);
+                const puddleTargetW = width * 0.3;
+                const puddleScale = puddleTargetW / 885;
+                const pw = puddleTargetW;
+                const ph = 170 * puddleScale;
+                const [pc1, pc2, pc3] = meltColorsRef.current;
+
+                // Color base: 3 overlapping ellipses
+                puddleBase.visible = puddleAlpha > 0.01;
+                if (puddleBase.visible) {
+                  puddleBase.clear();
+                  puddleBase.alpha = puddleAlpha;
+                  puddleBase.ellipse(imageX - pw * 0.12, puddleY, pw * 0.42, ph * 0.9);
+                  puddleBase.fill({ color: pc1, alpha: 0.8 });
+                  puddleBase.ellipse(imageX + pw * 0.05, puddleY + 2, pw * 0.48, ph);
+                  puddleBase.fill({ color: pc2, alpha: 0.7 });
+                  puddleBase.ellipse(imageX + pw * 0.18, puddleY - 2, pw * 0.38, ph * 0.85);
+                  puddleBase.fill({ color: pc3, alpha: 0.75 });
+                }
+
+                // Animated texture overlay for surface detail
                 puddle.visible = puddleAlpha > 0.01;
                 if (puddle.visible) {
                   if (!puddle.playing) puddle.play();
-                  puddle.alpha = puddleAlpha;
-
-                  const puddleTargetW = width * 0.3;
-                  const puddleScale = puddleTargetW / 885;
+                  puddle.alpha = puddleAlpha * 0.35;
+                  puddle.tint = 0xffffff;
                   puddle.x = imageX;
                   puddle.y = puddleY;
                   puddle.scale.set(puddleScale);
@@ -386,14 +409,24 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 dragon.scale.set(-baseScale, baseScale);
                 if (!dragon.playing) dragon.play();
 
-                // Puddle keeps bubbling
-                if (puddle.visible && !puddle.playing) puddle.play();
+                // Puddle: keep base + overlay alive
+                const cpw = width * 0.3;
+                const cps = cpw / 885;
+                const cph = 170 * cps;
+                const [cc1, cc2, cc3] = meltColorsRef.current;
 
-                const puddleTargetW = width * 0.3;
-                const puddleScale = puddleTargetW / 885;
+                puddleBase.clear();
+                puddleBase.ellipse(imageX - cpw * 0.12, puddleY, cpw * 0.42, cph * 0.9);
+                puddleBase.fill({ color: cc1, alpha: 0.8 });
+                puddleBase.ellipse(imageX + cpw * 0.05, puddleY + 2, cpw * 0.48, cph);
+                puddleBase.fill({ color: cc2, alpha: 0.7 });
+                puddleBase.ellipse(imageX + cpw * 0.18, puddleY - 2, cpw * 0.38, cph * 0.85);
+                puddleBase.fill({ color: cc3, alpha: 0.75 });
+
+                if (!puddle.playing) puddle.play();
                 puddle.x = imageX;
                 puddle.y = puddleY;
-                puddle.scale.set(puddleScale);
+                puddle.scale.set(cps);
                 break;
               }
             }
