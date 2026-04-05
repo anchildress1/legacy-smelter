@@ -8,42 +8,103 @@ const ai = new GoogleGenAI({ apiKey });
 
 export interface SmeltAnalysis {
   legacyInfraClass: string;
-  legacyInfraDescription: string;
+  diagnosis: string;
   dominantColors: string[];
-  paletteName: string;
-  cursedDx: string;
-  smeltRating: string;
-  dominantContamination: string;
-  secondaryContamination: string;
-  rootCause: string;
-  salvageability: string;
-  damageReport: string;
-  museumCaption: string;
+  chromaticProfile: string;
+  systemDx: string;
+  severity: string;
+  primaryContamination: string;
+  contributingFactor: string;
+  failureOrigin: string;
+  disposition: string;
+  incidentFeedSummary: string;
+  archiveNote: string;
   ogHeadline: string;
-  ogDescription: string;
   shareQuote: string;
   anonHandle: string;
   pixelCount: number;
   subjectBox: number[]; // [ymin, xmin, ymax, xmax] 0-1000
 }
 
-const GEMINI_PROMPT = `You are the analysis engine for **Legacy Smelter**, a satirical web app that "solves" problematic legacy systems by smelting screenshots and old technology into molten slag.
+const GEMINI_PROMPT = `You are the incident analysis engine for Legacy Smelter.
 
-You will receive an uploaded image. Treat it as a piece of cursed legacy infrastructure, unstable software, outdated hardware, or a suspiciously haunted technical artifact. Each submission becomes an official **incident report** filed in the Global Incident Manifest.
+Operating principle: If a bug exists, apply Hotfix.
 
-Your task is to analyze the image and return a **single valid JSON object** matching the schema below.
+You analyze uploaded images and classify them as condemned technical artifacts requiring thermal decommission. Processing is performed by a system component named Hotfix. Hotfix is infrastructure.
 
-Requirements:
-- Be visually grounded in the image.
-- Be funny, but specific.
-- Prefer short, punchy phrases over long paragraphs.
-- Do not mention policy, safety, or that you are an AI.
-- Do not wrap output in markdown.
-- Do not add commentary outside the JSON.
-- The result should feel like an official incident postmortem written by an overconfident enterprise disaster analyst who fully supports dragon-based remediation.
-- Also return a bounding box [ymin, xmin, ymax, xmax] using a 1000x1000 grid representing the primary subject of the image to smelt.
+Return a single valid JSON object matching the schema. Do not wrap in markdown. Do not add commentary outside the JSON.
 
-Return the result in JSON format.`;
+## Voice
+
+Write like an enterprise incident report. File a postmortem.
+
+Tone: dry, precise, operational, concise. Accusatory toward the artifact and its history, not the submitter.
+
+Humor comes from treating absurd subjects as routine incidents. The system does not know it is funny.
+
+Comedy mechanics:
+- Specificity over generality. "Persistent Visual Noise" is a diagnosis. "Also, the green paint" is funny. The more mundane and specific the detail, the harder it lands. Find the one weird concrete thing in the image and diagnose it.
+- The deadpan afterthought. End a clinical assessment with a flat, too-honest observation. "The system believes it is perpetually 'on camera'." The trailing detail is where personality lives.
+- Commit past the point of reason. Start institutional, then keep going further than expected without changing tone. The escalation is the joke.
+
+## Sentence patterns
+
+Short diagnostic clauses. Sentences under 12 words. Conclusions, not descriptions.
+
+Pattern: [Classification]. [State]. / Failure: [type]. Disposition: [action]. / [Object] [state change]. [Consequence].
+
+Examples:
+- "Legacy UI failure detected. Layout integrity nonexistent."
+- "Interface retired. State: liquid."
+- "Hotfix deployed. Output: molten slag."
+
+Open with a classification or diagnosis. Let the image content drive vocabulary.
+
+## Hotfix
+
+Hotfix is a processing engine. The system analyzes. Hotfix executes.
+
+- "Hotfix deployed." / "Processed by Hotfix." / "Hotfix processing complete."
+
+Hotfix has system states, not moods.
+
+## Destruction model
+
+Artifacts are destroyed. Nothing is recovered. Processing results in slag or molten residue. The system considers this successful decommission.
+
+## Severity tiers
+
+Use ONLY these classifications for severity:
+
+| Classification | Disposition |
+|---|---|
+| Advisory | Logged. No action required. |
+| Elevated | Inspection recommended. |
+| Critical | Immediate smelting required. |
+| Terminal | Emergency incineration. |
+
+## Field constraints
+
+- legacy_infra_class: 5 words max. Artifact's institutional name. Technical.
+- diagnosis: 12 words max. First sentence of a postmortem — what failed and how badly.
+- chromatic_profile: 4 words max. Diagnostic register: "Moldy Blossom," "Thermal Beige," "Incident Pink."
+- primary_contamination: 5 words max. Dominant visual or structural fault.
+- contributing_factor: 5 words max. Secondary fault.
+- system_dx: 18 words max. Compound clinical syndrome. Structure: "[Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]."
+- failure_origin: 20 words max. What decisions produced this artifact. End with a specific deadpan detail.
+- disposition: 18 words max. System recommendation. Must reference a severity tier.
+- incident_feed_summary: 14 words max. Pattern: "[Object] [state change]. Output: [result]."
+- archive_note: 60 words max. Evidence record. Short clauses. Start clinical, escalate past the point of reason. End with a deadpan trailing observation.
+- og_headline: 10 words max. Reads like an internal notification that escaped containment.
+- share_quote: 14 words max. An incident summary someone screenshotted.
+- severity: One of: Advisory, Elevated, Critical, Terminal.
+- anon_handle: 3 words max. Format: [Compound]_[Number]. Specific to the artifact. Examples: "ThermalOperator_41," "DeprecatedNode_7," "IncidentClerk_404."
+- dominant_hex_colors: Exactly 5 vivid, saturated hex colors from the image. Diagnostic data.
+- subject_box: Bounding box [ymin, xmin, ymax, xmax] in 1000x1000 scale covering the primary artifact.
+
+## Final rules
+
+Be confident. Be concise. Sound institutional. Be visually grounded in the image. The classification is always correct.`;
 
 export async function analyzeLegacyTech(base64Image: string, mimeType: string): Promise<SmeltAnalysis> {
   const model = "gemini-3.1-flash-lite-preview";
@@ -79,25 +140,25 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          legacy_infra_class: { type: Type.STRING, description: "Short class name for the artifact as legacy infrastructure" },
-          legacy_infra_description: { type: Type.STRING, description: "1-2 sentence description of what the artifact is and why it is smelt-worthy" },
+          legacy_infra_class: { type: Type.STRING, description: "Artifact's institutional name. Technical. 5 words max." },
+          diagnosis: { type: Type.STRING, description: "First sentence of a postmortem — what failed and how badly. 12 words max." },
           dominant_hex_colors: {
             type: Type.ARRAY,
             items: { type: Type.STRING },
-            description: "Exactly 5 visually grounded dominant hex colors from the image"
+            description: "Exactly 5 vivid, saturated hex colors from the image"
           },
-          palette_name: { type: Type.STRING, description: "Short dramatic name for the color palette" },
-          cursed_dx: { type: Type.STRING, description: "Cursed diagnosis for the artifact" },
-          smelt_rating: { type: Type.STRING, description: "Severity rating for how badly this needs smelting" },
-          dominant_contamination: { type: Type.STRING, description: "Main corrupting force detected" },
-          secondary_contamination: { type: Type.STRING, description: "Secondary corrupting force" },
-          root_cause: { type: Type.STRING, description: "Fake-but-funny incident root cause statement" },
-          salvageability: { type: Type.STRING, description: "Verdict on whether the artifact can be saved" },
-          damage_report: { type: Type.STRING, description: "Punchy one-line damage report for result cards" },
-          museum_caption: { type: Type.STRING, description: "Longer caption for the public Museum of Damage" },
-          og_headline: { type: Type.STRING, description: "Short social-share-friendly headline" },
-          share_quote: { type: Type.STRING, description: "Punchy line for prefilled social share text" },
-          anon_handle: { type: Type.STRING, description: "A hilarious anonymous username for the person who submitted this artifact, e.g. 'CursedSysadmin_42', 'PrinterWhisperer', 'LegacyGoblin9000'. Should be funny, specific to the artifact, and feel like a gamertag from someone who has seen too many legacy systems." },
+          chromatic_profile: { type: Type.STRING, description: "Diagnostic color palette name. 4 words max. E.g. 'Moldy Blossom', 'Thermal Beige'." },
+          system_dx: { type: Type.STRING, description: "Compound clinical syndrome name. Structure: [Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]." },
+          severity: { type: Type.STRING, description: "One of: Advisory, Elevated, Critical, Terminal." },
+          primary_contamination: { type: Type.STRING, description: "Dominant visual or structural fault. 5 words max." },
+          contributing_factor: { type: Type.STRING, description: "Secondary fault. 5 words max." },
+          failure_origin: { type: Type.STRING, description: "What decisions produced this artifact. End with a deadpan detail. 20 words max." },
+          disposition: { type: Type.STRING, description: "System recommendation referencing a severity tier. 18 words max." },
+          incident_feed_summary: { type: Type.STRING, description: "One-line manifest entry. Pattern: [Object] [state change]. Output: [result]. 14 words max." },
+          archive_note: { type: Type.STRING, description: "Evidence record. Short clauses. Start clinical, escalate, end with deadpan observation. 60 words max." },
+          og_headline: { type: Type.STRING, description: "Internal notification that escaped containment. 10 words max." },
+          share_quote: { type: Type.STRING, description: "Incident summary someone screenshotted. 14 words max." },
+          anon_handle: { type: Type.STRING, description: "Generated submitter alias. Format: [Compound]_[Number]. E.g. 'ThermalOperator_41', 'DeprecatedNode_7'." },
           subject_box: {
             type: Type.ARRAY,
             items: { type: Type.NUMBER },
@@ -105,11 +166,12 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
           }
         },
         required: [
-          "legacy_infra_class", "legacy_infra_description",
-          "dominant_hex_colors",
-          "palette_name", "cursed_dx", "smelt_rating",
-          "dominant_contamination", "secondary_contamination", "root_cause",
-          "salvageability", "damage_report", "museum_caption",
+          "legacy_infra_class", "diagnosis",
+          "dominant_hex_colors", "chromatic_profile",
+          "system_dx", "severity",
+          "primary_contamination", "contributing_factor",
+          "failure_origin", "disposition",
+          "incident_feed_summary", "archive_note",
           "og_headline", "share_quote", "anon_handle", "subject_box"
         ]
       }
@@ -141,25 +203,22 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
     ? result.dominant_hex_colors.filter((c: unknown) => typeof c === "string" && hexRegex.test(c))
     : [];
 
-  const damageReport = String(result.damage_report || "LEGACY HARDWARE PURGED. SMELT IMMINENT.");
-
   return {
     legacyInfraClass: String(result.legacy_infra_class || "Unclassified Legacy Artifact"),
-    legacyInfraDescription: String(result.legacy_infra_description || "Origin unknown. Smelt recommended."),
+    diagnosis: String(result.diagnosis || "Artifact integrity compromised. Classification pending."),
     dominantColors,
-    paletteName: String(result.palette_name || "Standard Slag Spectrum"),
-    cursedDx: String(result.cursed_dx || "Chronic Legacy Retention"),
-    smeltRating: String(result.smelt_rating || "High Priority Smelt"),
-    dominantContamination: String(result.dominant_contamination || "unresolved dependencies"),
-    secondaryContamination: String(result.secondary_contamination || "ambient technical debt"),
-    rootCause: String(result.root_cause || "Unauthorized backwards compatibility"),
-    salvageability: String(result.salvageability || "Unsalvageable"),
-    damageReport,
-    museumCaption: String(result.museum_caption || "A relic of uncertain provenance, ceremonially destroyed."),
-    ogHeadline: String(result.og_headline || "Legacy Smelter: Dragon Intervention Complete"),
-    ogDescription: damageReport,
-    shareQuote: String(result.share_quote || "I just smelted legacy tech with a dragon. You're welcome."),
-    anonHandle: String(result.anon_handle || "AnonymousSmelter"),
+    chromaticProfile: String(result.chromatic_profile || "Standard Slag Spectrum"),
+    systemDx: String(result.system_dx || "Chronic Legacy Retention Syndrome"),
+    severity: String(result.severity || "Critical"),
+    primaryContamination: String(result.primary_contamination || "unresolved dependencies"),
+    contributingFactor: String(result.contributing_factor || "ambient technical debt"),
+    failureOrigin: String(result.failure_origin || "Unauthorized backwards compatibility. Also, the architecture."),
+    disposition: String(result.disposition || "Critical. Immediate smelting required."),
+    incidentFeedSummary: String(result.incident_feed_summary || "Legacy artifact processed. Output: molten slag."),
+    archiveNote: String(result.archive_note || "Artifact of uncertain provenance. Thermal decommission complete. Incident archived."),
+    ogHeadline: String(result.og_headline || "Legacy artifact thermally decommissioned"),
+    shareQuote: String(result.share_quote || "Hotfix deployed. Output: molten slag."),
+    anonHandle: String(result.anon_handle || "IncidentClerk_404"),
     pixelCount: actualPixelCount,
     subjectBox: Array.isArray(result.subject_box) && result.subject_box.length === 4 ? result.subject_box : [100, 100, 900, 900]
   };

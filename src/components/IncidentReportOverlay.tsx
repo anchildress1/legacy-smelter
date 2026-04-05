@@ -18,16 +18,16 @@ interface OverlayProps {
 // Normalised shape used inside the component
 interface NormalisedReport {
   legacyInfraClass: string;
-  damageReport: string;
-  smeltRating: string;
-  rootCause: string;
-  dominantContamination: string;
-  secondaryContamination: string;
-  cursedDx: string;
-  salvageability: string;
-  museumCaption: string;
+  incidentFeedSummary: string;
+  severity: string;
+  failureOrigin: string;
+  primaryContamination: string;
+  contributingFactor: string;
+  systemDx: string;
+  disposition: string;
+  archiveNote: string;
   anonHandle: string;
-  paletteName: string;
+  chromaticProfile: string;
   dominantColors: string[];
   pixelCount: number;
 }
@@ -50,16 +50,16 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
   if (a) {
     return {
       legacyInfraClass: a.legacyInfraClass,
-      damageReport: a.damageReport,
-      smeltRating: a.smeltRating,
-      rootCause: a.rootCause,
-      dominantContamination: a.dominantContamination,
-      secondaryContamination: a.secondaryContamination,
-      cursedDx: a.cursedDx,
-      salvageability: a.salvageability,
-      museumCaption: a.museumCaption,
+      incidentFeedSummary: a.incidentFeedSummary,
+      severity: a.severity,
+      failureOrigin: a.failureOrigin,
+      primaryContamination: a.primaryContamination,
+      contributingFactor: a.contributingFactor,
+      systemDx: a.systemDx,
+      disposition: a.disposition,
+      archiveNote: a.archiveNote,
       anonHandle: a.anonHandle,
-      paletteName: a.paletteName,
+      chromaticProfile: a.chromaticProfile,
       dominantColors: a.dominantColors,
       pixelCount: a.pixelCount,
     };
@@ -67,16 +67,16 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
   if (l) {
     return {
       legacyInfraClass: l.legacy_infra_class,
-      damageReport: l.damage_report,
-      smeltRating: l.smelt_rating,
-      rootCause: l.root_cause,
-      dominantContamination: l.dominant_contamination,
-      secondaryContamination: l.secondary_contamination,
-      cursedDx: l.cursed_dx,
-      salvageability: l.salvageability,
-      museumCaption: l.museum_caption,
+      incidentFeedSummary: l.incident_feed_summary,
+      severity: l.severity,
+      failureOrigin: l.failure_origin,
+      primaryContamination: l.primary_contamination,
+      contributingFactor: l.contributing_factor,
+      systemDx: l.system_dx,
+      disposition: l.disposition,
+      archiveNote: l.archive_note,
       anonHandle: l.anon_handle,
-      paletteName: l.palette_name,
+      chromaticProfile: l.chromatic_profile,
       dominantColors: [l.color_1, l.color_2, l.color_3, l.color_4, l.color_5].filter(Boolean),
       pixelCount: l.pixel_count,
     };
@@ -157,7 +157,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(`${report.damageReport}\n\n${report.museumCaption}`);
+      await navigator.clipboard.writeText(`${report.incidentFeedSummary}\n\n${report.archiveNote}`);
       setCopyState('copied');
       setTimeout(() => setCopyState('idle'), 2000);
     } catch { /* clipboard unavailable */ }
@@ -214,15 +214,15 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 {report.legacyInfraClass}
               </p>
               <p className="text-ash-white font-mono text-base sm:text-lg leading-snug mt-2">
-                {report.damageReport}
+                {report.incidentFeedSummary}
               </p>
               <div className="flex items-center gap-3 mt-3 flex-wrap">
                 <span
                   className="inline-flex items-center gap-1.5 text-xs font-mono text-concrete-light bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold"
-                  aria-label={`Severity classification: ${report.smeltRating}`}
+                  aria-label={`Severity classification: ${report.severity}`}
                 >
                   <AlertTriangle size={10} aria-hidden="true" />
-                  {report.smeltRating}
+                  {report.severity}
                 </span>
                 <span className="text-hazard-amber font-mono text-xs font-bold">
                   {formatted.value} {formatted.unit} THERMALLY DECOMMISSIONED
@@ -231,52 +231,52 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </div>
 
             {/* Telemetry fields */}
-            {(report.rootCause || report.dominantContamination || report.secondaryContamination || report.cursedDx) && (
+            {(report.failureOrigin || report.primaryContamination || report.contributingFactor || report.systemDx) && (
             <div className="border-t border-concrete-border pt-4">
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 font-mono">
-                {report.rootCause && (
+                {report.failureOrigin && (
                 <div>
-                  <dt className="text-stone-gray uppercase text-sm tracking-widest">FAILURE ORIGIN ANALYSIS</dt>
-                  <dd className="text-ash-white text-sm mt-0.5">{report.rootCause}</dd>
+                  <dt className="text-stone-gray uppercase text-sm tracking-widest">FAILURE ORIGIN</dt>
+                  <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
                 </div>
                 )}
-                {report.cursedDx && (
+                {report.systemDx && (
                 <div>
-                  <dt className="text-stone-gray uppercase text-sm tracking-widest">CURSED DIAGNOSIS</dt>
-                  <dd className="text-ash-white text-sm mt-0.5">{report.cursedDx}</dd>
+                  <dt className="text-stone-gray uppercase text-sm tracking-widest">SYSTEM DIAGNOSIS</dt>
+                  <dd className="text-ash-white text-sm mt-0.5">{report.systemDx}</dd>
                 </div>
                 )}
-                {report.dominantContamination && (
+                {report.primaryContamination && (
                 <div>
                   <dt className="text-stone-gray uppercase text-sm tracking-widest">PRIMARY CONTAMINANT</dt>
-                  <dd className="text-ash-white text-sm mt-0.5">{report.dominantContamination}</dd>
+                  <dd className="text-ash-white text-sm mt-0.5">{report.primaryContamination}</dd>
                 </div>
                 )}
-                {report.secondaryContamination && (
+                {report.contributingFactor && (
                 <div>
-                  <dt className="text-stone-gray uppercase text-sm tracking-widest">SECONDARY CONTAMINANT</dt>
-                  <dd className="text-ash-white text-sm mt-0.5">{report.secondaryContamination}</dd>
+                  <dt className="text-stone-gray uppercase text-sm tracking-widest">CONTRIBUTING FACTOR</dt>
+                  <dd className="text-ash-white text-sm mt-0.5">{report.contributingFactor}</dd>
                 </div>
                 )}
               </dl>
             </div>
             )}
 
-            {/* Decommission Advisory */}
+            {/* Disposition */}
             <div className="border-t border-concrete-border pt-4">
               <h2 className="text-stone-gray font-mono text-sm uppercase tracking-widest mt-2 mb-1.5">
-                DECOMMISSION ADVISORY
+                DISPOSITION
               </h2>
-              <p className="text-ash-white font-mono text-sm">{report.salvageability}</p>
+              <p className="text-ash-white font-mono text-sm">{report.disposition}</p>
             </div>
 
-            {/* Museum Exhibit Placard */}
+            {/* Archive Note */}
             <div className="border-t border-concrete-border pt-4">
               <h2 className="text-stone-gray font-mono text-sm uppercase tracking-widest mt-2 mb-1.5">
-                MUSEUM EXHIBIT PLACARD
+                ARCHIVE NOTE
               </h2>
               <p className="text-ash-white font-mono text-sm italic leading-relaxed">
-                {report.museumCaption}
+                {report.archiveNote}
               </p>
             </div>
 
@@ -295,7 +295,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                   CHROMATIC PROFILE
                 </span>
                 <p className="text-stone-gray font-mono text-xs mt-0.5 italic">
-                  {report.paletteName}
+                  {report.chromaticProfile}
                 </p>
               </div>
             </div>

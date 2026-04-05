@@ -19,14 +19,14 @@ export const FALLBACK_COLORS = ["#ffff00", "#00c3f5", "#4db542", "#fb0094", "#fc
 
 export function getLogShareLinks(log: SmeltLog): { label: string; href: string }[] {
   const shareText = log.share_quote
-    ? `${log.share_quote}\n\n${log.damage_report}`
-    : log.damage_report;
+    ? `${log.share_quote}\n\n${log.incident_feed_summary}`
+    : log.incident_feed_summary;
   const headline = log.og_headline || 'Legacy Smelter Incident Report';
   return [
-    { label: 'X', href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}` },
-    { label: 'REDDIT', href: `https://www.reddit.com/submit?title=${encodeURIComponent(headline)}&selftext=true&text=${encodeURIComponent(shareText)}` },
-    { label: 'BLUESKY', href: `https://bsky.app/intent/compose?text=${encodeURIComponent(shareText)}` },
-    { label: 'LINKEDIN', href: `https://www.linkedin.com/shareArticle?mini=true&title=${encodeURIComponent(headline)}&summary=${encodeURIComponent(shareText)}` },
+    { label: 'POST TO X', href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}` },
+    { label: 'POST TO REDDIT', href: `https://www.reddit.com/submit?title=${encodeURIComponent(headline)}&selftext=true&text=${encodeURIComponent(shareText)}` },
+    { label: 'POST TO BLUESKY', href: `https://bsky.app/intent/compose?text=${encodeURIComponent(shareText)}` },
+    { label: 'POST TO LINKEDIN', href: `https://www.linkedin.com/shareArticle?mini=true&title=${encodeURIComponent(headline)}&summary=${encodeURIComponent(shareText)}` },
   ];
 }
 
@@ -36,7 +36,7 @@ export function getFiveDistinctColors(colors: string[]): string[] {
     .filter(c => typeof c === 'string')
     .map(c => c.toLowerCase().trim())
     .filter(c => hexRegex.test(c));
-    
+
   const uniqueSrc = Array.from(new Set(validColors));
   const combined = Array.from(new Set([...uniqueSrc, ...FALLBACK_COLORS]));
   return combined.slice(0, 5);

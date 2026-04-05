@@ -119,7 +119,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
                         </p>
                       )}
                       <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-2">
-                        {log.damage_report}
+                        {log.incident_feed_summary}
                       </p>
                     </div>
                     <span className="text-stone-gray group-hover:text-hazard-amber font-mono text-xs uppercase tracking-wide shrink-0 mt-1 transition-colors">
@@ -132,9 +132,9 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
                     <span className="text-hazard-amber font-mono text-xs font-bold">
                       {fmt.value} {fmt.unit} THERMALLY DECOMMISSIONED
                     </span>
-                    {log.smelt_rating && (
+                    {log.severity && (
                       <span className="text-stone-gray font-mono text-xs">
-                        {log.smelt_rating}
+                        {log.severity}
                       </span>
                     )}
                     <span className="text-stone-gray font-mono text-xs ml-auto">

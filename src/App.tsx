@@ -198,7 +198,7 @@ export default function App({ onNavigateManifest }: AppProps) {
       const logRef = doc(collection(db, 'incident_logs'));
       await setDoc(logRef, {
         pixel_count: completedAnalysis.pixelCount,
-        damage_report: completedAnalysis.damageReport,
+        incident_feed_summary: completedAnalysis.incidentFeedSummary,
         color_1: colors[0] || '',
         color_2: colors[1] || '',
         color_3: colors[2] || '',
@@ -209,17 +209,16 @@ export default function App({ onNavigateManifest }: AppProps) {
         subject_box_ymax: box[2] ?? 900,
         subject_box_xmax: box[3] ?? 900,
         legacy_infra_class: completedAnalysis.legacyInfraClass,
-        legacy_infra_description: completedAnalysis.legacyInfraDescription,
-        palette_name: completedAnalysis.paletteName,
-        cursed_dx: completedAnalysis.cursedDx,
-        smelt_rating: completedAnalysis.smeltRating,
-        dominant_contamination: completedAnalysis.dominantContamination,
-        secondary_contamination: completedAnalysis.secondaryContamination,
-        root_cause: completedAnalysis.rootCause,
-        salvageability: completedAnalysis.salvageability,
-        museum_caption: completedAnalysis.museumCaption,
+        diagnosis: completedAnalysis.diagnosis,
+        chromatic_profile: completedAnalysis.chromaticProfile,
+        system_dx: completedAnalysis.systemDx,
+        severity: completedAnalysis.severity,
+        primary_contamination: completedAnalysis.primaryContamination,
+        contributing_factor: completedAnalysis.contributingFactor,
+        failure_origin: completedAnalysis.failureOrigin,
+        disposition: completedAnalysis.disposition,
+        archive_note: completedAnalysis.archiveNote,
         og_headline: completedAnalysis.ogHeadline,
-        og_description: completedAnalysis.ogDescription,
         share_quote: completedAnalysis.shareQuote,
         anon_handle: completedAnalysis.anonHandle,
         timestamp: serverTimestamp(),
@@ -250,17 +249,15 @@ export default function App({ onNavigateManifest }: AppProps) {
     canvasRef.current?.replay();
   };
 
-  const getShareText = () => {
-    if (!analysis) return '';
-    return `${analysis.shareQuote}\n\n${analysis.damageReport}`;
-  };
-
-  const shareLinks = analysis ? [
-    { label: 'X', href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(getShareText())}` },
-    { label: 'REDDIT', href: `https://www.reddit.com/submit?title=${encodeURIComponent(analysis.ogHeadline)}&selftext=true&text=${encodeURIComponent(getShareText())}` },
-    { label: 'BLUESKY', href: `https://bsky.app/intent/compose?text=${encodeURIComponent(getShareText())}` },
-    { label: 'LINKEDIN', href: `https://www.linkedin.com/shareArticle?mini=true&title=${encodeURIComponent(analysis.ogHeadline)}&summary=${encodeURIComponent(getShareText())}` },
-  ] : [];
+  const shareLinks = analysis ? (() => {
+    const shareText = `${analysis.shareQuote}\n\n${analysis.incidentFeedSummary}`;
+    return [
+      { label: 'POST TO X', href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}` },
+      { label: 'POST TO REDDIT', href: `https://www.reddit.com/submit?title=${encodeURIComponent(analysis.ogHeadline)}&selftext=true&text=${encodeURIComponent(shareText)}` },
+      { label: 'POST TO BLUESKY', href: `https://bsky.app/intent/compose?text=${encodeURIComponent(shareText)}` },
+      { label: 'POST TO LINKEDIN', href: `https://www.linkedin.com/shareArticle?mini=true&title=${encodeURIComponent(analysis.ogHeadline)}&summary=${encodeURIComponent(shareText)}` },
+    ];
+  })() : [];
 
   const formatted = formatPixels(globalStats.total_pixels_melted);
 
@@ -465,7 +462,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                       key={log.id}
                       onClick={() => setSelectedRecentLog(log)}
                       className={`modern-card relative overflow-hidden w-full text-left hover:border-hazard-amber/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${visibilityClass}`}
-                      aria-label={`Open incident report: ${log.legacy_infra_class || log.damage_report}`}
+                      aria-label={`Open incident report: ${log.legacy_infra_class || log.incident_feed_summary}`}
                     >
                       {/* Color strip */}
                       <div className="w-2 shrink-0 flex flex-col" aria-hidden="true">
@@ -480,7 +477,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                           </p>
                         )}
                         <p className="text-ash-white font-mono text-xs leading-snug mt-0.5 line-clamp-2">
-                          {log.damage_report}
+                          {log.incident_feed_summary}
                         </p>
                         <div className="mt-1.5 flex justify-between items-end">
                           <span className="text-hazard-amber font-mono text-xs font-bold">

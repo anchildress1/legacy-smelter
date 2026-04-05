@@ -6,19 +6,20 @@ service cloud.firestore {
       return val is string && val.size() == 7;
     }
 
-    function isValidSmeltLog(data) {
+    function isValidIncidentLog(data) {
       return data.keys().hasAll([
-               'pixel_count', 'damage_report',
+               'pixel_count', 'incident_feed_summary',
                'color_1', 'color_2', 'color_3', 'color_4', 'color_5',
                'subject_box_ymin', 'subject_box_xmin', 'subject_box_ymax', 'subject_box_xmax',
-               'legacy_infra_class', 'legacy_infra_description', 'visual_summary', 'confidence',
-               'palette_name', 'cursed_dx', 'smelt_rating',
-               'dominant_contamination', 'secondary_contamination', 'root_cause', 'salvageability',
-               'museum_caption', 'og_headline', 'og_description', 'share_quote',
+               'legacy_infra_class', 'diagnosis',
+               'chromatic_profile', 'system_dx', 'severity',
+               'primary_contamination', 'contributing_factor', 'failure_origin',
+               'disposition', 'archive_note',
+               'og_headline', 'share_quote', 'anon_handle',
                'timestamp', 'uid'
              ]) &&
              data.pixel_count is number && data.pixel_count > 0 &&
-             data.damage_report is string && data.damage_report.size() <= 500 &&
+             data.incident_feed_summary is string && data.incident_feed_summary.size() <= 500 &&
              isHexColor(data.color_1) &&
              isHexColor(data.color_2) &&
              isHexColor(data.color_3) &&
@@ -29,20 +30,18 @@ service cloud.firestore {
              data.subject_box_ymax is number &&
              data.subject_box_xmax is number &&
              data.legacy_infra_class is string &&
-             data.legacy_infra_description is string &&
-             data.visual_summary is string &&
-             data.confidence is number &&
-             data.palette_name is string &&
-             data.cursed_dx is string &&
-             data.smelt_rating is string &&
-             data.dominant_contamination is string &&
-             data.secondary_contamination is string &&
-             data.root_cause is string &&
-             data.salvageability is string &&
-             data.museum_caption is string &&
+             data.diagnosis is string &&
+             data.chromatic_profile is string &&
+             data.system_dx is string &&
+             data.severity is string &&
+             data.primary_contamination is string &&
+             data.contributing_factor is string &&
+             data.failure_origin is string &&
+             data.disposition is string &&
+             data.archive_note is string &&
              data.og_headline is string &&
-             data.og_description is string &&
              data.share_quote is string &&
+             data.anon_handle is string &&
              data.timestamp is timestamp &&
              data.uid is string && data.uid.size() > 0;
     }
@@ -51,10 +50,9 @@ service cloud.firestore {
       return data.total_pixels_melted is number && data.total_pixels_melted >= 0;
     }
 
-    match /smelt_logs/{logId} {
+    match /incident_logs/{logId} {
       allow read: if true;
-      // TODO: tighten after merge — permissive to allow old-format writes from fix/smelter-animation
-      allow create: if true;
+      allow create: if isValidIncidentLog(request.resource.data);
     }
 
     match /global_stats/main {
