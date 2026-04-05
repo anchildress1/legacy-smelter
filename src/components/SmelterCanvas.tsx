@@ -60,8 +60,8 @@ const MELT_FRAG = `
         float tintStrength = uMeltAmount * 0.6;
         baseColor.rgb = mix(baseColor.rgb, vec3(1.0, 0.4, 0.0), tintStrength);
 
-        // Fade out
-        baseColor.a *= 1.0 - smoothstep(0.3, 1.0, uMeltAmount);
+        // Fade out fast
+        baseColor.a *= 1.0 - smoothstep(0.1, 0.7, uMeltAmount);
 
         gl_FragColor = baseColor;
     }
@@ -88,7 +88,7 @@ const PUDDLE_FRAG = `
 const DRAGON_TEX_H = 672;
 const ANIM_SPEED = 0.2;
 const FLY_SPEED = 0.005;
-const MELT_SPEED = 0.008; // ~2s dissolve
+const MELT_SPEED = 0.012; // ~1.4s dissolve
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
@@ -414,15 +414,19 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                   u.uTime += 0.005 * ticker.deltaTime;
                 }
 
-                // Hide image when fully melted
+                // Squish + hide image as it melts
                 if (spriteRef.current) {
-                  if (mp >= 0.95) {
+                  if (mp >= 0.85) {
                     spriteRef.current.visible = false;
                   } else {
                     const s = getImgScale(baseScale, spriteRef.current);
+                    const squish = 1.0 - mp * 0.9; // 1.0 → 0.1
+                    spriteRef.current.scale.x = s;
+                    spriteRef.current.scale.y = s * squish;
                     spriteRef.current.x = imageX;
-                    spriteRef.current.y = imageY;
-                    spriteRef.current.scale.set(s);
+                    // Keep bottom edge fixed as it squishes down
+                    const fullH = spriteRef.current.texture.height * s;
+                    spriteRef.current.y = imageY + (fullH - fullH * squish) / 2;
                   }
                 }
 
