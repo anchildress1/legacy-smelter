@@ -35,7 +35,7 @@ export const SmeltManifest: React.FC<SmeltManifestProps> = ({ logs }) => {
                   <span className="text-hazard-amber font-mono text-xs font-bold">
                     {formatted.value} {formatted.unit} SMELTED
                   </span>
-                  <span className="text-dead-gray font-mono text-[10px]">
+                  <span className="text-stone-gray font-mono text-[10px]">
                     {new Date(log.timestamp?.toDate?.() || Date.now()).toLocaleTimeString()}
                   </span>
                 </div>
@@ -44,7 +44,7 @@ export const SmeltManifest: React.FC<SmeltManifestProps> = ({ logs }) => {
           );
         })}
         {logs.length === 0 && (
-          <div className="text-dead-gray font-mono text-center py-8 italic">
+          <div className="text-stone-gray font-mono text-center py-8 italic">
             NO SMELTING DETECTED. SYSTEM IDLE.
           </div>
         )}

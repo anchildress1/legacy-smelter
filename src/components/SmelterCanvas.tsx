@@ -81,7 +81,7 @@ const PUDDLE_FRAG = `
         vec3 color;
         if (lum < 0.4) color = mix(uColor1, uColor2, lum / 0.4);
         else color = mix(uColor2, uColor3, (lum - 0.4) / 0.6);
-        gl_FragColor = vec4(color, tex.a);
+        gl_FragColor = vec4(color * tex.a, tex.a);
     }
 `;
 
@@ -241,6 +241,9 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
               source: baseTex.source,
               frame: new PIXI.Rectangle(cx, cy, cw, ch),
             });
+            // baseTex is no longer needed; remove it from the PIXI cache without
+            // destroying the source (which is still owned by the cropped texture)
+            baseTex.destroy(false);
           }
         }
 
@@ -495,7 +498,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
       };
     }, []);
 
-    return <div ref={containerRef} className="absolute inset-0 overflow-hidden" />;
+    return <div ref={containerRef} className="absolute inset-0 overflow-hidden" aria-hidden="true" />;
   },
 );
 

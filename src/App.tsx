@@ -33,11 +33,15 @@ export default function App() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<SmelterCanvasHandle>(null);
+  const activeRequestIdRef = useRef(0);
+  const activeSmeltRunIdRef = useRef(0);
+  const analysisRef = useRef<SmeltAnalysis | null>(null);
 
   useEffect(() => {
     const logsQuery = query(collection(db, 'smelt_logs'), orderBy('timestamp', 'desc'), limit(10));
@@ -113,10 +117,15 @@ export default function App() {
   };
 
   const processImage = async (base64: string, mimeType: string) => {
+    const requestId = ++activeRequestIdRef.current;
+
     if (import.meta.env.DEV) console.log("Processing image...", mimeType);
     setCurrentImage(base64);
     setIsComplete(false);
     setIsAnalyzing(true);
+    setAnalysisError(null);
+    setAnalysis(null);
+    analysisRef.current = null;
     flyInSound.stop();
     fireSound.stop();
     purrSound.stop();
@@ -124,15 +133,25 @@ export default function App() {
     try {
       const base64Data = base64.split(',')[1];
       const result = await analyzeLegacyTech(base64Data, mimeType);
+      if (requestId !== activeRequestIdRef.current) return;
+
       if (import.meta.env.DEV) console.log("Analysis complete:", result);
       setAnalysis(result);
+      analysisRef.current = result;
       setIsAnalyzing(false);
 
       // Imperative: load image into canvas and start animation
+      activeSmeltRunIdRef.current = requestId;
       await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
     } catch (error) {
+      if (requestId !== activeRequestIdRef.current) return;
+
       console.error("Analysis failed", error);
       setIsAnalyzing(false);
+      setCurrentImage(null);
+      setAnalysis(null);
+      analysisRef.current = null;
+      setAnalysisError("ANALYSIS FAILED. RETRY OR VERIFY GEMINI CONFIGURATION.");
     }
   };
 
@@ -154,22 +173,26 @@ export default function App() {
     fireSound.stop();
     purrSound.play();
 
+    if (activeSmeltRunIdRef.current !== activeRequestIdRef.current) return;
+
+    const completedAnalysis = analysisRef.current;
+
     // Skip Firestore write on replay (isComplete already true)
-    if (isComplete || !analysis) return;
+    if (isComplete || !completedAnalysis) return;
 
     try {
       const logRef = doc(collection(db, 'smelt_logs'));
       await setDoc(logRef, {
-        pixel_count: analysis.pixelCount,
-        damage_report: analysis.damageReport,
-        dominant_colors: analysis.dominantColors,
+        pixel_count: completedAnalysis.pixelCount,
+        damage_report: completedAnalysis.damageReport,
+        dominant_colors: completedAnalysis.dominantColors,
         timestamp: serverTimestamp(),
         uid: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
       });
 
       const statsRef = doc(db, 'global_stats', 'main');
       await setDoc(statsRef, {
-        total_pixels_melted: increment(analysis.pixelCount)
+        total_pixels_melted: increment(completedAnalysis.pixelCount)
       }, { merge: true });
 
       setIsComplete(true);
@@ -208,14 +231,14 @@ export default function App() {
                 onClick={() => fileInputRef.current?.click()}
                 className="modern-button flex-1 flex items-center justify-center gap-2"
               >
-                <Upload size={18} />
+                <Upload size={18} aria-hidden={true} />
                 UPLOAD
               </button>
               <button
                 onClick={startCamera}
                 className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-concrete-border hover:brightness-110"
               >
-                <Camera size={18} />
+                <Camera size={18} aria-hidden={true} />
                 CAMERA
               </button>
             </div>
@@ -229,16 +252,20 @@ export default function App() {
               {/* Camera overlay */}
               {isCameraActive && (
                 <div className="absolute inset-0 bg-black z-30">
-                  <video ref={videoRef} playsInline className="w-full h-full object-cover" />
+                  <video ref={videoRef} playsInline className="w-full h-full object-cover" aria-label="Camera preview" />
                   <button
                     onClick={stopCamera}
+                    aria-label="Close camera"
+                    title="Close camera"
                     className="absolute top-4 right-4 w-10 h-10 bg-concrete-mid/80 rounded-full flex items-center justify-center text-stone-gray hover:text-ash-white z-50"
                   >
-                    <X size={20} />
+                    <X size={20} aria-hidden={true} />
                   </button>
                   <div className="absolute bottom-6 left-0 w-full flex justify-center z-50">
                     <button
                       onClick={captureImage}
+                      aria-label="Capture photo"
+                      title="Capture photo"
                       className="w-16 h-16 rounded-full border-4 border-white flex items-center justify-center bg-white/20 hover:bg-white/40 backdrop-blur-sm transition-all"
                     >
                       <div className="w-12 h-12 bg-white rounded-full" />
@@ -251,7 +278,7 @@ export default function App() {
               {!currentImage && !isCameraActive && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center">
-                    <Zap className="text-hazard-amber mx-auto mb-3" size={32} />
+                    <Zap className="text-hazard-amber mx-auto mb-3" size={32} aria-hidden={true} />
                     <p className="text-stone-gray font-mono text-xs uppercase">
                       INPUT LEGACY HARDWARE FOR SMELTING
                     </p>
@@ -271,7 +298,7 @@ export default function App() {
 
               {/* Analyzing overlay */}
               {isAnalyzing && (
-                <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
+                <div role="status" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
                   <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
                   <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
                     GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
@@ -279,6 +306,14 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {analysisError && (
+              <div className="modern-card p-4" role="alert" aria-live="assertive">
+                <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">
+                  {analysisError}
+                </p>
+              </div>
+            )}
 
             {/* Damage report + replay */}
             {isComplete && analysis && (
@@ -290,7 +325,7 @@ export default function App() {
                   onClick={handleReplay}
                   className="modern-button flex items-center justify-center gap-2"
                 >
-                  <RotateCcw size={18} />
+                  <RotateCcw size={18} aria-hidden={true} />
                   REPLAY SMELT
                 </button>
               </div>
@@ -309,10 +344,10 @@ export default function App() {
       {/* Footer */}
       <footer className="p-6 bg-concrete-mid border-t border-concrete-border mt-auto">
         <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-xs font-mono text-dead-gray uppercase tracking-widest">
+          <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
             &copy; 2026 Ashley Childress
           </p>
-          <p className="text-xs font-mono text-dead-gray uppercase tracking-widest">
+          <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
             Powered by Gemini | Built with Google AI Studio, Gemini &amp; Claude
           </p>
         </div>
