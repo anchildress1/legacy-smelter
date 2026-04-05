@@ -245,7 +245,7 @@ export default function App({ onNavigateManifest }: AppProps) {
           <div className="flex items-center gap-4">
             <button
               onClick={onNavigateManifest}
-              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider"
+              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:rounded"
             >
               <ScrollText size={14} />
               INCIDENT MANIFEST
@@ -441,7 +441,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                           <span className="text-hazard-amber font-mono text-[10px] font-bold">
                             {fmt.value} {fmt.unit}
                           </span>
-                          <span className="text-dead-gray font-mono text-[10px]">
+                          <span className="text-stone-gray font-mono text-[10px]">
                             {log.timestamp?.toDate
                               ? new Date(log.timestamp.toDate()).toLocaleTimeString()
                               : '—'}
@@ -452,7 +452,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                   );
                 })}
                 {recentLogs.length === 0 && (
-                  <div className="text-dead-gray font-mono text-center py-6 italic text-xs">
+                  <div className="text-stone-gray font-mono text-center py-6 italic text-xs">
                     NO INCIDENTS ON RECORD. FURNACE IDLE.
                   </div>
                 )}

@@ -116,7 +116,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       aria-label="Incident postmortem report"
     >
       {/* Card — full-screen on mobile, constrained modal on desktop */}
-      <div className="bg-concrete-light w-full sm:max-w-lg sm:rounded-xl border-t sm:border border-concrete-border shadow-2xl max-h-[100dvh] sm:max-h-[85vh] overflow-y-auto relative">
+      <div className="bg-concrete-light w-full sm:max-w-2xl sm:rounded-xl border-t sm:border border-concrete-border shadow-2xl max-h-[100dvh] sm:max-h-[85vh] overflow-y-auto relative">
         {/* Color palette strip — top edge on mobile, left edge on desktop */}
         <div className="hidden sm:flex sm:absolute sm:left-0 sm:top-0 sm:bottom-0 sm:w-2 flex-col sm:rounded-l-xl overflow-hidden" aria-hidden="true">
           {report.dominantColors.map((color, i) => (
@@ -136,7 +136,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
           {/* Close button */}
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 sm:top-4 sm:right-4 w-8 h-8 flex items-center justify-center rounded-full bg-concrete-mid/80 text-stone-gray hover:text-ash-white transition-colors z-10"
+            className="absolute top-3 right-3 sm:top-4 sm:right-4 w-8 h-8 flex items-center justify-center rounded-full bg-concrete-mid/80 text-stone-gray hover:text-ash-white transition-colors z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
             aria-label="Close report"
           >
             <X size={16} />
@@ -148,10 +148,10 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <h2 className="text-hazard-amber font-mono text-[10px] uppercase tracking-widest">
                 INCIDENT POSTMORTEM // DECOMMISSION REPORT
               </h2>
-              <p className="text-hazard-amber font-mono text-sm uppercase tracking-widest mt-2 font-bold">
+              <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-widest mt-2 font-bold">
                 {report.legacyInfraClass}
               </p>
-              <p className="text-ash-white font-mono text-sm leading-snug mt-2">
+              <p className="text-ash-white font-mono text-sm sm:text-base leading-snug mt-2">
                 {report.damageReport}
               </p>
               <div className="flex items-center gap-3 mt-3 flex-wrap">
@@ -173,7 +173,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <h3 className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mb-3">
                 DIAGNOSTIC TELEMETRY
               </h3>
-              <dl className="space-y-2.5 text-[11px] font-mono">
+              <dl className="space-y-2.5 text-xs font-mono">
                 <div>
                   <dt className="text-stone-gray uppercase text-[10px]">FAILURE ORIGIN ANALYSIS</dt>
                   <dd className="text-ash-white mt-0.5">{report.rootCause}</dd>
@@ -198,7 +198,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <h3 className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mb-1.5">
                 DECOMMISSION ADVISORY
               </h3>
-              <p className="text-ash-white font-mono text-[11px]">{report.salvageability}</p>
+              <p className="text-ash-white font-mono text-xs">{report.salvageability}</p>
             </div>
 
             {/* Museum Exhibit Placard */}
@@ -206,7 +206,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <h3 className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mb-1.5">
                 MUSEUM EXHIBIT PLACARD
               </h3>
-              <p className="text-dead-gray font-mono text-[11px] italic leading-relaxed">
+              <p className="text-stone-gray font-mono text-xs italic leading-relaxed">
                 {report.museumCaption}
               </p>
             </div>
@@ -225,7 +225,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 <span className="text-stone-gray font-mono text-[9px] uppercase tracking-widest">
                   CHROMATIC PROFILE
                 </span>
-                <p className="text-dead-gray font-mono text-[10px] mt-0.5 italic">
+              <p className="text-stone-gray font-mono text-[10px] mt-0.5 italic">
                   {report.paletteName}
                 </p>
               </div>

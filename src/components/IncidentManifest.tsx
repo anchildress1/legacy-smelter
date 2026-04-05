@@ -58,7 +58,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           <div className="flex items-center gap-4">
             <button
               onClick={onNavigateHome}
-              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider"
+              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:rounded"
             >
               <ArrowLeft size={14} />
               RETURN TO FURNACE
@@ -137,7 +137,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
                         {log.smelt_rating}
                       </span>
                     )}
-                    <span className="text-dead-gray font-mono text-[10px] ml-auto">
+                    <span className="text-stone-gray font-mono text-[10px] ml-auto">
                       {log.timestamp?.toDate
                         ? new Date(log.timestamp.toDate()).toLocaleString()
                         : '—'}
@@ -151,7 +151,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           {logs.length === 0 && (
             <div className="modern-card p-12 text-center">
               <Flame size={32} className="text-stone-gray mx-auto mb-3" />
-              <p className="text-dead-gray font-mono text-xs uppercase tracking-wider">
+              <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
                 NO INCIDENTS ON RECORD. FURNACE IDLE.
               </p>
             </div>
