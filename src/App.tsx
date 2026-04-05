@@ -17,7 +17,7 @@ import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { formatPixels, getFiveDistinctColors, getLogShareLinks } from './lib/utils';
-import { Camera, Upload, X, Flame, RotateCcw, ChevronRight } from 'lucide-react';
+import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
 // Audio
@@ -290,7 +290,7 @@ export default function App({ onNavigateManifest }: AppProps) {
               className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:rounded"
             >
               INCIDENT MANIFEST
-              <ChevronRight size={14} />
+              <ArrowRight size={14} />
             </button>
           </div>
         </div>
@@ -356,17 +356,6 @@ export default function App({ onNavigateManifest }: AppProps) {
                 onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
               />
 
-              {/* Status overlay — shows while idle */}
-              {!currentImage && !isCameraActive && (
-                <div className="absolute inset-0 flex items-end justify-start p-5 pointer-events-none">
-                  <div className="flex gap-2 items-center">
-                    <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse" />
-                    <span className="text-[10px] font-mono text-stone-gray uppercase">
-                      HOTFIX STATUS: NOMINAL
-                    </span>
-                  </div>
-                </div>
-              )}
 
               {/* Analyzing overlay */}
               {isAnalyzing && (
@@ -495,6 +484,12 @@ export default function App({ onNavigateManifest }: AppProps) {
                     <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
                       NO INCIDENTS ON RECORD.
                     </p>
+                    <div className="flex gap-2 items-center justify-center mt-3">
+                      <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse" />
+                      <span className="text-[10px] font-mono text-stone-gray uppercase">
+                        HOTFIX STATUS: PENDING
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
