@@ -86,7 +86,6 @@ interface PixiState {
   dragon: PIXI.AnimatedSprite;
   gooStream: PIXI.AnimatedSprite;
   puddle: PIXI.AnimatedSprite;
-  burnMask: PIXI.Graphics;
   textures: {
     fly: PIXI.Texture[];
     land: PIXI.Texture[];
@@ -118,19 +117,18 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
     /** Reset all melt visuals and start the fly-in sequence */
     const beginSequence = () => {
       if (!ps.current || !spriteRef.current) return;
-      const { dragon, gooStream, puddle, burnMask } = ps.current;
+      const { dragon, gooStream, puddle } = ps.current;
 
       // Reset image sprite
       spriteRef.current.visible = true;
       spriteRef.current.alpha = 1;
       spriteRef.current.tint = 0xffffff;
-      spriteRef.current.mask = null;
-      spriteRef.current.filters = [];
 
       // Hide liquid sprites
       gooStream.visible = false;
+      gooStream.filters = [];
       puddle.visible = false;
-      burnMask.clear();
+      puddle.filters = [];
 
       phaseRef.current = 'flying_in';
       flyProgressRef.current = 0;
@@ -275,20 +273,16 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
 
         // --- Create display objects ---
 
-        // Burn mask (Graphics for left-to-right image wipe)
-        const burnMask = new PIXI.Graphics();
-        burnMask.label = 'burnMask';
-
         // Goo stream — vertical liquid flow, hidden initially
         const gooStream = new PIXI.AnimatedSprite(textures.goo);
-        gooStream.animationSpeed = ANIM_SPEED;
+        gooStream.animationSpeed = 0.12;
         gooStream.anchor.set(0.5, 0);
         gooStream.visible = false;
         gooStream.loop = true;
 
         // Bubbling puddle — recolored via palette-swap shader
         const puddle = new PIXI.AnimatedSprite(textures.puddleTex);
-        puddle.animationSpeed = ANIM_SPEED;
+        puddle.animationSpeed = 0.08; // slow gentle bubbles
         puddle.anchor.set(0.5, 0.5);
         puddle.visible = false;
         puddle.loop = true;
@@ -301,13 +295,12 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         dragon.loop = true;
         dragon.play();
 
-        // Z-order: [image@0 later] → burnMask → gooStream → puddle → dragon
-        app.stage.addChild(burnMask);
+        // Z-order: [image@0 later] → gooStream → puddle → dragon
         app.stage.addChild(gooStream);
         app.stage.addChild(puddle);
         app.stage.addChild(dragon);
 
-        ps.current = { app, dragon, gooStream, puddle, burnMask, textures };
+        ps.current = { app, dragon, gooStream, puddle, textures };
 
         /** Swap dragon textures and guarantee it keeps playing */
         const setDragonTex = (tex: PIXI.Texture[], loop: boolean) => {
@@ -368,8 +361,10 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                   meltProgressRef.current = 0;
                   setDragonTex(textures.flame, false);
 
-                  // Tint goo stream with first AI color
-                  gooStream.tint = meltColorsRef.current[0];
+                  // Apply palette-swap shader to goo stream
+                  if (puddleFilterRef.current) {
+                    gooStream.filters = [puddleFilterRef.current];
+                  }
 
                   cbRef.current.onFireStart?.();
                 }
