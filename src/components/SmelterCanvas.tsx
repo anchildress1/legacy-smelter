@@ -107,19 +107,12 @@ const MELT_SHADER = `
     }
 `;
 
-/** Calculate image scale capped to dragon visual height */
-function getImageScale(
-  sprite: PIXI.Sprite,
-  dragon: PIXI.AnimatedSprite,
-  baseScale: number,
-  isMobile: boolean,
-  canvasWidth: number,
-): number {
-  const dragonVisualHeight = dragon.texture.height * baseScale;
-  const targetSize = Math.min(isMobile ? canvasWidth * 0.3 : canvasWidth * 0.25, dragonVisualHeight);
-  const currentSize = Math.max(sprite.texture.width, sprite.texture.height);
-  return currentSize > 0 ? targetSize / currentSize : 1;
-}
+// Dragon texture dimensions (924x672) — used for proportional calculations
+const DRAGON_TEX_W = 924;
+const DRAGON_TEX_H = 672;
+// Approximate mouth offset from center when mirrored (facing right)
+const MOUTH_OFFSET_X = 300;
+const MOUTH_OFFSET_Y = -80;
 
 export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
   image, isMelting, onComplete, onFlyInStart, onFireStart, colors, subjectBox,
@@ -129,18 +122,14 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
   const spriteRef = useRef<PIXI.Sprite | null>(null);
   const filterRef = useRef<PIXI.Filter | null>(null);
   const dragonRef = useRef<PIXI.AnimatedSprite | null>(null);
+  const fireRef = useRef<PIXI.AnimatedSprite | null>(null);
   const phaseRef = useRef<AnimPhase>('waiting');
   const meltAmountRef = useRef(0);
   const flyProgressRef = useRef(0);
   const isMeltingRef = useRef(isMelting);
   const cbRef = useRef({ onComplete, onFlyInStart, onFireStart });
-  const texturesRef = useRef<{
-    fly: PIXI.Texture[]; land: PIXI.Texture[];
-    idle: PIXI.Texture[]; flame: PIXI.Texture[];
-  } | null>(null);
   const [isReady, setIsReady] = useState(false);
 
-  // Keep refs in sync with props
   useEffect(() => { isMeltingRef.current = isMelting; }, [isMelting]);
   useEffect(() => { cbRef.current = { onComplete, onFlyInStart, onFireStart }; },
     [onComplete, onFlyInStart, onFireStart]);
@@ -166,7 +155,7 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
     if (isMelting && spriteRef.current) startSequence();
   }, [isMelting]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Initialize PixiJS and load all dragon frame sets
+  // Initialize PixiJS and load all frame sets
   useEffect(() => {
     const initPixi = async () => {
       if (!containerRef.current) return;
@@ -180,6 +169,7 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
       containerRef.current.appendChild(app.canvas);
       appRef.current = app;
 
+      // Dragon animation frame sets
       const flyPaths = Array.from({ length: 8 }, (_, i) =>
         `/assets/dragon/__dragon_01_blue_flying_${i.toString().padStart(3, '0')}.png`);
       const landPaths = Array.from({ length: 12 }, (_, i) =>
@@ -189,34 +179,55 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
       const flamePaths = Array.from({ length: 20 }, (_, i) =>
         `/assets/dragon/__dragon_01_blue_standing_flame_with_flame_${i.toString().padStart(3, '0')}.png`);
 
-      await PIXI.Assets.load([...flyPaths, ...landPaths, ...idlePaths, ...flamePaths]);
+      // Fire overlay frames
+      const firePaths = Array.from({ length: 17 }, (_, i) =>
+        `/assets/flame/${(i + 1).toString().padStart(2, '0')}.png`);
+
+      await PIXI.Assets.load([
+        ...flyPaths, ...landPaths, ...idlePaths, ...flamePaths, ...firePaths,
+      ]);
 
       const textures = {
         fly: flyPaths.map(f => PIXI.Assets.get(f)),
         land: landPaths.map(f => PIXI.Assets.get(f)),
         idle: idlePaths.map(f => PIXI.Assets.get(f)),
         flame: flamePaths.map(f => PIXI.Assets.get(f)),
+        fire: firePaths.map(f => PIXI.Assets.get(f)),
       };
-      texturesRef.current = textures;
 
-      // Dragon starts hidden
+      // Dragon — starts hidden
       const dragon = new PIXI.AnimatedSprite(textures.idle);
-      dragon.animationSpeed = 0.3;
+      dragon.animationSpeed = 0.15;
       dragon.anchor.set(0.5);
       dragon.visible = false;
       dragonRef.current = dragon;
+
+      // Fire overlay — starts hidden, anchored at left-center
+      const fireOverlay = new PIXI.AnimatedSprite(textures.fire);
+      fireOverlay.animationSpeed = 0.25;
+      fireOverlay.anchor.set(0, 0.5);
+      fireOverlay.visible = false;
+      fireOverlay.loop = true;
+      fireOverlay.blendMode = 'add';
+      fireRef.current = fireOverlay;
+
+      // Z-order: image (back) → fire → dragon (front)
+      // Image is added later in loadTexture; dragon and fire added here
+      // We'll re-order in loadTexture after image is added
       app.stage.addChild(dragon);
+      app.stage.addChild(fireOverlay);
 
       let time = 0;
 
       app.ticker.add((ticker) => {
         time += 0.05 * ticker.deltaTime;
         const { width, height } = app.screen;
-        const isMobile = width < 768;
-        const baseScale = isMobile ? 0.5 : 0.7;
-        const dragonRestX = width * (isMobile ? 0.3 : 0.25);
-        const dragonY = height * 0.5;
-        const imageX = width * (isMobile ? 0.7 : 0.75);
+
+        // Dynamic dragon scale: target 40% of canvas height
+        const baseScale = (height * 0.4) / DRAGON_TEX_H;
+        const dragonRestX = width * 0.25;
+        const dragonY = height * 0.55;
+        const imageX = width * 0.72;
         const imageY = height * 0.5;
 
         // ── Dragon state machine ──
@@ -228,34 +239,39 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
             dragon.visible = true;
             if (dragon.textures !== textures.fly) {
               dragon.textures = textures.fly;
-              dragon.animationSpeed = 0.4;
+              dragon.animationSpeed = 0.15;
               dragon.loop = true;
               dragon.play();
             }
-            flyProgressRef.current += 0.012 * ticker.deltaTime;
+            flyProgressRef.current += 0.005 * ticker.deltaTime;
             const t = Math.min(flyProgressRef.current, 1);
             const eased = 1 - Math.pow(1 - t, 3);
-            const startX = width + 100;
+            const startX = width + DRAGON_TEX_W * baseScale;
             dragon.x = startX + (dragonRestX - startX) * eased;
             dragon.y = dragonY;
-            dragon.scale.set(-baseScale, baseScale); // mirrored (faces left)
+            // Dragon faces LEFT naturally — un-mirrored during fly-in (traveling left)
+            dragon.scale.set(baseScale);
 
             if (t >= 1) {
               phaseRef.current = 'landing';
               dragon.textures = textures.land;
-              dragon.animationSpeed = 0.3;
+              dragon.animationSpeed = 0.15;
               dragon.loop = false;
-              dragon.scale.set(baseScale); // un-mirror (face right toward image)
+              // Mirror to face RIGHT (toward image) for landing
+              dragon.scale.set(-baseScale, baseScale);
               dragon.x = dragonRestX;
               dragon.gotoAndPlay(0);
               dragon.onComplete = () => {
                 phaseRef.current = 'fire_breathing';
                 meltAmountRef.current = 0;
                 dragon.textures = textures.flame;
-                dragon.animationSpeed = 0.2;
+                dragon.animationSpeed = 0.15;
                 dragon.loop = true;
                 dragon.gotoAndPlay(0);
                 dragon.onComplete = null;
+                // Show fire overlay
+                fireOverlay.visible = true;
+                fireOverlay.gotoAndPlay(0);
                 cbRef.current.onFireStart?.();
               };
             }
@@ -265,28 +281,38 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
           case 'landing':
             dragon.x = dragonRestX;
             dragon.y = dragonY;
-            dragon.scale.set(baseScale);
+            dragon.scale.set(-baseScale, baseScale);
             break;
 
           case 'fire_breathing': {
             dragon.x = dragonRestX;
             dragon.y = dragonY;
-            dragon.scale.set(baseScale);
+            dragon.scale.set(-baseScale, baseScale);
             dragon.scale.y = baseScale * (1 + Math.sin(time * 5) * 0.05);
 
-            meltAmountRef.current += 0.008 * ticker.deltaTime;
+            // Position fire overlay from dragon mouth toward image
+            const mouthX = dragonRestX + MOUTH_OFFSET_X * baseScale;
+            const mouthY = dragonY + MOUTH_OFFSET_Y * baseScale;
+            fireOverlay.x = mouthX;
+            fireOverlay.y = mouthY;
+            const fireSpan = imageX - mouthX;
+            const fireScaleX = Math.max(fireSpan / 1024, 0.05);
+            fireOverlay.scale.set(fireScaleX, fireScaleX * 0.6);
+
+            // Advance melt
+            meltAmountRef.current += 0.004 * ticker.deltaTime;
             const melt = Math.min(meltAmountRef.current, 1);
 
             if (filterRef.current) {
               const u = (filterRef.current.resources as any).meltUniforms.uniforms;
               u.uMeltAmount.value = melt;
-              u.uTime.value += 0.008 * ticker.deltaTime;
+              u.uTime.value += 0.006 * ticker.deltaTime;
             }
 
             // Squash image into puddle
             if (spriteRef.current) {
-              const squish = 1.0 - melt * 0.65; // 1.0 → 0.35
-              const s = getImageScale(spriteRef.current, dragon, baseScale, isMobile, width);
+              const squish = 1.0 - melt * 0.65;
+              const s = getImageScale(height, spriteRef.current.texture.width, spriteRef.current.texture.height);
               spriteRef.current.scale.x = s;
               spriteRef.current.scale.y = s * squish;
               spriteRef.current.x = imageX;
@@ -297,9 +323,11 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
             if (melt >= 1) {
               phaseRef.current = 'complete';
               dragon.textures = textures.idle;
-              dragon.animationSpeed = 0.3;
+              dragon.animationSpeed = 0.15;
               dragon.loop = true;
               dragon.play();
+              // Hide fire
+              fireOverlay.visible = false;
               cbRef.current.onComplete();
             }
             break;
@@ -308,7 +336,7 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
           case 'complete': {
             dragon.x = dragonRestX;
             dragon.y = dragonY;
-            dragon.scale.set(baseScale);
+            dragon.scale.set(-baseScale, baseScale);
 
             // Subtle puddle animation
             if (filterRef.current) {
@@ -318,7 +346,7 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
 
             // Maintain puddle shape
             if (spriteRef.current) {
-              const s = getImageScale(spriteRef.current, dragon, baseScale, isMobile, width);
+              const s = getImageScale(height, spriteRef.current.texture.width, spriteRef.current.texture.height);
               spriteRef.current.scale.x = s;
               spriteRef.current.scale.y = s * 0.35;
               spriteRef.current.x = imageX;
@@ -337,7 +365,7 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
         ) {
           spriteRef.current.x = imageX;
           spriteRef.current.y = imageY;
-          const s = getImageScale(spriteRef.current, dragon, baseScale, isMobile, width);
+          const s = getImageScale(height, spriteRef.current.texture.width, spriteRef.current.texture.height);
           spriteRef.current.scale.set(s);
         }
       });
@@ -360,6 +388,7 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
     flyProgressRef.current = 0;
     meltAmountRef.current = 0;
     if (dragonRef.current) dragonRef.current.visible = false;
+    if (fireRef.current) fireRef.current.visible = false;
 
     const loadTexture = async () => {
       try {
@@ -418,14 +447,12 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
         sprite.filters = [filter];
         filterRef.current = filter;
         spriteRef.current = sprite;
-        appRef.current!.stage.addChild(sprite);
 
-        // Dragon renders on top of image
-        if (dragonRef.current) {
-          appRef.current!.stage.addChild(dragonRef.current);
-        }
+        // Z-order: image (back) → fire overlay → dragon (front)
+        const stage = appRef.current!.stage;
+        stage.addChildAt(sprite, 0);
 
-        // If isMelting is already true (texture loaded after flag was set), start now
+        // If isMelting is already true, start now
         if (isMeltingRef.current) startSequence();
       } catch (err) {
         console.error('Failed to load texture for canvas', err);
@@ -437,3 +464,10 @@ export const SmelterCanvas: React.FC<SmelterCanvasProps> = ({
 
   return <div ref={containerRef} className="absolute inset-0 overflow-hidden" />;
 };
+
+/** Scale so the image's largest dimension = 35% of canvas height */
+function getImageScale(canvasHeight: number, texW: number, texH: number): number {
+  const targetSize = canvasHeight * 0.35;
+  const maxDim = Math.max(texW, texH);
+  return maxDim > 0 ? targetSize / maxDim : 1;
+}
