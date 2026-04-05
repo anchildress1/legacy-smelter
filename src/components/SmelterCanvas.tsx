@@ -412,7 +412,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
             }
 
             // Image positioning (pre-melt phases)
-            if (spriteRef.current && phaseRef.current === 'flying_in') {
+            if (spriteRef.current && (phaseRef.current === 'flying_in' || phaseRef.current === 'landing')) {
               spriteRef.current.x = imageX;
               spriteRef.current.y = imageY;
               spriteRef.current.scale.set(imgScale(baseScale, spriteRef.current));
