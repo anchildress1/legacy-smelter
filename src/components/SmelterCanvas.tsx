@@ -341,7 +341,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 if (!dragon.playing) {
                   phaseRef.current = 'fire_breathing';
                   meltAmountRef.current = 0;
-                  setDragonTex(textures.flame, true);
+                  setDragonTex(textures.flame, false); // play once, not loop
 
                   // Apply pre-created melt filter to image
                   if (spriteRef.current && filterRef.current) {
@@ -358,7 +358,11 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 dragon.y = dragonY;
                 dragon.scale.set(-baseScale, baseScale);
                 dragon.scale.y = baseScale * (1 + Math.sin(time * 5) * 0.05);
-                if (!dragon.playing) dragon.play();
+
+                // When flame animation finishes, return to idle (melt continues)
+                if (!dragon.playing && dragon.textures === textures.flame) {
+                  setDragonTex(textures.idle, true);
+                }
 
                 // Advance melt
                 meltAmountRef.current += MELT_SPEED * ticker.deltaTime;
