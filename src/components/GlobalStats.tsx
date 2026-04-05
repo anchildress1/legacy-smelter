@@ -12,7 +12,7 @@ export const GlobalStats: React.FC<GlobalStatsProps> = ({ totalPixels }) => {
     <div className="modern-card p-6 relative overflow-hidden">
       <div className="hazard-stripe h-2 absolute top-0 left-0 w-full" />
       <div className="mt-2">
-        <h3 className="text-acid-green font-mono text-xs uppercase tracking-widest mb-1">
+        <h3 className="neon-label text-acid-green font-mono text-xs uppercase tracking-widest mb-1">
           GLOBAL SMELT ACCUMULATION
         </h3>
         <div className="text-4xl font-extrabold font-mono text-steel-blue tracking-tighter">

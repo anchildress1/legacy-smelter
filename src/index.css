@@ -4,13 +4,16 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  
+
+  /* 3-color accent system — each color has one semantic role:
+     hazard-yellow  →  industrial/danger: title brand, hazard stripes, CTA buttons
+     steel-blue     →  system/data: stat readouts, spinners, status chrome
+     acid-green     →  output/labels: section headers only (the toxic slag) */
   --color-concrete: #18181b;
   --color-concrete-light: #27272a;
-  --color-hazard-yellow: #ffe200;
+  --color-hazard-yellow: #ffd700;
   --color-steel-blue: #38bdf8;
   --color-acid-green: #39ff14;
-  --color-neon-orange: #ff6b00;
 }
 
 @layer base {
@@ -23,18 +26,24 @@
   .modern-card {
     @apply bg-concrete-light border border-zinc-700 shadow-xl rounded-xl;
   }
-  
+
   .modern-button {
-    @apply bg-hazard-yellow text-zinc-950 font-bold px-6 py-3 rounded-lg shadow-md hover:bg-yellow-400 active:scale-95 transition-all uppercase tracking-wide;
+    @apply bg-hazard-yellow text-zinc-950 font-bold px-6 py-3 rounded-lg shadow-md hover:brightness-110 active:scale-95 transition-all uppercase tracking-wide;
   }
-  
+
   .hazard-stripe {
     background: repeating-linear-gradient(
       -45deg,
-      #ffe200,
-      #ffe200 10px,
+      #ffd700,
+      #ffd700 10px,
       #18181b 10px,
       #18181b 20px
     );
+  }
+
+  /* Subtle neon glow for acid-green section headers.
+     Low-opacity shadow reads as neon without fatiguing the eye. */
+  .neon-label {
+    text-shadow: 0 0 10px rgba(57, 255, 20, 0.45);
   }
 }
