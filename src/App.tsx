@@ -263,7 +263,6 @@ export default function App({ onNavigateManifest }: AppProps) {
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
-      {/* Header — clean original style */}
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
         <div className="max-w-7xl mx-auto w-full flex justify-between items-center px-6 py-4">
           <div>
@@ -282,6 +281,17 @@ export default function App({ onNavigateManifest }: AppProps) {
               <ScrollText size={14} />
               INCIDENT MANIFEST
             </button>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <div className="font-mono font-extrabold text-hazard-amber text-lg leading-none tracking-tight">
+                  {formatted.value} <span className="text-xs text-stone-gray font-bold">{formatted.unit}</span>
+                </div>
+                <div className="text-[10px] font-mono text-stone-gray uppercase tracking-widest mt-0.5">
+                  DECOMMISSION INDEX
+                </div>
+              </div>
+              <div className="hazard-stripe w-2 h-10 rounded-sm shrink-0" aria-hidden="true" />
+            </div>
           </div>
         </div>
       </header>
@@ -314,7 +324,7 @@ export default function App({ onNavigateManifest }: AppProps) {
             <input type="file" ref={cameraInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" capture="environment" />
 
             {/* Animation Window */}
-            <div className="modern-card aspect-video relative overflow-hidden bg-concrete">
+            <div className="modern-card aspect-video relative overflow-hidden">
               {/* Camera overlay */}
               {isCameraActive && (
                 <div className="absolute inset-0 bg-black z-30">
@@ -346,19 +356,14 @@ export default function App({ onNavigateManifest }: AppProps) {
                 onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
               />
 
-              {/* Empty state overlay — sits on top of canvas until image is loaded */}
+              {/* Status overlay — shows while idle */}
               {!currentImage && !isCameraActive && (
                 <div className="absolute inset-0 flex items-end justify-start p-5 pointer-events-none">
-                  <div>
-                    <p className="text-stone-gray font-mono text-xs uppercase">
-                      INPUT LEGACY INFRA FOR HOTFIX
-                    </p>
-                    <div className="flex gap-2 items-center mt-2">
-                      <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse" />
-                      <span className="text-[10px] font-mono text-stone-gray uppercase">
-                        HOTFIX STATUS: NOMINAL
-                      </span>
-                    </div>
+                  <div className="flex gap-2 items-center">
+                    <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse" />
+                    <span className="text-[10px] font-mono text-stone-gray uppercase">
+                      HOTFIX STATUS: NOMINAL
+                    </span>
                   </div>
                 </div>
               )}
@@ -415,23 +420,8 @@ export default function App({ onNavigateManifest }: AppProps) {
             )}
           </div>
 
-          {/* Right Column: Global Stats + Recent Incidents */}
-          <div className="md:col-span-5 space-y-4">
-            {/* Stats card — compact inline below md, full card at md+ */}
-            <div className="modern-card relative overflow-hidden">
-              <div className="hazard-stripe h-1.5 w-full" />
-              <div className="p-4 md:p-5">
-                <h2 className="text-hazard-amber font-mono text-[10px] uppercase tracking-widest mb-1">
-                  DECOMMISSION INDEX
-                </h2>
-                <div className="text-3xl md:text-4xl font-extrabold font-mono text-hazard-amber tracking-tighter">
-                  {formatted.value}
-                  <span className="text-sm ml-2 text-stone-gray">{formatted.unit}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Recent incidents — first item stays visible on mobile for quicker discovery */}
+          {/* Right Column: Recent Incidents */}
+          <div className="md:col-span-5">
             <div>
               <div className="flex justify-between items-center mb-3">
                 <h2 className="text-hazard-amber font-mono text-xs md:text-sm uppercase tracking-wide md:tracking-widest font-bold">
@@ -455,7 +445,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                     <button
                       key={log.id}
                       onClick={() => setSelectedRecentLog(log)}
-                      className={`modern-card relative overflow-hidden w-full text-left hover:border-hazard-amber/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${visibilityClass}`}
+                      className={`modern-card relative overflow-hidden w-full text-left hover:border-hazard-amber/40 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${visibilityClass}`}
                       aria-label={`Open incident report: ${log.legacy_infra_class || log.incident_feed_summary}`}
                     >
                       {/* Color strip */}
@@ -464,22 +454,34 @@ export default function App({ onNavigateManifest }: AppProps) {
                           <div key={idx} className="flex-1" style={{ backgroundColor: col }} />
                         ))}
                       </div>
-                      <div className="p-3 flex-1 min-w-0">
-                        {log.legacy_infra_class && (
-                          <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide md:tracking-widest">
-                            {log.legacy_infra_class}
-                          </p>
-                        )}
-                        <p className="text-ash-white font-mono text-xs leading-snug mt-0.5 line-clamp-2">
-                          {log.incident_feed_summary}
-                        </p>
-                        <div className="mt-1.5 flex justify-between items-end">
-                          <span className="text-hazard-amber font-mono text-xs font-bold">
-                            {fmt.value} {fmt.unit}
+                      <div className="p-4 flex-1 min-w-0">
+                        <div className="flex justify-between items-start gap-4">
+                          <div className="min-w-0 flex-1">
+                            {log.legacy_infra_class && (
+                              <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide md:tracking-widest">
+                                {log.legacy_infra_class}
+                              </p>
+                            )}
+                            <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-2">
+                              {log.incident_feed_summary}
+                            </p>
+                          </div>
+                          <span className="text-stone-gray group-hover:text-hazard-amber font-mono text-xs uppercase tracking-wide shrink-0 mt-1 transition-colors">
+                            INSPECT
                           </span>
-                          <span className="text-stone-gray font-mono text-xs">
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 items-end">
+                          <span className="text-hazard-amber font-mono text-xs font-bold">
+                            {fmt.value} {fmt.unit} THERMALLY DECOMMISSIONED
+                          </span>
+                          {log.severity && (
+                            <span className="text-stone-gray font-mono text-xs">
+                              {log.severity}
+                            </span>
+                          )}
+                          <span className="text-stone-gray font-mono text-xs ml-auto">
                             {log.timestamp?.toDate
-                              ? new Date(log.timestamp.toDate()).toLocaleTimeString()
+                              ? new Date(log.timestamp.toDate()).toLocaleString()
                               : '—'}
                           </span>
                         </div>
@@ -488,8 +490,11 @@ export default function App({ onNavigateManifest }: AppProps) {
                   );
                 })}
                 {recentLogs.length === 0 && (
-                  <div className="text-stone-gray font-mono text-center py-6 text-xs uppercase">
-                    NO INCIDENTS ON RECORD. HOTFIX STATUS: PENDING
+                  <div className="modern-card p-12 text-center">
+                    <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
+                    <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
+                      NO INCIDENTS ON RECORD.
+                    </p>
                   </div>
                 )}
               </div>
