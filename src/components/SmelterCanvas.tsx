@@ -175,6 +175,10 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         await readyPromiseRef.current;
         const state = ps.current!;
 
+        // Destroy old filters before creating new ones (GPU memory)
+        if (puddleFilterRef.current) { puddleFilterRef.current.destroy(); puddleFilterRef.current = null; }
+        if (meltFilterRef.current) { meltFilterRef.current.destroy(); meltFilterRef.current = null; }
+
         // Pick 3 colors for puddle
         const palette = getFiveDistinctColors(colors);
         const shuffled = [...palette].sort(() => Math.random() - 0.5);
@@ -242,6 +246,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
 
         if (spriteRef.current) {
           state.app.stage.removeChild(spriteRef.current);
+          spriteRef.current.texture.destroy(true);
           spriteRef.current = null;
         }
 
@@ -298,8 +303,8 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
           `/assets/liquid/bubbling-puddle/p${i + 1}.png`);
 
         await PIXI.Assets.load([
-          ...dragonPaths.fly, ...dragonPaths.land, ...dragonPaths.idle, ...dragonPaths.flame,
-          ...puddlePaths,
+          ...dragonPaths.fly, ...dragonPaths.land, ...dragonPaths.idle,
+          ...dragonPaths.flame, ...puddlePaths,
         ]);
         if (destroyed) { app.destroy(); return; }
 

@@ -8,9 +8,7 @@ import {
   orderBy,
   limit,
   doc,
-  getDoc,
   setDoc,
-  updateDoc,
   increment,
   serverTimestamp
 } from './firebase';
@@ -62,6 +60,15 @@ export default function App() {
     return () => {
       unsubscribeLogs();
       unsubscribeStats();
+    };
+  }, []);
+
+  // Stop camera on unmount
+  useEffect(() => {
+    return () => {
+      if (videoRef.current?.srcObject) {
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      }
     };
   }, []);
 
