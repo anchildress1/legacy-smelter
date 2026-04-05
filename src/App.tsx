@@ -47,6 +47,8 @@ export default function App({ onNavigateManifest }: AppProps) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<SmelterCanvasHandle>(null);
+  const activeRequestIdRef = useRef(0);
+  const analysisRef = useRef<SmeltAnalysis | null>(null);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
@@ -123,12 +125,16 @@ export default function App({ onNavigateManifest }: AppProps) {
   };
 
   const processImage = async (base64: string, mimeType: string) => {
+    const requestId = ++activeRequestIdRef.current;
+
     if (import.meta.env.DEV) console.log("Processing image...", mimeType);
     setCurrentImage(base64);
     setIsComplete(false);
     setShowReport(false);
     setSelectedRecentLog(null);
     setAnalysisError(null);
+    setAnalysis(null);
+    analysisRef.current = null;
     setLoadingPostMortem(false);
     setIsPlaying(false);
     setIsAnalyzing(true);
@@ -141,6 +147,7 @@ export default function App({ onNavigateManifest }: AppProps) {
     try {
       result = await analyzeLegacyTech(base64Data, mimeType);
     } catch (error) {
+      if (requestId !== activeRequestIdRef.current) return;
       console.error("Gemini analysis failed", error);
       setIsAnalyzing(false);
       setCurrentImage(null);
@@ -148,8 +155,10 @@ export default function App({ onNavigateManifest }: AppProps) {
       return;
     }
 
+    if (requestId !== activeRequestIdRef.current) return;
     if (import.meta.env.DEV) console.log("Analysis complete:", result);
     setAnalysis(result);
+    analysisRef.current = result;
     setIsAnalyzing(false);
 
     await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
@@ -178,17 +187,18 @@ export default function App({ onNavigateManifest }: AppProps) {
     purrSound.play();
     setIsPlaying(false);
 
-    if (isComplete || !analysis) return;
+    const completedAnalysis = analysisRef.current;
+    if (isComplete || !completedAnalysis) return;
 
     setLoadingPostMortem(true);
 
     try {
-      const colors = analysis.dominantColors;
-      const box = analysis.subjectBox;
+      const colors = completedAnalysis.dominantColors;
+      const box = completedAnalysis.subjectBox;
       const logRef = doc(collection(db, 'incident_logs'));
       await setDoc(logRef, {
-        pixel_count: analysis.pixelCount,
-        damage_report: analysis.damageReport,
+        pixel_count: completedAnalysis.pixelCount,
+        damage_report: completedAnalysis.damageReport,
         color_1: colors[0] || '',
         color_2: colors[1] || '',
         color_3: colors[2] || '',
@@ -198,27 +208,27 @@ export default function App({ onNavigateManifest }: AppProps) {
         subject_box_xmin: box[1] ?? 100,
         subject_box_ymax: box[2] ?? 900,
         subject_box_xmax: box[3] ?? 900,
-        legacy_infra_class: analysis.legacyInfraClass,
-        legacy_infra_description: analysis.legacyInfraDescription,
-        palette_name: analysis.paletteName,
-        cursed_dx: analysis.cursedDx,
-        smelt_rating: analysis.smeltRating,
-        dominant_contamination: analysis.dominantContamination,
-        secondary_contamination: analysis.secondaryContamination,
-        root_cause: analysis.rootCause,
-        salvageability: analysis.salvageability,
-        museum_caption: analysis.museumCaption,
-        og_headline: analysis.ogHeadline,
-        og_description: analysis.ogDescription,
-        share_quote: analysis.shareQuote,
-        anon_handle: analysis.anonHandle,
+        legacy_infra_class: completedAnalysis.legacyInfraClass,
+        legacy_infra_description: completedAnalysis.legacyInfraDescription,
+        palette_name: completedAnalysis.paletteName,
+        cursed_dx: completedAnalysis.cursedDx,
+        smelt_rating: completedAnalysis.smeltRating,
+        dominant_contamination: completedAnalysis.dominantContamination,
+        secondary_contamination: completedAnalysis.secondaryContamination,
+        root_cause: completedAnalysis.rootCause,
+        salvageability: completedAnalysis.salvageability,
+        museum_caption: completedAnalysis.museumCaption,
+        og_headline: completedAnalysis.ogHeadline,
+        og_description: completedAnalysis.ogDescription,
+        share_quote: completedAnalysis.shareQuote,
+        anon_handle: completedAnalysis.anonHandle,
         timestamp: serverTimestamp(),
         uid: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
       });
 
       const statsRef = doc(db, 'global_stats', 'main');
       await setDoc(statsRef, {
-        total_pixels_melted: increment(analysis.pixelCount)
+        total_pixels_melted: increment(completedAnalysis.pixelCount)
       }, { merge: true });
 
       setIsComplete(true);
