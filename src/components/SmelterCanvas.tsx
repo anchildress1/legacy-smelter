@@ -13,7 +13,7 @@ interface SmelterCanvasProps {
   onFireStart?: () => void;
 }
 
-type AnimPhase = 'empty' | 'flying_in' | 'landing' | 'fire_breathing' | 'melting' | 'complete';
+type AnimPhase = 'empty' | 'flying_in' | 'landing' | 'melting' | 'complete';
 
 const DRAGON_TEX_H = 672;
 const ANIM_SPEED = 0.2;
@@ -290,33 +290,17 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 dragon.scale.set(-baseScale, baseScale);
 
                 if (!dragon.playing) {
-                  phaseRef.current = 'fire_breathing';
-                  setDragonTex(textures.flame, false);
-                  cbRef.current.onFireStart?.();
-                }
-                break;
-              }
-
-              case 'fire_breathing': {
-                dragon.x = dragonRestX;
-                dragon.y = dragonY;
-                dragon.scale.set(-baseScale, baseScale);
-
-                // When flame animation finishes → start melting
-                if (!dragon.playing && dragon.textures === textures.flame) {
-                  setDragonTex(textures.idle, true);
+                  // Fire + melt start simultaneously
                   phaseRef.current = 'melting';
                   meltProgressRef.current = 0;
-
-                  // Apply burn mask to image
-                  if (spriteRef.current) {
-                    spriteRef.current.mask = burnMask;
-                  }
+                  setDragonTex(textures.flame, false);
 
                   // Tint liquid sprites with AI colors
-                  const [c1, c2, c3] = meltColorsRef.current;
+                  const [c1, c2] = meltColorsRef.current;
                   gooStream.tint = c1;
                   puddle.tint = c2;
+
+                  cbRef.current.onFireStart?.();
                 }
                 break;
               }
@@ -325,48 +309,41 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 dragon.x = dragonRestX;
                 dragon.y = dragonY;
                 dragon.scale.set(-baseScale, baseScale);
+
+                // When flame animation finishes, return to idle (melt continues)
+                if (!dragon.playing && dragon.textures === textures.flame) {
+                  setDragonTex(textures.idle, true);
+                }
                 if (!dragon.playing) dragon.play();
 
                 meltProgressRef.current += MELT_SPEED * ticker.deltaTime;
                 const mp = Math.min(meltProgressRef.current, 1);
 
-                // --- Image burn: left-to-right wipe (0.0 → 0.5) ---
-                const burnAmount = smoothstep(0, 0.5, mp);
+                // --- Image fade: alpha dissolve + orange tint + downward drift ---
+                const fadeAmount = smoothstep(0, 0.55, mp);
                 if (spriteRef.current) {
-                  if (burnAmount < 0.99) {
+                  if (fadeAmount < 0.99) {
                     const s = getImgScale(baseScale, spriteRef.current);
-                    const sw = spriteRef.current.texture.width * s;
-                    const sh = spriteRef.current.texture.height * s;
-                    const sx = imageX - sw / 2;
-                    const sy = imageY - sh / 2;
-                    const visW = sw * (1 - burnAmount);
-
-                    burnMask.clear();
-                    burnMask.rect(sx + sw * burnAmount, sy, visW, sh);
-                    burnMask.fill({ color: 0xffffff });
-
-                    // Tint toward orange as it burns
-                    const tintR = Math.round(255);
-                    const tintG = Math.round(255 - burnAmount * 155); // 255→100
-                    const tintB = Math.round(255 - burnAmount * 255); // 255→0
-                    spriteRef.current.tint = (tintR << 16) | (tintG << 8) | tintB;
+                    spriteRef.current.alpha = 1 - fadeAmount;
+                    // Tint toward orange as it dissolves
+                    const tintG = Math.round(255 - fadeAmount * 155);
+                    const tintB = Math.round(255 - fadeAmount * 255);
+                    spriteRef.current.tint = (0xff << 16) | (tintG << 8) | tintB;
                     spriteRef.current.x = imageX;
-                    spriteRef.current.y = imageY;
+                    spriteRef.current.y = imageY + fadeAmount * 40; // drift down
                     spriteRef.current.scale.set(s);
                   } else {
                     spriteRef.current.visible = false;
-                    spriteRef.current.mask = null;
                   }
                 }
 
-                // --- Goo stream: fade in then out (0.1 → 0.8) ---
-                const gooAlpha = smoothstep(0.1, 0.3, mp) * (1 - smoothstep(0.55, 0.8, mp));
+                // --- Goo stream: starts early with fire, fades out later ---
+                const gooAlpha = smoothstep(0.05, 0.25, mp) * (1 - smoothstep(0.55, 0.8, mp));
                 gooStream.visible = gooAlpha > 0.01;
                 if (gooStream.visible) {
                   if (!gooStream.playing) gooStream.play();
                   gooStream.alpha = gooAlpha;
 
-                  // Position: below image, stretching down to puddle
                   const imgS = spriteRef.current
                     ? getImgScale(baseScale, spriteRef.current) : baseScale * 0.3;
                   const imgH = spriteRef.current
@@ -381,8 +358,8 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                   gooStream.scale.set(streamScaleX, streamScaleY);
                 }
 
-                // --- Puddle: fade in and persist (0.3 → 1.0) ---
-                const puddleAlpha = smoothstep(0.3, 0.55, mp);
+                // --- Puddle: fades in and persists ---
+                const puddleAlpha = smoothstep(0.25, 0.5, mp);
                 puddle.visible = puddleAlpha > 0.01;
                 if (puddle.visible) {
                   if (!puddle.playing) puddle.play();
@@ -424,7 +401,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
             // Image positioning (pre-melt phases)
             if (
               spriteRef.current &&
-              (phaseRef.current === 'flying_in' || phaseRef.current === 'landing' || phaseRef.current === 'fire_breathing')
+              (phaseRef.current === 'flying_in' || phaseRef.current === 'landing')
             ) {
               spriteRef.current.x = imageX;
               spriteRef.current.y = imageY;
