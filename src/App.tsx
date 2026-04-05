@@ -16,7 +16,7 @@ import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
 import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
-import { formatPixels, getFiveDistinctColors } from './lib/utils';
+import { formatPixels, getFiveDistinctColors, getLogShareLinks } from './lib/utils';
 import { Camera, Upload, X, Zap, RotateCcw, ScrollText } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
@@ -32,7 +32,9 @@ interface AppProps {
 export default function App({ onNavigateManifest }: AppProps) {
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
   const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
+  const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [loadingPostMortem, setLoadingPostMortem] = useState(false);
@@ -57,7 +59,7 @@ export default function App({ onNavigateManifest }: AppProps) {
     });
 
     const logsQuery = query(
-      collection(db, 'smelt_logs'),
+      collection(db, 'incident_logs'),
       orderBy('timestamp', 'desc'),
       limit(3)
     );
@@ -65,7 +67,7 @@ export default function App({ onNavigateManifest }: AppProps) {
       const entries = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SmeltLog));
       setRecentLogs(entries);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'smelt_logs');
+      handleFirestoreError(error, OperationType.LIST, 'incident_logs');
     });
 
     return () => { unsubStats(); unsubLogs(); };
@@ -82,8 +84,13 @@ export default function App({ onNavigateManifest }: AppProps) {
         }
       }, 100);
     } catch (err) {
-      console.error("Camera access denied", err);
-      cameraInputRef.current?.click();
+      const name = err instanceof Error ? err.name : '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        cameraInputRef.current?.click();
+      } else {
+        console.error(`[App] Camera unavailable (${name || 'unknown'}):`, err);
+        setAnalysisError('CAMERA UNAVAILABLE. USE THE PROCESS ARTIFACT BUTTON INSTEAD.');
+      }
     }
   };
 
@@ -107,6 +114,10 @@ export default function App({ onNavigateManifest }: AppProps) {
         const base64 = canvas.toDataURL('image/jpeg');
         stopCamera();
         processImage(base64, 'image/jpeg');
+      } else {
+        console.error('[App] captureImage: failed to get 2D canvas context');
+        setAnalysisError('CAMERA CAPTURE FAILED. USE THE PROCESS ARTIFACT BUTTON INSTEAD.');
+        stopCamera();
       }
     }
   };
@@ -116,6 +127,8 @@ export default function App({ onNavigateManifest }: AppProps) {
     setCurrentImage(base64);
     setIsComplete(false);
     setShowReport(false);
+    setSelectedRecentLog(null);
+    setAnalysisError(null);
     setLoadingPostMortem(false);
     setIsPlaying(false);
     setIsAnalyzing(true);
@@ -123,18 +136,23 @@ export default function App({ onNavigateManifest }: AppProps) {
     fireSound.stop();
     purrSound.stop();
 
+    const base64Data = base64.split(',')[1];
+    let result: SmeltAnalysis;
     try {
-      const base64Data = base64.split(',')[1];
-      const result = await analyzeLegacyTech(base64Data, mimeType);
-      if (import.meta.env.DEV) console.log("Analysis complete:", result);
-      setAnalysis(result);
-      setIsAnalyzing(false);
-
-      await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
+      result = await analyzeLegacyTech(base64Data, mimeType);
     } catch (error) {
-      console.error("Analysis failed", error);
+      console.error("Gemini analysis failed", error);
       setIsAnalyzing(false);
+      setCurrentImage(null);
+      setAnalysisError('GEMINI ANALYSIS FAILED. CHECK API KEY AND RETRY.');
+      return;
     }
+
+    if (import.meta.env.DEV) console.log("Analysis complete:", result);
+    setAnalysis(result);
+    setIsAnalyzing(false);
+
+    await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,6 +164,10 @@ export default function App({ onNavigateManifest }: AppProps) {
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
       processImage(base64, file.type);
+    };
+    reader.onerror = () => {
+      console.error('[App] FileReader failed:', reader.error);
+      setAnalysisError('FILE READ FAILED. THE FILE MAY BE CORRUPT OR INACCESSIBLE.');
     };
     reader.readAsDataURL(file);
   };
@@ -163,7 +185,7 @@ export default function App({ onNavigateManifest }: AppProps) {
     try {
       const colors = analysis.dominantColors;
       const box = analysis.subjectBox;
-      const logRef = doc(collection(db, 'smelt_logs'));
+      const logRef = doc(collection(db, 'incident_logs'));
       await setDoc(logRef, {
         pixel_count: analysis.pixelCount,
         damage_report: analysis.damageReport,
@@ -178,8 +200,6 @@ export default function App({ onNavigateManifest }: AppProps) {
         subject_box_xmax: box[3] ?? 900,
         legacy_infra_class: analysis.legacyInfraClass,
         legacy_infra_description: analysis.legacyInfraDescription,
-        visual_summary: analysis.visualSummary,
-        confidence: analysis.confidence,
         palette_name: analysis.paletteName,
         cursed_dx: analysis.cursedDx,
         smelt_rating: analysis.smeltRating,
@@ -209,7 +229,7 @@ export default function App({ onNavigateManifest }: AppProps) {
       }, 2200);
     } catch (error) {
       setLoadingPostMortem(false);
-      handleFirestoreError(error, OperationType.WRITE, 'smelt_logs / global_stats');
+      handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
     }
   };
 
@@ -239,9 +259,14 @@ export default function App({ onNavigateManifest }: AppProps) {
       {/* Header — clean original style */}
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
         <div className="max-w-7xl mx-auto w-full flex justify-between items-center px-6 py-4">
-          <h1 className="text-2xl font-black font-mono tracking-tighter uppercase">
-            LEGACY <span className="text-hazard-amber">SMELTER</span>
-          </h1>
+          <div>
+            <h1 className="text-2xl font-black font-mono tracking-tighter uppercase">
+              LEGACY <span className="text-hazard-amber">SMELTER</span>
+            </h1>
+            <p className="text-stone-gray font-mono text-[10px] uppercase tracking-widest mt-0.5">
+              If a bug exists, apply Hotfix.
+            </p>
+          </div>
           <div className="flex items-center gap-4">
             <button
               onClick={onNavigateManifest}
@@ -250,9 +275,6 @@ export default function App({ onNavigateManifest }: AppProps) {
               <ScrollText size={14} />
               INCIDENT MANIFEST
             </button>
-            <span className="text-stone-gray font-mono text-xs tracking-widest hidden sm:inline">
-              [ ACCESS_GRANTED ]
-            </span>
           </div>
         </div>
       </header>
@@ -269,14 +291,14 @@ export default function App({ onNavigateManifest }: AppProps) {
                 className="modern-button flex-1 flex items-center justify-center gap-2"
               >
                 <Upload size={18} />
-                SUBMIT ARTIFACT
+                PROCESS ARTIFACT
               </button>
               <button
                 onClick={startCamera}
                 className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-concrete-border hover:brightness-110"
               >
                 <Camera size={18} />
-                DEPLOY FIELD SCANNER
+                DEPLOY SCANNER
               </button>
             </div>
 
@@ -293,6 +315,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                   <button
                     onClick={stopCamera}
                     className="absolute top-4 right-4 w-10 h-10 bg-concrete-mid/80 rounded-full flex items-center justify-center text-stone-gray hover:text-ash-white z-50"
+                    aria-label="Close camera capture"
                   >
                     <X size={20} />
                   </button>
@@ -300,6 +323,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                     <button
                       onClick={captureImage}
                       className="w-16 h-16 rounded-full border-4 border-white flex items-center justify-center bg-white/20 hover:bg-white/40 backdrop-blur-sm transition-all"
+                      aria-label="Capture photo"
                     >
                       <div className="w-12 h-12 bg-white rounded-full" />
                     </button>
@@ -312,8 +336,8 @@ export default function App({ onNavigateManifest }: AppProps) {
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center">
                     <Zap className="text-hazard-amber mx-auto mb-3" size={32} />
-                    <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
-                      FURNACE IDLE // AWAITING CONDEMNED INFRASTRUCTURE
+                    <p className="text-stone-gray font-mono text-xs uppercase">
+                      INPUT LEGACY HARDWARE FOR SMELTING
                     </p>
                   </div>
                 </div>
@@ -331,10 +355,10 @@ export default function App({ onNavigateManifest }: AppProps) {
 
               {/* Analyzing overlay */}
               {isAnalyzing && (
-                <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
+                <div role="status" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
                   <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
-                  <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse tracking-wider">
-                    GEMINI_CORE: SCANNING CONDEMNED INFRASTRUCTURE...
+                  <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
+                    GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
                   </p>
                 </div>
               )}
@@ -358,7 +382,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                     className="modern-button flex items-center gap-2 text-sm bg-concrete/80 text-hazard-amber border border-concrete-border backdrop-blur-sm hover:bg-concrete/90"
                   >
                     <RotateCcw size={16} aria-hidden="true" />
-                    REPLAY
+                    REPLAY SMELT
                   </button>
                   {!showReport && (
                     <button
@@ -371,6 +395,14 @@ export default function App({ onNavigateManifest }: AppProps) {
                 </div>
               )}
             </div>
+
+            {analysisError && (
+              <div className="modern-card p-4" role="alert" aria-live="assertive">
+                <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">
+                  {analysisError}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Right Column: Global Stats + Recent Incidents */}
@@ -398,29 +430,32 @@ export default function App({ onNavigateManifest }: AppProps) {
               </div>
             </div>
 
-            {/* Recent incidents — hidden below md to save vertical space in embed/stacked view */}
-            <div className="hidden md:block">
+            {/* Recent incidents — first item stays visible on mobile for quicker discovery */}
+            <div>
               <div className="flex justify-between items-center mb-3">
-                <h2 className="text-hazard-amber font-mono text-sm uppercase tracking-widest font-bold">
+                <h2 className="text-hazard-amber font-mono text-xs md:text-sm uppercase tracking-wide md:tracking-widest font-bold">
                   RECENT INCIDENTS
                 </h2>
                 <button
                   onClick={onNavigateManifest}
-                  className="text-stone-gray hover:text-hazard-amber transition-colors font-mono text-[10px] uppercase tracking-wider"
+                  className="text-stone-gray hover:text-hazard-amber transition-colors font-mono text-xs md:text-[10px] uppercase tracking-wide md:tracking-wider"
                 >
                   VIEW ALL
                 </button>
               </div>
               <div className="space-y-3">
-                {recentLogs.map((log) => {
+                {recentLogs.map((log, index) => {
                   const fmt = formatPixels(log.pixel_count);
                   const rawColors = [log.color_1, log.color_2, log.color_3, log.color_4, log.color_5];
                   const finalColors = getFiveDistinctColors(rawColors);
+                  const visibilityClass = index === 0 ? 'flex' : 'hidden md:flex';
 
                   return (
-                    <div
+                    <button
                       key={log.id}
-                      className="modern-card relative overflow-hidden flex"
+                      onClick={() => setSelectedRecentLog(log)}
+                      className={`modern-card relative overflow-hidden w-full text-left hover:border-hazard-amber/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${visibilityClass}`}
+                      aria-label={`Open incident report: ${log.legacy_infra_class || log.damage_report}`}
                     >
                       {/* Color strip */}
                       <div className="w-2 shrink-0 flex flex-col" aria-hidden="true">
@@ -430,7 +465,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                       </div>
                       <div className="p-3 flex-1 min-w-0">
                         {log.legacy_infra_class && (
-                          <p className="text-hazard-amber font-mono text-[10px] uppercase tracking-widest">
+                          <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide md:tracking-widest">
                             {log.legacy_infra_class}
                           </p>
                         )}
@@ -438,17 +473,17 @@ export default function App({ onNavigateManifest }: AppProps) {
                           {log.damage_report}
                         </p>
                         <div className="mt-1.5 flex justify-between items-end">
-                          <span className="text-hazard-amber font-mono text-[10px] font-bold">
+                          <span className="text-hazard-amber font-mono text-xs font-bold">
                             {fmt.value} {fmt.unit}
                           </span>
-                          <span className="text-stone-gray font-mono text-[10px]">
+                          <span className="text-stone-gray font-mono text-xs">
                             {log.timestamp?.toDate
                               ? new Date(log.timestamp.toDate()).toLocaleTimeString()
                               : '—'}
                           </span>
                         </div>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
                 {recentLogs.length === 0 && (
@@ -476,6 +511,14 @@ export default function App({ onNavigateManifest }: AppProps) {
       </footer>
 
       {/* Post-mortem overlay */}
+      {selectedRecentLog && (
+        <IncidentReportOverlay
+          log={selectedRecentLog}
+          shareLinks={getLogShareLinks(selectedRecentLog)}
+          onClose={() => setSelectedRecentLog(null)}
+        />
+      )}
+
       {showReport && analysis && (
         <IncidentReportOverlay
           analysis={analysis}

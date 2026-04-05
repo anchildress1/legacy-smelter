@@ -9,8 +9,6 @@ const ai = new GoogleGenAI({ apiKey });
 export interface SmeltAnalysis {
   legacyInfraClass: string;
   legacyInfraDescription: string;
-  visualSummary: string;
-  confidence: number;
   dominantColors: string[];
   paletteName: string;
   cursedDx: string;
@@ -30,7 +28,6 @@ export interface SmeltAnalysis {
 }
 
 // Static fallback palette — used when programmatic extraction yields too few colors
-// or when AI confidence is low and we need to blend
 const FALLBACK_COLORS_VIBRANT = ["#ff6b35", "#00c3f5", "#4db542", "#fb0094", "#ffc800"];
 
 function extractDominantColors(img: HTMLImageElement, count: number): string[] {
@@ -110,7 +107,7 @@ function extractDominantColors(img: HTMLImageElement, count: number): string[] {
 
 const GEMINI_PROMPT = `You are the analysis engine for **Legacy Smelter**, a satirical web app that "solves" problematic legacy systems by smelting screenshots and old technology into molten slag.
 
-You will receive an uploaded image. Treat it as a piece of cursed legacy infrastructure, unstable software, outdated hardware, or a suspiciously haunted technical artifact.
+You will receive an uploaded image. Treat it as a piece of cursed legacy infrastructure, unstable software, outdated hardware, or a suspiciously haunted technical artifact. Each submission becomes an official **incident report** filed in the Global Incident Manifest.
 
 Your task is to analyze the image and return a **single valid JSON object** matching the schema below.
 
@@ -121,8 +118,7 @@ Requirements:
 - Do not mention policy, safety, or that you are an AI.
 - Do not wrap output in markdown.
 - Do not add commentary outside the JSON.
-- If visual certainty is low, still make your best humorous classification while marking confidence appropriately.
-- The result should feel like an official damage report written by an overconfident enterprise disaster analyst who fully supports dragon-based remediation.
+- The result should feel like an official incident postmortem written by an overconfident enterprise disaster analyst who fully supports dragon-based remediation.
 - Also return a bounding box [ymin, xmin, ymax, xmax] using a 1000x1000 grid representing the primary subject of the image to smelt.
 
 Return the result in JSON format.`;
@@ -165,8 +161,6 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
         properties: {
           legacy_infra_class: { type: Type.STRING, description: "Short class name for the artifact as legacy infrastructure" },
           legacy_infra_description: { type: Type.STRING, description: "1-2 sentence description of what the artifact is and why it is smelt-worthy" },
-          visual_summary: { type: Type.STRING, description: "Short plain-language description of the visible contents" },
-          confidence: { type: Type.INTEGER, description: "0-100 confidence in visual interpretation" },
           dominant_hex_colors: {
             type: Type.ARRAY,
             items: { type: Type.STRING },
@@ -191,8 +185,8 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
           }
         },
         required: [
-          "legacy_infra_class", "legacy_infra_description", "visual_summary",
-          "confidence", "dominant_hex_colors",
+          "legacy_infra_class", "legacy_infra_description",
+          "dominant_hex_colors",
           "palette_name", "cursed_dx", "smelt_rating",
           "dominant_contamination", "secondary_contamination", "root_cause",
           "salvageability", "damage_report", "museum_caption",
@@ -205,28 +199,16 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
   const result = JSON.parse(response.text || "{}");
 
   // Colors: programmatic extraction is primary source of truth.
-  // AI colors are NOT used for rendering — only programmatic or static fallback.
-  // Blending heuristic: if confidence < 45, blend 2 programmatic with 3 static fallback.
-  const confidence = typeof result.confidence === "number" ? result.confidence : 50;
-
-  let finalColors: string[];
-  if (programmaticColors.length >= 3) {
-    if (confidence < 45) {
-      finalColors = [...programmaticColors.slice(0, 2), ...FALLBACK_COLORS_VIBRANT.slice(0, 3)];
-    } else {
-      finalColors = programmaticColors;
-    }
-  } else {
-    finalColors = FALLBACK_COLORS_VIBRANT;
-  }
+  // Deduplicate; if fewer than 5 distinct colors, fill from fallback.
+  const hexRegex = /^#([0-9a-f]{6})$/i;
+  const unique = Array.from(new Set(programmaticColors.filter(c => hexRegex.test(c))));
+  const finalColors = Array.from(new Set([...unique, ...FALLBACK_COLORS_VIBRANT])).slice(0, 5);
 
   const damageReport = String(result.damage_report || "LEGACY HARDWARE PURGED. SMELT IMMINENT.");
 
   return {
     legacyInfraClass: String(result.legacy_infra_class || "Unclassified Legacy Artifact"),
     legacyInfraDescription: String(result.legacy_infra_description || "Origin unknown. Smelt recommended."),
-    visualSummary: String(result.visual_summary || "Visual analysis inconclusive."),
-    confidence,
     dominantColors: finalColors,
     paletteName: String(result.palette_name || "Standard Slag Spectrum"),
     cursedDx: String(result.cursed_dx || "Chronic Legacy Retention"),

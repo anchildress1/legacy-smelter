@@ -15,8 +15,6 @@ export interface SmeltLog {
   subject_box_xmax: number;
   legacy_infra_class: string;
   legacy_infra_description: string;
-  visual_summary: string;
-  confidence: number;
   palette_name: string;
   cursed_dx: string;
   smelt_rating: string;

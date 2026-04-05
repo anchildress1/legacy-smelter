@@ -9,7 +9,7 @@ import {
   doc,
 } from '../firebase';
 import { SmeltLog, GlobalStats } from '../types';
-import { formatPixels, getFiveDistinctColors } from '../lib/utils';
+import { formatPixels, getFiveDistinctColors, getLogShareLinks } from '../lib/utils';
 import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
 import { IncidentReportOverlay } from './IncidentReportOverlay';
 import { Flame, ArrowLeft } from 'lucide-react';
@@ -25,7 +25,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
   useEffect(() => {
     const logsQuery = query(
-      collection(db, 'smelt_logs'),
+      collection(db, 'incident_logs'),
       orderBy('timestamp', 'desc'),
       limit(50)
     );
@@ -33,7 +33,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
       const entries = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SmeltLog));
       setLogs(entries);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'smelt_logs');
+      handleFirestoreError(error, OperationType.LIST, 'incident_logs');
     });
 
     const statsDoc = doc(db, 'global_stats', 'main');
@@ -69,7 +69,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
               <div className="font-mono font-extrabold text-hazard-amber text-lg leading-none tracking-tight">
                 {formatted.value} <span className="text-xs text-stone-gray font-bold">{formatted.unit}</span>
               </div>
-              <div className="text-[9px] font-mono text-stone-gray uppercase tracking-widest mt-0.5">
+              <div className="text-[11px] md:text-[10px] font-mono text-stone-gray uppercase tracking-wide md:tracking-widest mt-0.5">
                 CUMULATIVE THERMAL DESTRUCTION INDEX
               </div>
             </div>
@@ -84,7 +84,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           <h1 className="text-hazard-amber font-mono text-2xl uppercase tracking-widest font-black">
             GLOBAL INCIDENT MANIFEST
           </h1>
-          <p className="text-stone-gray font-mono text-[10px] uppercase tracking-wider mt-1">
+          <p className="text-stone-gray font-mono text-xs md:text-[11px] uppercase tracking-wide leading-relaxed mt-1">
             ARCHIVAL LOG OF ALL THERMAL DECOMMISSION EVENTS // SELECT ENTRY TO INSPECT FULL POSTMORTEM
           </p>
           <div className="hazard-stripe h-1 w-full mt-4 rounded-sm" />
@@ -114,7 +114,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
                   <div className="flex justify-between items-start gap-4">
                     <div className="min-w-0 flex-1">
                       {log.legacy_infra_class && (
-                        <p className="text-hazard-amber font-mono text-[10px] uppercase tracking-widest">
+                        <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide md:tracking-widest">
                           {log.legacy_infra_class}
                         </p>
                       )}
@@ -122,22 +122,22 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
                         {log.damage_report}
                       </p>
                     </div>
-                    <span className="text-stone-gray group-hover:text-hazard-amber font-mono text-[10px] uppercase tracking-wider shrink-0 mt-1 transition-colors">
+                    <span className="text-stone-gray group-hover:text-hazard-amber font-mono text-xs uppercase tracking-wide shrink-0 mt-1 transition-colors">
                       INSPECT
                     </span>
                   </div>
 
                   {/* Meta row */}
                   <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 items-end">
-                    <span className="text-hazard-amber font-mono text-[10px] font-bold">
+                    <span className="text-hazard-amber font-mono text-xs font-bold">
                       {fmt.value} {fmt.unit} THERMALLY DECOMMISSIONED
                     </span>
                     {log.smelt_rating && (
-                      <span className="text-stone-gray font-mono text-[10px]">
+                      <span className="text-stone-gray font-mono text-xs">
                         {log.smelt_rating}
                       </span>
                     )}
-                    <span className="text-stone-gray font-mono text-[10px] ml-auto">
+                    <span className="text-stone-gray font-mono text-xs ml-auto">
                       {log.timestamp?.toDate
                         ? new Date(log.timestamp.toDate()).toLocaleString()
                         : '—'}
@@ -175,6 +175,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
       {selectedLog && (
         <IncidentReportOverlay
           log={selectedLog}
+          shareLinks={getLogShareLinks(selectedLog)}
           onClose={() => setSelectedLog(null)}
         />
       )}
