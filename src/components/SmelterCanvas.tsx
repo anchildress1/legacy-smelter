@@ -88,7 +88,7 @@ const PUDDLE_FRAG = `
 const DRAGON_TEX_H = 672;
 const ANIM_SPEED = 0.2;
 const FLY_SPEED = 0.005;
-const MELT_SPEED = 0.0025; // ~6.7s — slow burn
+const MELT_SPEED = 0.008; // ~2s dissolve
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
