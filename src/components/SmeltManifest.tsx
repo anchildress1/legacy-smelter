@@ -9,7 +9,7 @@ interface SmeltManifestProps {
 export const SmeltManifest: React.FC<SmeltManifestProps> = ({ logs }) => {
   return (
     <div className="space-y-4">
-      <h2 className="neon-label text-acid-green font-mono text-xl uppercase tracking-widest border-b-2 border-zinc-800 pb-2">
+      <h2 className="text-steel-blue font-mono text-xl uppercase tracking-widest border-b-2 border-zinc-800 pb-2">
         GLOBAL SMELTING LOG
       </h2>
       <div className="space-y-4">
