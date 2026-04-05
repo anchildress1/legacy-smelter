@@ -202,16 +202,14 @@ export default function App() {
             <div className="flex gap-3">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isAnalyzing || isMelting}
-                className="modern-button flex-1 flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none"
+                className="modern-button flex-1 flex items-center justify-center gap-2"
               >
                 <Upload size={18} />
                 UPLOAD
               </button>
               <button
                 onClick={startCamera}
-                disabled={isAnalyzing || isMelting}
-                className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-concrete-border hover:brightness-110 disabled:opacity-40 disabled:pointer-events-none"
+                className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-concrete-border hover:brightness-110"
               >
                 <Camera size={18} />
                 CAMERA
