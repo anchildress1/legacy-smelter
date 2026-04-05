@@ -23,7 +23,7 @@ import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 // Audio
 const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false, volume: 0.5 });
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
-const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: true, volume: 0.4 });
+const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
 
 interface AppProps {
   onNavigateManifest: () => void;
@@ -338,15 +338,22 @@ export default function App({ onNavigateManifest }: AppProps) {
                 </div>
               )}
 
-              {/* Empty state */}
+              {/* PixiJS Canvas — always mounted so idle animation runs immediately */}
+              <SmelterCanvas
+                ref={canvasRef}
+                onComplete={handleSmeltComplete}
+                onFlyInStart={() => flyInSound.play()}
+                onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
+              />
+
+              {/* Empty state overlay — sits on top of canvas until image is loaded */}
               {!currentImage && !isCameraActive && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <Flame className="text-hazard-amber mx-auto mb-3" size={32} />
+                <div className="absolute inset-0 flex items-end justify-start p-5 pointer-events-none">
+                  <div>
                     <p className="text-stone-gray font-mono text-xs uppercase">
                       INPUT LEGACY INFRA FOR HOTFIX
                     </p>
-                    <div className="flex gap-2 items-center justify-center mt-3">
+                    <div className="flex gap-2 items-center mt-2">
                       <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse" />
                       <span className="text-[10px] font-mono text-stone-gray uppercase">
                         HOTFIX STATUS: NOMINAL
@@ -354,16 +361,6 @@ export default function App({ onNavigateManifest }: AppProps) {
                     </div>
                   </div>
                 </div>
-              )}
-
-              {/* PixiJS Canvas */}
-              {currentImage && (
-                <SmelterCanvas
-                  ref={canvasRef}
-                  onComplete={handleSmeltComplete}
-                  onFlyInStart={() => flyInSound.play()}
-                  onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
-                />
               )}
 
               {/* Analyzing overlay */}

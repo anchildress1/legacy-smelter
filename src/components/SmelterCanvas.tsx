@@ -371,8 +371,14 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
             const puddleY = height * 0.88;
 
             switch (phaseRef.current) {
-              case 'empty':
+              case 'empty': {
+                dragon.visible = true;
+                setDragonTex(textures.idle, true);
+                dragon.x = dragonRestX;
+                dragon.y = dragonY;
+                dragon.scale.set(-baseScale, baseScale);
                 break;
+              }
 
               case 'flying_in': {
                 dragon.visible = true;
