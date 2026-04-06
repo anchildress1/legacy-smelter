@@ -372,9 +372,10 @@ export default function App({ onNavigateManifest }: AppProps) {
 
               {/* Loading post-mortem overlay */}
               {loadingPostMortem && !showReport && (
-                <div className="absolute inset-x-0 bottom-0 z-40 flex items-end justify-center pb-6">
-                  <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border">
-                    <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse tracking-widest">
+                <div className="absolute inset-0 z-40 flex items-center justify-center">
+                  <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border flex items-center gap-3">
+                    <div className="w-4 h-4 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin shrink-0" />
+                    <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
                       COMPILING INCIDENT POSTMORTEM // STAND BY
                     </p>
                   </div>
