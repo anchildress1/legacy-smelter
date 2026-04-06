@@ -7,20 +7,33 @@ import './index.css';
 type Page = 'smelter' | 'manifest';
 
 function getPageFromHash(): Page {
-  return window.location.hash === '#manifest' ? 'manifest' : 'smelter';
+  try {
+    return window.location.hash === '#manifest' ? 'manifest' : 'smelter';
+  } catch {
+    return 'smelter';
+  }
 }
 
 function Root() {
   const [page, setPage] = useState<Page>(getPageFromHash);
 
   useEffect(() => {
-    const onHashChange = () => setPage(getPageFromHash());
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
+    const sync = () => setPage(getPageFromHash());
+    window.addEventListener('hashchange', sync);
+    window.addEventListener('popstate', sync);
+    return () => {
+      window.removeEventListener('hashchange', sync);
+      window.removeEventListener('popstate', sync);
+    };
   }, []);
 
   const navigateTo = useCallback((p: Page) => {
-    window.location.hash = p === 'smelter' ? '' : p;
+    if (p === 'smelter') {
+      // replaceState strips the hash without triggering hashchange or navigation
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    } else {
+      history.pushState(null, '', '#' + p);
+    }
     setPage(p);
     window.scrollTo(0, 0);
   }, []);
