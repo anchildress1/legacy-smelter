@@ -311,14 +311,14 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 <AlertTriangle size={10} aria-hidden="true" />
                 {report.severity}
               </span>
-              {report.timestamp && (
-                <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">
-                  {formatTimestamp(report.timestamp)}
-                </span>
-              )}
               <span className="text-hazard-amber font-mono text-xs font-bold">
                 {formatted.value} {formatted.unit}
               </span>
+              {report.timestamp && (
+                <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest ml-auto">
+                  {formatTimestamp(report.timestamp)}
+                </span>
+              )}
             </div>
           </div>
 
