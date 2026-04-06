@@ -57,10 +57,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
         <div className="max-w-5xl mx-auto w-full flex flex-col gap-3 px-4 py-4 sm:flex-row sm:justify-between sm:items-center sm:px-6">
           <div className="flex items-center gap-4">
-            <button
-              onClick={onNavigateHome}
-              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:rounded"
-            >
+            <button onClick={onNavigateHome} className="nav-btn">
               <ArrowLeft size={14} />
               RETURN TO SMELTER
             </button>

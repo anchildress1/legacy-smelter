@@ -35,8 +35,8 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
               {log.incident_feed_summary}
             </p>
           </div>
-          <span className="text-stone-gray group-hover:text-hazard-amber font-mono text-xs uppercase tracking-wide shrink-0 mt-1 transition-colors">
-            INSPECT
+          <span className="font-mono text-[10px] uppercase tracking-wider font-bold shrink-0 mt-0.5 bg-hazard-amber text-zinc-950 px-1.5 py-0.5 rounded">
+            {log.severity}
           </span>
         </div>
         <div className="mt-2 flex items-end gap-x-5 gap-y-1 flex-wrap">

@@ -364,10 +364,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
               </div>
               <div className="hazard-stripe w-2 h-10 rounded-sm shrink-0" aria-hidden="true" />
             </div>
-            <button
-              onClick={onNavigateManifest}
-              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:rounded"
-            >
+            <button onClick={onNavigateManifest} className="nav-btn">
               INCIDENT MANIFEST
               <ArrowRight size={14} />
             </button>
@@ -492,17 +489,10 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
           {/* Right Column: Recent Incidents */}
           <div className="md:col-span-5">
             <div>
-              <div className="flex justify-between items-center mb-3">
+              <div className="mb-3">
                 <h2 className="text-hazard-amber font-mono text-xs md:text-sm uppercase tracking-wide md:tracking-widest font-bold">
                   RECENT INCIDENTS
                 </h2>
-                <button
-                  onClick={onNavigateManifest}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-concrete-border bg-concrete-mid/60 px-2.5 py-1.5 text-[11px] font-mono uppercase tracking-wider text-stone-gray hover:text-hazard-amber hover:border-hazard-amber/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
-                >
-                  VIEW MANIFEST
-                  <ArrowRight size={12} aria-hidden="true" />
-                </button>
               </div>
               <div className="space-y-3">
                 {recentLogs.map((log) => (
