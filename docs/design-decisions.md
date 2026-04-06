@@ -17,9 +17,9 @@ This document records intentional changes made during development that diverge f
 
 | Spec | Current | Reason |
 |------|---------|--------|
-| Gemini 1.5 Flash Vision API | `gemini-2.0-flash-lite` | Lighter, cheaper model — stable production. |
-| Gemini extracts 5 dominant hex colors | Canvas pixel analysis extracts colors programmatically | Programmatic extraction is faster (no API round-trip), costs nothing, and produces more accurate color clusters. Gemini is used for the full incident report schema (17 fields). |
-| Simple damage report + bounding box | Enriched 17-field structured response | Expanded to include legacy_infra_class, cursed_dx, smelt_rating, contamination fields, OG share fields, museum captions, and more per `gemini-implementation-and-share-spec.md`. |
+| Gemini 1.5 Flash Vision API | `gemini-3.1-flash-lite-preview` | Lighter model — stable production. |
+| Gemini extracts 5 dominant hex colors | Canvas pixel analysis extracts colors programmatically | Programmatic extraction is faster (no API round-trip), costs nothing, and produces more accurate color clusters. Gemini is used for the full 16-field incident schema. |
+| Simple damage report + bounding box | Enriched 16-field structured response | Fields: legacy_infra_class, diagnosis, dominant_hex_colors, chromatic_profile, system_dx, severity, primary_contamination, contributing_factor, failure_origin, disposition, incident_feed_summary, archive_note, og_headline, share_quote, anon_handle, subject_box. Current prompt and schema in `src/services/geminiService.ts` and `docs/ai-prompt.md`. |
 
 ---
 
