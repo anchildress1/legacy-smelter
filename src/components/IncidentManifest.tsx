@@ -9,7 +9,8 @@ import {
   doc,
 } from '../firebase';
 import { SmeltLog, GlobalStats } from '../types';
-import { formatPixels, getFiveDistinctColors, getLogShareLinks, formatTimestamp } from '../lib/utils';
+import { formatPixels, getLogShareLinks } from '../lib/utils';
+import { IncidentLogCard } from './IncidentLogCard';
 import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
 import { IncidentReportOverlay } from './IncidentReportOverlay';
 import { Flame, ArrowLeft } from 'lucide-react';
@@ -92,56 +93,13 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
         {/* Log entries */}
         <div className="space-y-3">
-          {logs.map((log) => {
-            const fmt = formatPixels(log.pixel_count);
-            const rawColors = [log.color_1, log.color_2, log.color_3, log.color_4, log.color_5];
-            const finalColors = getFiveDistinctColors(rawColors);
-
-            return (
-              <button
-                key={log.id}
-                onClick={() => setSelectedLog(log)}
-                className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
-              >
-                {/* Color strip */}
-                <div className="w-2 shrink-0 flex flex-col" aria-hidden="true">
-                  {finalColors.map((col, idx) => (
-                    <div key={idx} className="flex-1" style={{ backgroundColor: col }} />
-                  ))}
-                </div>
-
-                <div className="p-4 flex-1 min-w-0">
-                  <div className="flex justify-between items-start gap-4">
-                    <div className="min-w-0 flex-1">
-                      {log.legacy_infra_class && (
-                        <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide md:tracking-widest">
-                          {log.legacy_infra_class}
-                        </p>
-                      )}
-                      <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-3">
-                        {log.incident_feed_summary}
-                      </p>
-                    </div>
-                    <span className="text-stone-gray group-hover:text-hazard-amber font-mono text-xs uppercase tracking-wide shrink-0 mt-1 transition-colors">
-                      INSPECT
-                    </span>
-                  </div>
-
-                  {/* Meta row */}
-                  <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 items-end">
-                    <span className="text-hazard-amber font-mono text-xs font-bold">
-                      {fmt.value} {fmt.unit}
-                    </span>
-                    <span className="text-stone-gray font-mono text-xs ml-auto">
-                      {log.timestamp?.toDate
-                        ? formatTimestamp(log.timestamp.toDate())
-                        : '—'}
-                    </span>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+          {logs.map((log) => (
+            <IncidentLogCard
+              key={log.id}
+              log={log}
+              onClick={() => setSelectedLog(log)}
+            />
+          ))}
 
           {logs.length === 0 && (
             <div className="modern-card p-12 text-center">
