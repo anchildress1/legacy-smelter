@@ -37,7 +37,8 @@ export default function App({ onNavigateManifest }: AppProps) {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
-  const [loadingPostMortem, setLoadingPostMortem] = useState(false);
+  const [isWritingData, setIsWritingData] = useState(false);
+  const [buttonsDelayed, setButtonsDelayed] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
@@ -49,6 +50,7 @@ export default function App({ onNavigateManifest }: AppProps) {
   const canvasRef = useRef<SmelterCanvasHandle>(null);
   const activeRequestIdRef = useRef(0);
   const analysisRef = useRef<SmeltAnalysis | null>(null);
+  const hasWrittenRef = useRef(false);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
@@ -135,7 +137,9 @@ export default function App({ onNavigateManifest }: AppProps) {
     setAnalysisError(null);
     setAnalysis(null);
     analysisRef.current = null;
-    setLoadingPostMortem(false);
+    hasWrittenRef.current = false;
+    setIsWritingData(false);
+    setButtonsDelayed(false);
     setIsPlaying(false);
     setIsAnalyzing(true);
     flyInSound.stop();
@@ -188,57 +192,68 @@ export default function App({ onNavigateManifest }: AppProps) {
     setIsPlaying(false);
 
     const completedAnalysis = analysisRef.current;
-    if (isComplete || !completedAnalysis) return;
+    if (!completedAnalysis) return;
 
-    setLoadingPostMortem(true);
+    // Always delay buttons — works for both first smelt and replay
+    setButtonsDelayed(true);
 
-    try {
-      const colors = completedAnalysis.dominantColors;
-      const box = completedAnalysis.subjectBox;
-      const logRef = doc(collection(db, 'incident_logs'));
-      await setDoc(logRef, {
-        pixel_count: completedAnalysis.pixelCount,
-        incident_feed_summary: completedAnalysis.incidentFeedSummary,
-        color_1: colors[0] || '',
-        color_2: colors[1] || '',
-        color_3: colors[2] || '',
-        color_4: colors[3] || '',
-        color_5: colors[4] || '',
-        subject_box_ymin: box[0] ?? 100,
-        subject_box_xmin: box[1] ?? 100,
-        subject_box_ymax: box[2] ?? 900,
-        subject_box_xmax: box[3] ?? 900,
-        legacy_infra_class: completedAnalysis.legacyInfraClass,
-        diagnosis: completedAnalysis.diagnosis,
-        chromatic_profile: completedAnalysis.chromaticProfile,
-        system_dx: completedAnalysis.systemDx,
-        severity: completedAnalysis.severity,
-        primary_contamination: completedAnalysis.primaryContamination,
-        contributing_factor: completedAnalysis.contributingFactor,
-        failure_origin: completedAnalysis.failureOrigin,
-        disposition: completedAnalysis.disposition,
-        archive_note: completedAnalysis.archiveNote,
-        og_headline: completedAnalysis.ogHeadline,
-        share_quote: completedAnalysis.shareQuote,
-        anon_handle: completedAnalysis.anonHandle,
-        timestamp: serverTimestamp(),
-        uid: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
-      });
+    if (!hasWrittenRef.current) {
+      // First completion — write to Firestore
+      hasWrittenRef.current = true;
+      setIsWritingData(true);
+      try {
+        const colors = completedAnalysis.dominantColors;
+        const box = completedAnalysis.subjectBox;
+        const logRef = doc(collection(db, 'incident_logs'));
+        await setDoc(logRef, {
+          pixel_count: completedAnalysis.pixelCount,
+          incident_feed_summary: completedAnalysis.incidentFeedSummary,
+          color_1: colors[0] || '',
+          color_2: colors[1] || '',
+          color_3: colors[2] || '',
+          color_4: colors[3] || '',
+          color_5: colors[4] || '',
+          subject_box_ymin: box[0] ?? 100,
+          subject_box_xmin: box[1] ?? 100,
+          subject_box_ymax: box[2] ?? 900,
+          subject_box_xmax: box[3] ?? 900,
+          legacy_infra_class: completedAnalysis.legacyInfraClass,
+          diagnosis: completedAnalysis.diagnosis,
+          chromatic_profile: completedAnalysis.chromaticProfile,
+          system_dx: completedAnalysis.systemDx,
+          severity: completedAnalysis.severity,
+          primary_contamination: completedAnalysis.primaryContamination,
+          contributing_factor: completedAnalysis.contributingFactor,
+          failure_origin: completedAnalysis.failureOrigin,
+          disposition: completedAnalysis.disposition,
+          archive_note: completedAnalysis.archiveNote,
+          og_headline: completedAnalysis.ogHeadline,
+          share_quote: completedAnalysis.shareQuote,
+          anon_handle: completedAnalysis.anonHandle,
+          timestamp: serverTimestamp(),
+          uid: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+        });
 
-      const statsRef = doc(db, 'global_stats', 'main');
-      await setDoc(statsRef, {
-        total_pixels_melted: increment(completedAnalysis.pixelCount)
-      }, { merge: true });
+        const statsRef = doc(db, 'global_stats', 'main');
+        await setDoc(statsRef, {
+          total_pixels_melted: increment(completedAnalysis.pixelCount)
+        }, { merge: true });
 
-      setIsComplete(true);
-
-      setTimeout(() => {
-        setLoadingPostMortem(false);
-        setShowReport(true);
-      }, 7500);
-    } catch (error) {
-      setLoadingPostMortem(false);
-      handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
+        setIsComplete(true);
+        setIsWritingData(false);
+        setTimeout(() => {
+          setButtonsDelayed(false);
+          setShowReport(true);
+        }, 3000);
+      } catch (error) {
+        hasWrittenRef.current = false;
+        setIsWritingData(false);
+        setButtonsDelayed(false);
+        handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
+      }
+    } else {
+      // Replay — no Firestore write, just delay the buttons
+      setTimeout(() => setButtonsDelayed(false), 3000);
     }
   };
 
@@ -373,7 +388,7 @@ export default function App({ onNavigateManifest }: AppProps) {
               )}
 
               {/* Loading post-mortem overlay */}
-              {loadingPostMortem && !showReport && (
+              {isWritingData && !showReport && (
                 <div className="absolute inset-0 z-40 flex items-center justify-center">
                   <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border flex items-center gap-3">
                     <div className="w-4 h-4 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin shrink-0" />
@@ -385,7 +400,7 @@ export default function App({ onNavigateManifest }: AppProps) {
               )}
 
               {/* Post-smelt controls — replay + view report */}
-              {isComplete && !loadingPostMortem && !isPlaying && (
+              {isComplete && !buttonsDelayed && !isPlaying && (
                 <div className="absolute inset-0 z-40 bg-concrete/70 backdrop-blur-sm flex items-center justify-center gap-3">
                   <button
                     onClick={handleReplay}
