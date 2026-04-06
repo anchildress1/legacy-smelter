@@ -8,12 +8,11 @@ COPY . .
 RUN npm run build
 
 # ── server stage ─────────────────────────────────────────────────────────────
-# Minimal runtime: only production deps + the compiled dist + server.js.
+# Minimal runtime: only express + dotenv + the compiled dist + server.js.
 FROM node:24-alpine AS server
 WORKDIR /app
 ENV NODE_ENV=production
-COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install express dotenv
 COPY server.js .
 COPY --from=builder /app/dist ./dist
 EXPOSE 8080
