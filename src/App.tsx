@@ -294,7 +294,7 @@ export default function App({ onNavigateManifest }: AppProps) {
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto w-full flex flex-col gap-3 px-4 py-4 md:flex-row md:justify-between md:items-center md:px-6">
+        <div className="max-w-7xl mx-auto w-full flex flex-col gap-3 px-4 py-4 sm:flex-row sm:justify-between sm:items-center sm:px-6">
           <div>
             <h1 className="text-2xl font-black font-mono tracking-tighter uppercase">
               LEGACY <span className="text-hazard-amber">SMELTER</span>
@@ -306,7 +306,7 @@ export default function App({ onNavigateManifest }: AppProps) {
               </p>
             </div>
           </div>
-          <div className="flex items-center justify-between gap-4 w-full md:w-auto md:justify-end">
+          <div className="flex items-center justify-between gap-4 w-full sm:w-auto sm:justify-end">
             <div className="flex items-center gap-3">
               <div className="text-right">
                 <div className="font-mono font-extrabold text-hazard-amber text-lg leading-none tracking-tight">

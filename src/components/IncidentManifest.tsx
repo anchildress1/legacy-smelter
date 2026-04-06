@@ -55,7 +55,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       {/* Header */}
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto w-full flex flex-col gap-3 px-4 py-4 md:flex-row md:justify-between md:items-center md:px-6">
+        <div className="max-w-5xl mx-auto w-full flex flex-col gap-3 px-4 py-4 sm:flex-row sm:justify-between sm:items-center sm:px-6">
           <div className="flex items-center gap-4">
             <button
               onClick={onNavigateHome}
@@ -65,7 +65,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
               RETURN TO SMELTER
             </button>
           </div>
-          <div className="flex items-center justify-between gap-3 w-full md:w-auto md:justify-end">
+          <div className="flex items-center justify-between gap-3 w-full sm:w-auto sm:justify-end">
             <div className="text-right">
               <div className="font-mono font-extrabold text-hazard-amber text-lg leading-none tracking-tight">
                 {formatted.value} <span className="text-xs text-stone-gray font-bold">{formatted.unit}</span>
