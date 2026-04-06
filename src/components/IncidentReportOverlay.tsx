@@ -216,7 +216,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       {/* Card — full-screen on mobile, constrained modal on desktop */}
       <div
         ref={panelRef}
-        className="bg-concrete-light w-full sm:max-w-3xl lg:max-w-4xl sm:rounded-xl border-t sm:border border-concrete-border shadow-2xl max-h-[100dvh] sm:max-h-[85vh] overflow-y-auto sm:overflow-hidden sm:flex relative"
+        className="bg-concrete-light w-full sm:max-w-3xl lg:max-w-4xl sm:rounded-xl border-t sm:border border-concrete-border shadow-2xl max-h-[100dvh] sm:max-h-[85vh] overflow-y-auto sm:overflow-hidden sm:flex"
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
@@ -239,78 +239,67 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
           {/* Hazard stripe */}
           <div className="hazard-stripe h-1.5 w-full shrink-0" />
 
-          {/* Close button */}
-          <button
-            ref={closeButtonRef}
-            onClick={onClose}
-            className="absolute top-3 right-3 sm:top-4 sm:right-4 w-8 h-8 flex items-center justify-center rounded-full bg-concrete-mid/80 text-stone-gray hover:text-ash-white transition-colors z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
-            aria-label="Close report"
-          >
-            <X size={16} />
-          </button>
+          {/* ── TOP ACTION BAR: share icons + close ── */}
+          <div className="shrink-0 flex items-center justify-end gap-1.5 px-3 py-2 border-b border-concrete-border">
+            {platforms.map(({ label, href }) => {
+              const cfg = SHARE_PLATFORMS[label];
+              return (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-7 h-7 flex items-center justify-center rounded-md text-white hover:brightness-110 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                  style={{ backgroundColor: cfg.bg }}
+                  aria-label={`Share on ${cfg.name}`}
+                  title={cfg.name}
+                >
+                  {cfg.icon}
+                </a>
+              );
+            })}
+            <button
+              onClick={handleCopy}
+              className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
+              aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy to clipboard'}
+              title={copyState === 'copied' ? 'Copied!' : 'Copy text'}
+            >
+              {copyState === 'copied'
+                ? <Check size={12} aria-hidden="true" />
+                : <Copy size={12} aria-hidden="true" />}
+            </button>
+            <button
+              ref={closeButtonRef}
+              onClick={onClose}
+              className="w-7 h-7 flex items-center justify-center rounded-full bg-concrete-mid/80 text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
+              aria-label="Close report"
+            >
+              <X size={15} />
+            </button>
+          </div>
 
           {/* ── NON-SCROLLING HEADER ZONE ── */}
-          <div className="shrink-0 p-5 sm:p-6 space-y-4">
-            {/* Title, class, summary, severity */}
-            <div className="pr-8">
-              <h2 id={headingId} className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
-                INCIDENT POSTMORTEM
-              </h2>
-              <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide mt-1.5 font-bold leading-tight">
-                {report.legacyInfraClass}
-              </p>
-              <p className="text-ash-white font-mono text-sm sm:text-base leading-snug mt-1.5">
-                {report.incidentFeedSummary}
-              </p>
-              <div className="flex items-center gap-3 mt-2.5 flex-wrap">
-                <span
-                  className="inline-flex items-center gap-1.5 text-xs font-mono text-concrete-light bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold"
-                  aria-label={`Severity: ${report.severity}`}
-                >
-                  <AlertTriangle size={10} aria-hidden="true" />
-                  {report.severity}
-                </span>
-                <span className="text-hazard-amber font-mono text-xs font-bold">
-                  {formatted.value} {formatted.unit} THERMALLY DECOMMISSIONED
-                </span>
-              </div>
-            </div>
-
-            {/* ── SHARE BUTTONS — prominent, always visible ── */}
-            <div className="border-t border-concrete-border pt-4">
-              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-widest mb-2.5">
-                DISTRIBUTE INCIDENT REPORT
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {platforms.map(({ label, href }) => {
-                  const cfg = SHARE_PLATFORMS[label];
-                  return (
-                    <a
-                      key={label}
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg text-white text-[10px] font-mono font-bold uppercase tracking-wide hover:brightness-110 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-                      style={{ backgroundColor: cfg.bg }}
-                      aria-label={`Share on ${cfg.name}`}
-                    >
-                      {cfg.icon}
-                      {cfg.name}
-                    </a>
-                  );
-                })}
-                <button
-                  onClick={handleCopy}
-                  className="flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white text-[10px] font-mono font-bold uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
-                  aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy to clipboard'}
-                >
-                  {copyState === 'copied' ? (
-                    <><Check size={12} aria-hidden="true" /> COPIED</>
-                  ) : (
-                    <><Copy size={12} aria-hidden="true" /> COPY</>
-                  )}
-                </button>
-              </div>
+          <div className="shrink-0 p-5 sm:p-6">
+            <h2 id={headingId} className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
+              INCIDENT POSTMORTEM
+            </h2>
+            <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide mt-1.5 font-bold leading-tight">
+              {report.legacyInfraClass}
+            </p>
+            <p className="text-ash-white font-mono text-sm sm:text-base leading-snug mt-1.5">
+              {report.incidentFeedSummary}
+            </p>
+            <div className="flex items-center gap-3 mt-2.5 flex-wrap">
+              <span
+                className="inline-flex items-center gap-1.5 text-xs font-mono text-concrete-light bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold"
+                aria-label={`Severity: ${report.severity}`}
+              >
+                <AlertTriangle size={10} aria-hidden="true" />
+                {report.severity}
+              </span>
+              <span className="text-hazard-amber font-mono text-xs font-bold">
+                {formatted.value} {formatted.unit} THERMALLY DECOMMISSIONED
+              </span>
             </div>
           </div>
 
