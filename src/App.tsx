@@ -16,7 +16,7 @@ import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
 import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
-import { formatPixels, getFiveDistinctColors, getLogShareLinks } from './lib/utils';
+import { formatPixels, getFiveDistinctColors, getLogShareLinks, buildShareLinks } from './lib/utils';
 import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
@@ -165,7 +165,22 @@ export default function App({ onNavigateManifest }: AppProps) {
     analysisRef.current = result;
     setIsAnalyzing(false);
 
-    await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
+    try {
+      await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
+    } catch (error) {
+      if (requestId !== activeRequestIdRef.current) return;
+      console.error('[App] Canvas rendering failed:', error);
+      setCurrentImage(null);
+      setAnalysis(null);
+      analysisRef.current = null;
+      hasWrittenRef.current = false;
+      setIsComplete(false);
+      setShowReport(false);
+      setIsWritingData(false);
+      setButtonsDelayed(false);
+      setIsPlaying(false);
+      setAnalysisError('CANVAS RENDER FAILED. PLEASE RETRY.');
+    }
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -202,17 +217,17 @@ export default function App({ onNavigateManifest }: AppProps) {
       hasWrittenRef.current = true;
       setIsWritingData(true);
       try {
-        const colors = completedAnalysis.dominantColors;
+        const colors = getFiveDistinctColors(completedAnalysis.dominantColors);
         const box = completedAnalysis.subjectBox;
         const logRef = doc(collection(db, 'incident_logs'));
         await setDoc(logRef, {
           pixel_count: completedAnalysis.pixelCount,
           incident_feed_summary: completedAnalysis.incidentFeedSummary,
-          color_1: colors[0] || '',
-          color_2: colors[1] || '',
-          color_3: colors[2] || '',
-          color_4: colors[3] || '',
-          color_5: colors[4] || '',
+          color_1: colors[0],
+          color_2: colors[1],
+          color_3: colors[2],
+          color_4: colors[3],
+          color_5: colors[4],
           subject_box_ymin: box[0] ?? 100,
           subject_box_xmin: box[1] ?? 100,
           subject_box_ymax: box[2] ?? 900,
@@ -231,7 +246,7 @@ export default function App({ onNavigateManifest }: AppProps) {
           share_quote: completedAnalysis.shareQuote,
           anon_handle: completedAnalysis.anonHandle,
           timestamp: serverTimestamp(),
-          uid: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
+          uid: crypto.randomUUID()
         });
 
         const statsRef = doc(db, 'global_stats', 'main');
@@ -249,6 +264,7 @@ export default function App({ onNavigateManifest }: AppProps) {
         hasWrittenRef.current = false;
         setIsWritingData(false);
         setButtonsDelayed(false);
+        setIsComplete(true); // animation finished — allow replay and in-memory report even though write failed
         handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
       }
     } else {
@@ -264,17 +280,13 @@ export default function App({ onNavigateManifest }: AppProps) {
     canvasRef.current?.replay();
   };
 
-  const shareLinks = analysis ? (() => {
-    const shareText = `${analysis.shareQuote}\n\n${analysis.incidentFeedSummary}`;
-    const pageUrl = window.location.origin;
-    return [
-      { label: 'twitter',  href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}` },
-      { label: 'facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}` },
-      { label: 'linkedin', href: `https://www.linkedin.com/shareArticle?mini=true&title=${encodeURIComponent(analysis.ogHeadline)}&summary=${encodeURIComponent(shareText)}` },
-      { label: 'bluesky',  href: `https://bsky.app/intent/compose?text=${encodeURIComponent(shareText)}` },
-      { label: 'reddit',   href: `https://www.reddit.com/submit?title=${encodeURIComponent(analysis.ogHeadline)}&selftext=true&text=${encodeURIComponent(shareText)}` },
-    ];
-  })() : [];
+  const shareLinks = analysis
+    ? buildShareLinks(
+        `${analysis.shareQuote}\n\n${analysis.incidentFeedSummary}`,
+        analysis.ogHeadline,
+        window.location.origin
+      )
+    : [];
 
   const formatted = formatPixels(globalStats.total_pixels_melted);
 

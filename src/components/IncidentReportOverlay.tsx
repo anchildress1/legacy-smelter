@@ -135,7 +135,14 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const lastActiveElementRef = useRef<HTMLElement | null>(null);
   const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle');
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     lastActiveElementRef.current =
@@ -201,7 +208,8 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     try {
       await navigator.clipboard.writeText(`${report.incidentFeedSummary}\n\n${report.archiveNote}`);
       setCopyState('copied');
-      setTimeout(() => setCopyState('idle'), 2000);
+      if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopyState('idle'), 2000);
     } catch { /* clipboard unavailable */ }
   };
 

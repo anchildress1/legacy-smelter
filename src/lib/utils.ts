@@ -17,19 +17,22 @@ export function formatPixels(pixels: number): { value: string, unit: string } {
 
 export const FALLBACK_COLORS = ["#ffff00", "#00c3f5", "#4db542", "#fb0094", "#fc9103"];
 
+export function buildShareLinks(shareText: string, headline: string, pageUrl: string): { label: string; href: string }[] {
+  return [
+    { label: 'twitter',  href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}` },
+    { label: 'facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}` },
+    { label: 'linkedin', href: `https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(pageUrl)}&title=${encodeURIComponent(headline)}&summary=${encodeURIComponent(shareText)}` },
+    { label: 'bluesky',  href: `https://bsky.app/intent/compose?text=${encodeURIComponent(shareText)}` },
+    { label: 'reddit',   href: `https://www.reddit.com/submit?title=${encodeURIComponent(headline)}&selftext=true&text=${encodeURIComponent(shareText)}` },
+  ];
+}
+
 export function getLogShareLinks(log: SmeltLog): { label: string; href: string }[] {
   const shareText = log.share_quote
     ? `${log.share_quote}\n\n${log.incident_feed_summary}`
     : log.incident_feed_summary;
   const headline = log.og_headline || 'Legacy Smelter Incident Report';
-  const pageUrl = window.location.origin;
-  return [
-    { label: 'twitter',  href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}` },
-    { label: 'facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}` },
-    { label: 'linkedin', href: `https://www.linkedin.com/shareArticle?mini=true&title=${encodeURIComponent(headline)}&summary=${encodeURIComponent(shareText)}` },
-    { label: 'bluesky',  href: `https://bsky.app/intent/compose?text=${encodeURIComponent(shareText)}` },
-    { label: 'reddit',   href: `https://www.reddit.com/submit?title=${encodeURIComponent(headline)}&selftext=true&text=${encodeURIComponent(shareText)}` },
-  ];
+  return buildShareLinks(shareText, headline, window.location.origin);
 }
 
 export function getFiveDistinctColors(colors: string[]): string[] {

@@ -3,7 +3,11 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function isHexColor(val) {
-      return val is string && val.size() == 7;
+      return val is string && val.matches('^#[0-9a-fA-F]{6}$');
+    }
+
+    function isValidSeverity(val) {
+      return val in ['Advisory', 'Elevated', 'Critical', 'Terminal'];
     }
 
     function isValidIncidentLog(data) {
@@ -33,7 +37,7 @@ service cloud.firestore {
              data.diagnosis is string &&
              data.chromatic_profile is string &&
              data.system_dx is string &&
-             data.severity is string &&
+             isValidSeverity(data.severity) &&
              data.primary_contamination is string &&
              data.contributing_factor is string &&
              data.failure_origin is string &&
@@ -57,7 +61,9 @@ service cloud.firestore {
 
     match /global_stats/main {
       allow read: if true;
-      allow write: if isValidGlobalStats(request.resource.data);
+      allow create: if isValidGlobalStats(request.resource.data);
+      allow update: if isValidGlobalStats(request.resource.data) &&
+                       request.resource.data.total_pixels_melted >= resource.data.total_pixels_melted;
     }
 
     match /{document=**} {

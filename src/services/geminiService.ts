@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { getFiveDistinctColors } from "../lib/utils";
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 if (!apiKey) {
@@ -180,28 +181,25 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
 
   const MAX_RETRIES = 3;
   let lastError: unknown;
-  let response;
+  let result: Record<string, unknown> | null = null;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     if (attempt > 0) {
       await new Promise(r => setTimeout(r, 1000 * attempt));
       console.warn(`[geminiService] Retry attempt ${attempt} of ${MAX_RETRIES - 1}`);
     }
     try {
-      response = await ai.models.generateContent(requestConfig);
+      const response = await ai.models.generateContent(requestConfig);
+      result = JSON.parse(response.text || "{}");
       break;
     } catch (err) {
       lastError = err;
       console.error(`[geminiService] Attempt ${attempt + 1} failed:`, err);
     }
   }
-  if (!response) throw lastError;
+  if (!result) throw lastError;
 
-  const result = JSON.parse(response.text || "{}");
-
-  const hexRegex = /^#([0-9a-f]{6})$/i;
-  const dominantColors = Array.isArray(result.dominant_hex_colors)
-    ? result.dominant_hex_colors.filter((c: unknown) => typeof c === "string" && hexRegex.test(c))
-    : [];
+  const rawColors = Array.isArray(result.dominant_hex_colors) ? result.dominant_hex_colors as string[] : [];
+  const dominantColors = getFiveDistinctColors(rawColors);
 
   return {
     legacyInfraClass: String(result.legacy_infra_class || "Unclassified Legacy Artifact"),
