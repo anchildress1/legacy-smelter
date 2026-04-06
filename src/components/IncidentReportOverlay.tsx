@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog } from '../types';
-import { formatPixels } from '../lib/utils';
+import { formatPixels, formatTimestamp } from '../lib/utils';
 import { X, AlertTriangle, Check, Copy } from 'lucide-react';
-import { formatTimestamp } from '../lib/utils';
 
 interface OverlayProps {
   analysis?: SmeltAnalysis | null;
@@ -295,15 +294,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </div>
           </div>
 
-          {/* ── TIMESTAMP ROW: right-aligned, below header ── */}
-          {report.timestamp && (
-            <div className="shrink-0 flex justify-end px-3 py-1 border-b border-concrete-border">
-              <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">
-                {formatTimestamp(report.timestamp)}
-              </span>
-            </div>
-          )}
-
           {/* ── NON-SCROLLING HEADER ZONE ── */}
           <div className="shrink-0 p-5 sm:p-6">
             <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-bold leading-tight">
@@ -323,6 +313,11 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <span className="text-hazard-amber font-mono text-xs font-bold">
                 {formatted.value} {formatted.unit}
               </span>
+              {report.timestamp && (
+                <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest ml-auto">
+                  {formatTimestamp(report.timestamp)}
+                </span>
+              )}
             </div>
           </div>
 
