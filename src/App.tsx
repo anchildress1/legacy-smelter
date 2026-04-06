@@ -484,7 +484,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                                 {log.legacy_infra_class}
                               </p>
                             )}
-                            <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-2">
+                            <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-3">
                               {log.incident_feed_summary}
                             </p>
                           </div>
