@@ -12,29 +12,31 @@
   },
   "dependencies": {
     "@google/genai": "^1.48.0",
-    "@tailwindcss/vite": "^4.1.14",
+    "@tailwindcss/vite": "^4.2.2",
     "@vitejs/plugin-react": "^6.0.1",
     "clsx": "^2.1.1",
-    "dotenv": "^17.2.3",
+    "dotenv": "^17.4.1",
     "express": "^5.2.1",
     "firebase": "^12.11.0",
     "howler": "^2.2.4",
     "lucide-react": "^1.7.0",
-    "motion": "^12.23.24",
+    "motion": "^12.38.0",
     "pixi.js": "^8.17.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
-    "tailwind-merge": "^3.5.0",
-    "vite": "^6.4.2"
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.2",
-    "autoprefixer": "^10.4.21",
-    "tailwindcss": "^4.1.14",
+    "autoprefixer": "^10.4.27",
+    "tailwindcss": "^4.2.2",
     "tsx": "^4.21.0",
     "typescript": "~6.0.2",
-    "vite": "^6.4.2"
+    "vite": "^8.0.5"
+  },
+  "volta": {
+    "node": "24.14.1"
   }
 }
