@@ -3,6 +3,7 @@ import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog } from '../types';
 import { formatPixels } from '../lib/utils';
 import { X, AlertTriangle, Check, Copy } from 'lucide-react';
+import { formatTimestamp } from '../lib/utils';
 
 interface OverlayProps {
   analysis?: SmeltAnalysis | null;
@@ -25,6 +26,7 @@ interface NormalisedReport {
   chromaticProfile: string;
   dominantColors: string[];
   pixelCount: number;
+  timestamp: Date | null;
 }
 
 const FOCUSABLE_SELECTOR = [
@@ -57,6 +59,7 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       chromaticProfile: a.chromaticProfile,
       dominantColors: a.dominantColors,
       pixelCount: a.pixelCount,
+      timestamp: null,
     };
   }
   if (l) {
@@ -74,6 +77,7 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       chromaticProfile: l.chromatic_profile,
       dominantColors: [l.color_1, l.color_2, l.color_3, l.color_4, l.color_5].filter(Boolean),
       pixelCount: l.pixel_count,
+      timestamp: l.timestamp?.toDate?.() ?? null,
     };
   }
   return null;
@@ -290,6 +294,15 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               </button>
             </div>
           </div>
+
+          {/* ── TIMESTAMP ── */}
+          {report.timestamp && (
+            <div className="shrink-0 px-3 py-1.5 border-b border-concrete-border">
+              <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">
+                {formatTimestamp(report.timestamp)}
+              </span>
+            </div>
+          )}
 
           {/* ── NON-SCROLLING HEADER ZONE ── */}
           <div className="shrink-0 p-5 sm:p-6">
