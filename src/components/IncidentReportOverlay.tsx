@@ -239,8 +239,11 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
           {/* Hazard stripe */}
           <div className="hazard-stripe h-1.5 w-full shrink-0" />
 
-          {/* ── TOP ACTION BAR: share icons + close ── */}
-          <div className="shrink-0 flex items-center justify-end gap-1.5 px-3 py-2 border-b border-concrete-border">
+          {/* ── TOP ACTION BAR: label + share icons + close ── */}
+          <div className="shrink-0 flex items-center justify-between gap-1.5 px-3 py-2 border-b border-concrete-border">
+            <h2 id={headingId} className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
+              INCIDENT POSTMORTEM
+            </h2>
             {platforms.map(({ label, href }) => {
               const cfg = SHARE_PLATFORMS[label];
               return (
@@ -280,10 +283,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
           {/* ── NON-SCROLLING HEADER ZONE ── */}
           <div className="shrink-0 p-5 sm:p-6">
-            <h2 id={headingId} className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
-              INCIDENT POSTMORTEM
-            </h2>
-            <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide mt-1.5 font-bold leading-tight">
+            <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-bold leading-tight">
               {report.legacyInfraClass}
             </p>
             <p className="text-ash-white font-mono text-sm sm:text-base leading-snug mt-1.5">
