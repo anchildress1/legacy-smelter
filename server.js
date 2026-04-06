@@ -99,6 +99,9 @@ app.get('/s/:id', async (req, res, next) => {
     const canonicalUrl = `${APP_URL}/s/${encodeURIComponent(id)}`;
     const html = injectIncidentOg(getSpaHtml(), incident, canonicalUrl);
     res.setHeader('Content-Type', 'text/html');
+    // CDN caches for 24h; browsers revalidate after 1h.
+    // Incident data is immutable after write, so long CDN TTL is safe.
+    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
     return res.send(html);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -107,12 +110,23 @@ app.get('/s/:id', async (req, res, next) => {
   }
 });
 
-app.use(express.static(DIST));
+// Vite hashes all asset filenames — safe to cache for 1 year.
+// index.html is excluded: it must stay fresh so app updates propagate.
+app.use(express.static(DIST, {
+  maxAge: '1y',
+  immutable: true,
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+  },
+}));
 
 // SPA fallback for client-side routing.
 // Uses app.use instead of wildcard route string for Express 5 compatibility.
 app.use((_req, res) => {
   res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Cache-Control', 'no-store');
   res.send(getSpaHtml());
 });
 
