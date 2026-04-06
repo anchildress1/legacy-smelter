@@ -34,12 +34,13 @@ export function formatPixels(pixels: number): { value: string, unit: string } {
 }
 
 export const FALLBACK_COLORS = ["#ffff00", "#00c3f5", "#4db542", "#fb0094", "#fc9103"];
+const DEFAULT_APP_URL = 'https://hotfix.anchildress1.dev';
 
-// Builds a shareable incident URL. Uses VITE_APP_URL if set (production),
-// otherwise falls back to the current origin (works in all environments).
+// Builds a shareable incident URL. Uses VITE_APP_URL when provided.
+// Falls back to the canonical production URL so links stay stable across hostnames.
 // /s/:id is the canonical share path — handled by server.js for OG pre-rendering.
 export function buildIncidentUrl(docId: string): string {
-  const base = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '');
+  const base = (import.meta.env.VITE_APP_URL || DEFAULT_APP_URL).replace(/\/$/, '');
   return `${base}/s/${encodeURIComponent(docId)}`;
 }
 

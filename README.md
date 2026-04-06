@@ -12,7 +12,7 @@ The system analyzes uploaded images using Gemini Vision and files a formal postm
 
 - **Gemini Vision analysis** — 16-field structured incident schema delivered via Gemini's constrained JSON mode
 - **Hotfix animation** — PixiJS dragon idle, fly-in, and smelt sequence with audio
-- **Incident postmortem** — full structured report overlay with social share (X, Bluesky, Reddit, LinkedIn, Facebook)
+- **Incident postmortem** — full structured report overlay with social share (X, Bluesky, Reddit, LinkedIn) plus copy-link
 - **Global incident manifest** — real-time Firestore feed of all thermally decommissioned artifacts
 - **Decommission index** — live cumulative pixel count across all incidents
 - **Camera support** — deploy field scanner via device camera or file upload

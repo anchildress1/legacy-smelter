@@ -6,7 +6,7 @@
  * platform crawlers receive meaningful unfurl data without executing JS.
  *
  * Firestore data is fetched via the public REST API (no admin SDK required).
- * The client-side SPA then reads `?id` and opens the incident overlay normally.
+ * The client-side SPA then reads `/s/:id` and opens the incident overlay normally.
  */
 
 import express from 'express';
@@ -18,14 +18,18 @@ import 'dotenv/config';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, 'dist');
 const PORT = process.env.PORT || 8080;
-const APP_URL = (process.env.APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+const DEFAULT_APP_URL = 'https://hotfix.anchildress1.dev';
+const APP_URL = (process.env.APP_URL || DEFAULT_APP_URL).replace(/\/$/, '');
 
-const FIREBASE_API_KEY = process.env.VITE_FIREBASE_API_KEY;
+// Prefer a server-side key if provided; fall back to the client key for local dev.
+const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY;
 const FIREBASE_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID;
 const FIREBASE_DB_ID = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)';
 
 // GitHub banner used as the og:image for all incident shares
 const OG_IMAGE = 'https://repository-images.githubusercontent.com/1201373945/f2802097-2afe-4c31-848f-a94cc13ca0b1';
+const OG_IMAGE_WIDTH = '1376';
+const OG_IMAGE_HEIGHT = '688';
 
 function esc(str) {
   return String(str ?? '')
@@ -37,7 +41,8 @@ function esc(str) {
 
 async function fetchIncident(docId) {
   const encodedDb = encodeURIComponent(FIREBASE_DB_ID);
-  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${encodedDb}/documents/incident_logs/${docId}?key=${FIREBASE_API_KEY}`;
+  const encodedDocId = encodeURIComponent(docId);
+  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${encodedDb}/documents/incident_logs/${encodedDocId}?key=${FIREBASE_API_KEY}`;
   const res = await fetch(url);
   if (!res.ok) return null;
   const data = await res.json();
@@ -69,8 +74,8 @@ function injectIncidentOg(html, incident, canonicalUrl) {
     .replace(/<meta property="og:description" content="[^"]*"/, `<meta property="og:description" content="${esc(desc)}"`)
     .replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${esc(canonicalUrl)}"`)
     .replace(/<meta property="og:image" content="[^"]*"/, `<meta property="og:image" content="${OG_IMAGE}"`)
-    .replace(/<meta property="og:image:width" content="[^"]*"/, `<meta property="og:image:width" content="1280"`)
-    .replace(/<meta property="og:image:height" content="[^"]*"/, `<meta property="og:image:height" content="640"`)
+    .replace(/<meta property="og:image:width" content="[^"]*"/, `<meta property="og:image:width" content="${OG_IMAGE_WIDTH}"`)
+    .replace(/<meta property="og:image:height" content="[^"]*"/, `<meta property="og:image:height" content="${OG_IMAGE_HEIGHT}"`)
     .replace(/<meta property="og:type" content="[^"]*"/, `<meta property="og:type" content="article"`)
     .replace(/<meta name="twitter:title" content="[^"]*"/, `<meta name="twitter:title" content="${esc(title)}"`)
     .replace(/<meta name="twitter:description" content="[^"]*"/, `<meta name="twitter:description" content="${esc(desc)}"`)
@@ -96,15 +101,17 @@ app.get('/s/:id', async (req, res, next) => {
     res.setHeader('Content-Type', 'text/html');
     return res.send(html);
   } catch (err) {
-    console.error('[server] OG render failed for id=%s: %s', id, err.message);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[server] OG render failed for id=%s: %s', id, msg);
     return next();
   }
 });
 
 app.use(express.static(DIST));
 
-// SPA fallback for client-side routing
-app.get('*', (_req, res) => {
+// SPA fallback for client-side routing.
+// Uses app.use instead of wildcard route string for Express 5 compatibility.
+app.use((_req, res) => {
   res.setHeader('Content-Type', 'text/html');
   res.send(getSpaHtml());
 });

@@ -126,6 +126,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         <IncidentReportOverlay
           log={selectedLog}
           shareLinks={getLogShareLinks(selectedLog)}
+          incidentId={selectedLog.id}
           onClose={() => setSelectedLog(null)}
         />
       )}
