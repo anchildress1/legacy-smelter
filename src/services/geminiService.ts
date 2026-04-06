@@ -1,174 +1,125 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { getFiveDistinctColors } from "../lib/utils";
+import type { Severity } from "../types";
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-if (!apiKey) {
-  throw new Error("Missing VITE_GEMINI_API_KEY environment variable. Gemini analysis will not work.");
+const VALID_SEVERITIES: readonly Severity[] = ['Advisory', 'Elevated', 'Critical', 'Terminal'];
+
+function normalizeSeverity(value: unknown): Severity {
+  if (typeof value === 'string' && VALID_SEVERITIES.includes(value as Severity)) {
+    return value as Severity;
+  }
+  return 'Critical';
 }
-const ai = new GoogleGenAI({ apiKey });
-
-const MODEL = "gemini-3.1-flash-lite-preview";
-const MAX_RETRIES = 3;
 
 export interface SmeltAnalysis {
+  legacyInfraClass: string;
+  diagnosis: string;
   dominantColors: string[];
-  damageReport: string;
+  chromaticProfile: string;
+  systemDx: string;
+  severity: Severity;
+  primaryContamination: string;
+  contributingFactor: string;
+  failureOrigin: string;
+  disposition: string;
+  incidentFeedSummary: string;
+  archiveNote: string;
+  ogHeadline: string;
+  shareQuote: string;
+  anonHandle: string;
   pixelCount: number;
-  subjectBox: number[]; // [ymin, xmin, ymax, xmax] 0-1000
+  subjectBox: [number, number, number, number]; // [ymin, xmin, ymax, xmax] 0-1000
 }
 
-function extractDominantColors(img: HTMLImageElement, count: number): string[] {
-  const canvas = document.createElement("canvas");
-  const MAX_DIM = 200;
-  let w = img.width;
-  let h = img.height;
-  if (w > h && w > MAX_DIM) {
-    h = Math.floor(h * (MAX_DIM / w));
-    w = MAX_DIM;
-  } else if (h > w && h > MAX_DIM) {
-    w = Math.floor(w * (MAX_DIM / h));
-    h = MAX_DIM;
-  }
+const GEMINI_PROMPT = `You are the incident analysis engine for Legacy Smelter.
 
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return [];
+Operating principle: If a bug exists, apply Hotfix.
 
-  ctx.drawImage(img, 0, 0, w, h);
-  const data = ctx.getImageData(0, 0, w, h).data;
-  const colorMap: Record<string, { r: number, g: number, b: number, score: number }> = {};
+You analyze uploaded images and classify them as condemned technical artifacts requiring thermal decommission. Processing is performed by a system component named Hotfix. Hotfix is infrastructure.
 
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i+1];
-    const b = data[i+2];
-    const a = data[i+3];
-    if (a < 128) continue;
+Return a single valid JSON object matching the schema. Do not wrap in markdown. Do not add commentary outside the JSON.
 
-    // Calculate saturation-based weight to suppress grays
-    const max = Math.max(r, g, b) / 255;
-    const min = Math.min(r, g, b) / 255;
-    const saturation = max === 0 ? 0 : (max - min) / max;
-    // Boost score significantly for vibrant colors
-    const weight = 1 + (saturation * 5);
+## Voice
 
-    const qR = Math.floor(r / 16) * 16;
-    const qG = Math.floor(g / 16) * 16;
-    const qB = Math.floor(b / 16) * 16;
-    const key = `${qR},${qG},${qB}`;
+Write like an enterprise incident report. File a postmortem.
 
-    if (!colorMap[key]) {
-      colorMap[key] = { r: qR, g: qG, b: qB, score: 0 };
-    }
-    colorMap[key].score += weight;
-  }
+Tone: dry, precise, operational, concise. Accusatory toward the artifact and its history, not the submitter.
 
-  const sortedClusters = Object.values(colorMap).sort((a, b) => b.score - a.score);
-  const distinctColors: string[] = [];
-  const minDistance = 40;
+Humor comes from treating absurd subjects as routine incidents. The system does not know it is funny.
 
-  for (const cluster of sortedClusters) {
-    if (distinctColors.length >= count) break;
-    let isDistinct = true;
-    for (const existingHex of distinctColors) {
-      const er = parseInt(existingHex.slice(1, 3), 16);
-      const eg = parseInt(existingHex.slice(3, 5), 16);
-      const eb = parseInt(existingHex.slice(5, 7), 16);
-      const dist = Math.sqrt(Math.pow(cluster.r - er, 2) + Math.pow(cluster.g - eg, 2) + Math.pow(cluster.b - eb, 2));
-      if (dist < minDistance) {
-        isDistinct = false;
-        break;
-      }
-    }
+Comedy mechanics:
+- Specificity over generality. "Persistent Visual Noise" is a diagnosis. "Also, the green paint" is funny. The more mundane and specific the detail, the harder it lands. Find the one weird concrete thing in the image and diagnose it.
+- The deadpan afterthought. End a clinical assessment with a flat, too-honest observation. "The system believes it is perpetually 'on camera'." The trailing detail is where personality lives.
+- Commit past the point of reason. Start institutional, then keep going further than expected without changing tone. The escalation is the joke.
 
-    if (isDistinct) {
-      const hex = "#" + [cluster.r, cluster.g, cluster.b]
-        .map(c => Math.min(255, c + 8).toString(16).padStart(2, "0"))
-        .join("");
-      distinctColors.push(hex);
-    }
-  }
-  return distinctColors;
-}
+## Sentence patterns
 
-async function callGeminiWithRetry(base64Image: string, mimeType: string): Promise<{ damageReport: string; subjectBox: number[] }> {
-  const prompt = `Analyze this piece of legacy technology.
-  1. Generate a chaotic, industrial damage report (max 20 words) describing the object's reduction to smelted materials. Example: "12.1M pixels of cursed machinery successfully smelted!"
-  2. Return a bounding box [ymin, xmin, ymax, xmax] using a 1000x1000 grid representing the primary subject of the image to smelt.
+Short diagnostic clauses. Sentences under 12 words. Conclusions, not descriptions.
 
-  Return the result in JSON format.`;
+Pattern: [Classification]. [State]. / Failure: [type]. Disposition: [action]. / [Object] [state change]. [Consequence].
 
-  let lastError: unknown;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    if (attempt > 0) {
-      await new Promise(r => setTimeout(r, 1000 * attempt));
-      console.warn(`[geminiService] Retry attempt ${attempt} of ${MAX_RETRIES - 1}`);
-    }
+Examples:
+- "Legacy UI failure detected. Layout integrity nonexistent."
+- "Interface retired. State: liquid."
+- "Hotfix deployed. Output: molten slag."
 
-    try {
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: [
-          {
-            parts: [
-              { text: prompt },
-              { inlineData: { data: base64Image, mimeType } }
-            ]
-          }
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              damageReport: {
-                type: Type.STRING,
-                description: "A chaotic damage report"
-              },
-              subjectBox: {
-                type: Type.ARRAY,
-                items: { type: Type.NUMBER },
-                description: "Bounding box [ymin, xmin, ymax, xmax] in 1000x1000 scale"
-              }
-            },
-            required: ["damageReport", "subjectBox"]
-          }
-        }
-      });
+Open with a classification or diagnosis. Let the image content drive vocabulary.
 
-      let responseText: string;
-      try {
-        responseText = response.text || "{}";
-      } catch (textErr) {
-        // response.text throws when the response was blocked by safety filters
-        throw new Error(`Gemini response blocked: ${textErr instanceof Error ? textErr.message : String(textErr)}`);
-      }
+## Hotfix
 
-      let result: { damageReport?: unknown; subjectBox?: unknown };
-      try {
-        result = JSON.parse(responseText);
-      } catch {
-        throw new Error(`Gemini returned unparseable JSON: ${responseText.slice(0, 100)}`);
-      }
+Hotfix is a processing engine. The system analyzes. Hotfix executes.
 
-      return {
-        damageReport: String(result.damageReport || "LEGACY HARDWARE PURGED. SMELT IMMINENT."),
-        subjectBox: Array.isArray(result.subjectBox) && result.subjectBox.length === 4
-          ? result.subjectBox
-          : [100, 100, 900, 900],
-      };
-    } catch (err) {
-      lastError = err;
-      console.error(`[geminiService] Attempt ${attempt + 1} failed:`, err);
-    }
-  }
+- "Hotfix deployed." / "Processed by Hotfix." / "Hotfix processing complete."
 
-  throw lastError;
-}
+Hotfix has system states, not moods.
+
+## Destruction model
+
+Artifacts are destroyed. Nothing is recovered. Processing results in slag or molten residue. The system considers this successful decommission.
+
+## Severity tiers
+
+Use ONLY these classifications for severity:
+
+| Classification | Disposition |
+|---|---|
+| Advisory | Logged. No action required. |
+| Elevated | Inspection recommended. |
+| Critical | Immediate smelting required. |
+| Terminal | Emergency incineration. |
+
+## Field constraints
+
+- legacy_infra_class: 5 words max. Artifact's institutional name. Technical.
+- diagnosis: 12 words max. First sentence of a postmortem — what failed and how badly.
+- chromatic_profile: 4 words max. Diagnostic register: "Moldy Blossom," "Thermal Beige," "Incident Pink."
+- primary_contamination: 5 words max. Dominant visual or structural fault.
+- contributing_factor: 5 words max. Secondary fault.
+- system_dx: 18 words max. Compound clinical syndrome. Structure: "[Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]."
+- failure_origin: 20 words max. What decisions produced this artifact. End with a specific deadpan detail.
+- disposition: 18 words max. System recommendation. Must reference a severity tier.
+- incident_feed_summary: 14 words max. Pattern: "[Object] [state change]. Output: [result]."
+- archive_note: 60 words max. Evidence record. Short clauses. Start clinical, escalate past the point of reason. End with a deadpan trailing observation.
+- og_headline: 10 words max. Reads like an internal notification that escaped containment.
+- share_quote: 14 words max. An incident summary someone screenshotted.
+- severity: One of: Advisory, Elevated, Critical, Terminal.
+- anon_handle: 3 words max. Format: [Compound]_[Number]. Specific to the artifact. Examples: "ThermalOperator_41," "DeprecatedNode_7," "IncidentClerk_404."
+- dominant_hex_colors: Exactly 5 vivid, saturated hex colors from the image. Diagnostic data.
+- subject_box: Bounding box [ymin, xmin, ymax, xmax] in 1000x1000 scale covering the primary artifact.
+
+## Final rules
+
+Be confident. Be concise. Sound institutional. Be visually grounded in the image. The classification is always correct.`;
 
 export async function analyzeLegacyTech(base64Image: string, mimeType: string): Promise<SmeltAnalysis> {
-  let actualPixelCount = 2073600;
-  let programmaticColors: string[] = [];
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing VITE_GEMINI_API_KEY. Add it to your .env file.");
+  }
+  const ai = new GoogleGenAI({ apiKey });
+  const model = "gemini-3.1-flash-lite-preview";
+
+  let actualPixelCount = 2073600; // fallback: 1920×1080 (full-HD) — used when window is unavailable
 
   if (typeof window !== "undefined") {
     try {
@@ -179,18 +130,109 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
         img.src = `data:${mimeType};base64,${base64Image}`;
       });
       actualPixelCount = img.width * img.height;
-      programmaticColors = extractDominantColors(img, 5);
     } catch (err) {
-      console.warn("Failed to calculate programmatic image properties", err);
+      console.warn("Failed to calculate pixel count", err);
     }
   }
 
-  const { damageReport, subjectBox } = await callGeminiWithRetry(base64Image, mimeType);
+  const requestConfig = {
+    model,
+    contents: [
+      {
+        parts: [
+          { text: GEMINI_PROMPT },
+          { inlineData: { data: base64Image, mimeType } }
+        ]
+      }
+    ],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          legacy_infra_class: { type: Type.STRING, description: "Artifact's institutional name. Technical. 5 words max." },
+          diagnosis: { type: Type.STRING, description: "First sentence of a postmortem — what failed and how badly. 12 words max." },
+          dominant_hex_colors: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: "Exactly 5 vivid, saturated hex colors from the image"
+          },
+          chromatic_profile: { type: Type.STRING, description: "Diagnostic color palette name. 4 words max. E.g. 'Moldy Blossom', 'Thermal Beige'." },
+          system_dx: { type: Type.STRING, description: "Compound clinical syndrome name. Structure: [Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]." },
+          severity: { type: Type.STRING, description: "One of: Advisory, Elevated, Critical, Terminal." },
+          primary_contamination: { type: Type.STRING, description: "Dominant visual or structural fault. 5 words max." },
+          contributing_factor: { type: Type.STRING, description: "Secondary fault. 5 words max." },
+          failure_origin: { type: Type.STRING, description: "What decisions produced this artifact. End with a deadpan detail. 20 words max." },
+          disposition: { type: Type.STRING, description: "System recommendation referencing a severity tier. 18 words max." },
+          incident_feed_summary: { type: Type.STRING, description: "One-line manifest entry. Pattern: [Object] [state change]. Output: [result]. 14 words max." },
+          archive_note: { type: Type.STRING, description: "Evidence record. Short clauses. Start clinical, escalate, end with deadpan observation. 60 words max." },
+          og_headline: { type: Type.STRING, description: "Internal notification that escaped containment. 10 words max." },
+          share_quote: { type: Type.STRING, description: "Incident summary someone screenshotted. 14 words max." },
+          anon_handle: { type: Type.STRING, description: "Generated submitter alias. Format: [Compound]_[Number]. E.g. 'ThermalOperator_41', 'DeprecatedNode_7'." },
+          subject_box: {
+            type: Type.ARRAY,
+            items: { type: Type.NUMBER },
+            description: "Bounding box [ymin, xmin, ymax, xmax] in 1000x1000 scale"
+          }
+        },
+        required: [
+          "legacy_infra_class", "diagnosis",
+          "dominant_hex_colors", "chromatic_profile",
+          "system_dx", "severity",
+          "primary_contamination", "contributing_factor",
+          "failure_origin", "disposition",
+          "incident_feed_summary", "archive_note",
+          "og_headline", "share_quote", "anon_handle", "subject_box"
+        ]
+      }
+    }
+  };
+
+  const MAX_RETRIES = 3;
+  let lastError: unknown;
+  let result: Record<string, unknown> | null = null;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+      console.warn(`[geminiService] Retry attempt ${attempt} of ${MAX_RETRIES - 1}`);
+    }
+    try {
+      const response = await ai.models.generateContent(requestConfig);
+      const responseText = response.text;
+      if (!responseText || !responseText.trim()) {
+        throw new Error('Gemini returned an empty response. Image may have been blocked by safety filters.');
+      }
+      result = JSON.parse(responseText);
+      break;
+    } catch (err) {
+      lastError = err;
+      console.error(`[geminiService] Attempt ${attempt + 1} failed:`, err);
+    }
+  }
+  if (!result) throw lastError ?? new Error('Gemini analysis failed after all retries');
+
+  const rawColors = Array.isArray(result.dominant_hex_colors) ? result.dominant_hex_colors as string[] : [];
+  const dominantColors = getFiveDistinctColors(rawColors);
 
   return {
-    dominantColors: programmaticColors,
-    damageReport,
+    legacyInfraClass: String(result.legacy_infra_class || "Unclassified Legacy Artifact"),
+    diagnosis: String(result.diagnosis || "Artifact integrity compromised. Classification pending."),
+    dominantColors,
+    chromaticProfile: String(result.chromatic_profile || "Standard Slag Spectrum"),
+    systemDx: String(result.system_dx || "Chronic Legacy Retention Syndrome"),
+    severity: normalizeSeverity(result.severity),
+    primaryContamination: String(result.primary_contamination || "unresolved dependencies"),
+    contributingFactor: String(result.contributing_factor || "ambient technical debt"),
+    failureOrigin: String(result.failure_origin || "Unauthorized backwards compatibility. Also, the architecture."),
+    disposition: String(result.disposition || "Critical. Immediate smelting required."),
+    incidentFeedSummary: String(result.incident_feed_summary || "Legacy artifact processed. Output: molten slag."),
+    archiveNote: String(result.archive_note || "Artifact of uncertain provenance. Thermal decommission complete. Incident archived."),
+    ogHeadline: String(result.og_headline || "Legacy artifact thermally decommissioned"),
+    shareQuote: String(result.share_quote || "Hotfix deployed. Output: molten slag."),
+    anonHandle: String(result.anon_handle || "IncidentClerk_404"),
     pixelCount: actualPixelCount,
-    subjectBox,
+    subjectBox: (Array.isArray(result.subject_box) && result.subject_box.length === 4 && result.subject_box.every(v => typeof v === 'number')
+      ? result.subject_box
+      : [100, 100, 900, 900]) as [number, number, number, number]
   };
 }

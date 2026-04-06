@@ -1,32 +1,63 @@
 {
   "entities": {
-    "SmeltLog": {
-      "title": "SmeltLog",
-      "description": "A log of a legacy tech smelting event",
+    "IncidentLog": {
+      "title": "IncidentLog",
+      "description": "A log of a legacy tech smelting incident with flat fields (no arrays)",
       "type": "object",
       "properties": {
         "pixel_count": { "type": "number", "description": "Number of pixels melted" },
-        "damage_report": { "type": "string", "description": "AI generated damage report" },
-        "dominant_colors": { "type": "array", "items": { "type": "string" }, "description": "Hex colors extracted from image" },
-        "timestamp": { "type": "string", "format": "date-time", "description": "When the smelt occurred" },
-        "uid": { "type": "string", "description": "User ID who initiated the smelt" }
+        "incident_feed_summary": { "type": "string", "description": "One-line manifest entry (14 words max)" },
+        "color_1": { "type": "string", "description": "Dominant color 1 (7-char hex, e.g. #f5c842)" },
+        "color_2": { "type": "string", "description": "Dominant color 2 (7-char hex)" },
+        "color_3": { "type": "string", "description": "Dominant color 3 (7-char hex)" },
+        "color_4": { "type": "string", "description": "Dominant color 4 (7-char hex)" },
+        "color_5": { "type": "string", "description": "Dominant color 5 (7-char hex)" },
+        "subject_box_ymin": { "type": "number", "description": "Bounding box top (0-1000 scale)" },
+        "subject_box_xmin": { "type": "number", "description": "Bounding box left (0-1000 scale)" },
+        "subject_box_ymax": { "type": "number", "description": "Bounding box bottom (0-1000 scale)" },
+        "subject_box_xmax": { "type": "number", "description": "Bounding box right (0-1000 scale)" },
+        "legacy_infra_class": { "type": "string", "description": "Artifact institutional name (5 words max)" },
+        "diagnosis": { "type": "string", "description": "What failed and how badly (12 words max)" },
+        "chromatic_profile": { "type": "string", "description": "Diagnostic color palette name (4 words max)" },
+        "system_dx": { "type": "string", "description": "Compound clinical syndrome name (18 words max)" },
+        "severity": { "type": "string", "enum": ["Advisory", "Elevated", "Critical", "Terminal"], "description": "Incident severity tier" },
+        "primary_contamination": { "type": "string", "description": "Dominant visual or structural fault (5 words max)" },
+        "contributing_factor": { "type": "string", "description": "Secondary fault (5 words max)" },
+        "failure_origin": { "type": "string", "description": "What decisions produced this artifact (20 words max)" },
+        "disposition": { "type": "string", "description": "System recommendation referencing severity tier (18 words max)" },
+        "archive_note": { "type": "string", "description": "Evidence record, escalating to deadpan observation (60 words max)" },
+        "og_headline": { "type": "string", "description": "Social share headline (10 words max)" },
+        "share_quote": { "type": "string", "description": "Prefilled social share text (14 words max)" },
+        "anon_handle": { "type": "string", "description": "AI-generated anonymous submitter alias (e.g. ThermalOperator_41)" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Server timestamp of when the incident was logged" },
+        "uid": { "type": "string", "description": "UUID generated client-side via crypto.randomUUID()" }
       },
-      "required": ["pixel_count", "damage_report", "dominant_colors", "timestamp", "uid"]
+      "required": [
+        "pixel_count", "incident_feed_summary",
+        "color_1", "color_2", "color_3", "color_4", "color_5",
+        "subject_box_ymin", "subject_box_xmin", "subject_box_ymax", "subject_box_xmax",
+        "legacy_infra_class", "diagnosis",
+        "chromatic_profile", "system_dx", "severity",
+        "primary_contamination", "contributing_factor", "failure_origin",
+        "disposition", "archive_note",
+        "og_headline", "share_quote", "anon_handle",
+        "timestamp", "uid"
+      ]
     },
     "GlobalStats": {
       "title": "GlobalStats",
       "description": "Global statistics for the smelter",
       "type": "object",
       "properties": {
-        "total_pixels_melted": { "type": "number", "description": "Total pixels melted across all users" }
+        "total_pixels_melted": { "type": "number", "description": "Total pixels melted across all incidents" }
       },
       "required": ["total_pixels_melted"]
     }
   },
   "firestore": {
-    "/smelt_logs/{logId}": {
-      "schema": "SmeltLog",
-      "description": "Collection of all smelting events"
+    "/incident_logs/{logId}": {
+      "schema": "IncidentLog",
+      "description": "Collection of all smelting incidents"
     },
     "/global_stats/main": {
       "schema": "GlobalStats",
