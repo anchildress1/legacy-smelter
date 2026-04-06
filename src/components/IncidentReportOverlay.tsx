@@ -240,45 +240,47 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
           <div className="hazard-stripe h-1.5 w-full shrink-0" />
 
           {/* ── TOP ACTION BAR: label + share icons + close ── */}
-          <div className="shrink-0 flex items-center justify-between gap-1.5 px-3 py-2 border-b border-concrete-border">
+          <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-concrete-border">
             <h2 id={headingId} className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
               INCIDENT POSTMORTEM
             </h2>
-            {platforms.map(({ label, href }) => {
-              const cfg = SHARE_PLATFORMS[label];
-              return (
-                <a
-                  key={label}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-7 h-7 flex items-center justify-center rounded-md text-white hover:brightness-110 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-                  style={{ backgroundColor: cfg.bg }}
-                  aria-label={`Share on ${cfg.name}`}
-                  title={cfg.name}
-                >
-                  {cfg.icon}
-                </a>
-              );
-            })}
-            <button
-              onClick={handleCopy}
-              className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
-              aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy to clipboard'}
-              title={copyState === 'copied' ? 'Copied!' : 'Copy text'}
-            >
-              {copyState === 'copied'
-                ? <Check size={12} aria-hidden="true" />
-                : <Copy size={12} aria-hidden="true" />}
-            </button>
-            <button
-              ref={closeButtonRef}
-              onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-full bg-concrete-mid/80 text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
-              aria-label="Close report"
-            >
-              <X size={15} />
-            </button>
+            <div className="flex items-center gap-1.5">
+              {platforms.map(({ label, href }) => {
+                const cfg = SHARE_PLATFORMS[label];
+                return (
+                  <a
+                    key={label}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-7 h-7 flex items-center justify-center rounded-md text-white hover:brightness-110 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                    style={{ backgroundColor: cfg.bg }}
+                    aria-label={`Share on ${cfg.name}`}
+                    title={cfg.name}
+                  >
+                    {cfg.icon}
+                  </a>
+                );
+              })}
+              <button
+                onClick={handleCopy}
+                className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
+                aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy to clipboard'}
+                title={copyState === 'copied' ? 'Copied!' : 'Copy text'}
+              >
+                {copyState === 'copied'
+                  ? <Check size={12} aria-hidden="true" />
+                  : <Copy size={12} aria-hidden="true" />}
+              </button>
+              <button
+                ref={closeButtonRef}
+                onClick={onClose}
+                className="w-7 h-7 flex items-center justify-center rounded-full bg-concrete-mid/80 text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
+                aria-label="Close report"
+              >
+                <X size={15} />
+              </button>
+            </div>
           </div>
 
           {/* ── NON-SCROLLING HEADER ZONE ── */}
