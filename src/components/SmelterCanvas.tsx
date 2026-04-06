@@ -478,7 +478,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 dragon.x = dragonRestX;
                 dragon.y = dragonY;
                 dragon.scale.set(-baseScale, baseScale);
-                if (!dragon.playing) dragon.play();
+                setDragonTex(textures.idle, true);
 
                 if (!puddle.playing) puddle.play();
                 puddle.x = imageX;

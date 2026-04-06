@@ -275,7 +275,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <h2 className="text-stone-gray font-mono text-sm uppercase tracking-widest mt-2 mb-1.5">
                 ARCHIVE NOTE
               </h2>
-              <p className="text-ash-white font-mono text-sm italic leading-relaxed">
+              <p className="text-ash-white font-mono text-sm leading-relaxed">
                 {report.archiveNote}
               </p>
             </div>
@@ -294,7 +294,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 <span className="text-stone-gray font-mono text-xs uppercase tracking-widest">
                   CHROMATIC PROFILE
                 </span>
-                <p className="text-stone-gray font-mono text-xs mt-0.5 italic">
+                <p className="text-stone-gray font-mono text-xs mt-0.5">
                   {report.chromaticProfile}
                 </p>
               </div>
