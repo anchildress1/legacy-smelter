@@ -235,7 +235,7 @@ export default function App({ onNavigateManifest }: AppProps) {
       setTimeout(() => {
         setLoadingPostMortem(false);
         setShowReport(true);
-      }, 4500);
+      }, 7500);
     } catch (error) {
       setLoadingPostMortem(false);
       handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
