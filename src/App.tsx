@@ -269,9 +269,12 @@ export default function App({ onNavigateManifest }: AppProps) {
             <h1 className="text-2xl font-black font-mono tracking-tighter uppercase">
               LEGACY <span className="text-hazard-amber">SMELTER</span>
             </h1>
-            <p className="text-stone-gray font-mono text-[10px] uppercase tracking-widest mt-0.5">
-              If a bug exists, apply Hotfix.
-            </p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse shrink-0" />
+              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">
+                If a bug exists, apply Hotfix.
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
@@ -362,7 +365,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                 <div role="status" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
                   <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
                   <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
-                    GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
+                    HOTFIX PENDING...
                   </p>
                 </div>
               )}
@@ -484,12 +487,6 @@ export default function App({ onNavigateManifest }: AppProps) {
                     <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
                       NO INCIDENTS ON RECORD.
                     </p>
-                    <div className="flex gap-2 items-center justify-center mt-3">
-                      <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse" />
-                      <span className="text-[10px] font-mono text-stone-gray uppercase">
-                        HOTFIX STATUS: PENDING
-                      </span>
-                    </div>
                   </div>
                 )}
               </div>

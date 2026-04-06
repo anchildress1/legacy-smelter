@@ -208,7 +208,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             {/* Header */}
             <div className="pr-8">
               <h2 id={headingId} className="text-hazard-amber font-mono text-sm uppercase tracking-widest">
-                INCIDENT POSTMORTEM // DECOMMISSION REPORT
+                INCIDENT POSTMORTEM
               </h2>
               <p className="text-hazard-amber font-mono text-lg sm:text-xl uppercase tracking-widest mt-2 font-bold">
                 {report.legacyInfraClass}

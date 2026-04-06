@@ -154,12 +154,6 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
               <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
                 NO INCIDENTS ON RECORD.
               </p>
-              <div className="flex gap-2 items-center justify-center mt-3">
-                <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse" />
-                <span className="text-[10px] font-mono text-stone-gray uppercase">
-                  HOTFIX STATUS: PENDING
-                </span>
-              </div>
             </div>
           )}
         </div>
