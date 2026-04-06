@@ -295,15 +295,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </div>
           </div>
 
-          {/* ── TIMESTAMP ── */}
-          {report.timestamp && (
-            <div className="shrink-0 px-3 py-1.5 border-b border-concrete-border">
-              <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">
-                {formatTimestamp(report.timestamp)}
-              </span>
-            </div>
-          )}
-
           {/* ── NON-SCROLLING HEADER ZONE ── */}
           <div className="shrink-0 p-5 sm:p-6">
             <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-bold leading-tight">
@@ -320,6 +311,11 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 <AlertTriangle size={10} aria-hidden="true" />
                 {report.severity}
               </span>
+              {report.timestamp && (
+                <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">
+                  {formatTimestamp(report.timestamp)}
+                </span>
+              )}
               <span className="text-hazard-amber font-mono text-xs font-bold">
                 {formatted.value} {formatted.unit}
               </span>
