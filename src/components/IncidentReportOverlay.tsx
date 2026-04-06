@@ -308,7 +308,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 {report.severity}
               </span>
               <span className="text-hazard-amber font-mono text-xs font-bold">
-                {formatted.value} {formatted.unit} THERMALLY DECOMMISSIONED
+                {formatted.value} {formatted.unit}
               </span>
             </div>
           </div>

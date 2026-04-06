@@ -6,6 +6,24 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Server is us-east1 (America/New_York). Format: 2026.04.05 // 21:19:01 EST
+const _tsFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+  timeZoneName: 'short',
+});
+
+export function formatTimestamp(date: Date): string {
+  const p = Object.fromEntries(_tsFormatter.formatToParts(date).map(({ type, value }) => [type, value]));
+  return `${p.year}.${p.month}.${p.day} // ${p.hour}:${p.minute}:${p.second} ${p.timeZoneName}`;
+}
+
 export function formatPixels(pixels: number): { value: string, unit: string } {
   if (pixels < 1_000) return { value: pixels.toString(), unit: 'PIXELS' };
   if (pixels < 1_000_000) return { value: (pixels / 1_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'KILOPIXELS' };

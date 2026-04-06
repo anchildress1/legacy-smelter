@@ -1,6 +1,6 @@
 import React from 'react';
 import { SmeltLog } from '../types';
-import { formatPixels, getFiveDistinctColors } from '../lib/utils';
+import { formatPixels, getFiveDistinctColors, formatTimestamp } from '../lib/utils';
 
 interface SmeltManifestProps {
   logs: SmeltLog[];
@@ -39,10 +39,10 @@ export const SmeltManifest: React.FC<SmeltManifestProps> = ({ logs }) => {
                 </p>
                 <div className="mt-2 flex justify-between items-end">
                   <span className="text-hazard-amber font-mono text-xs font-bold">
-                    {formatted.value} {formatted.unit} THERMALLY DECOMMISSIONED
+                    {formatted.value} {formatted.unit}
                   </span>
                   <span className="text-stone-gray font-mono text-[10px]">
-                    {new Date(log.timestamp?.toDate?.() || Date.now()).toLocaleTimeString()}
+                    {log.timestamp?.toDate ? formatTimestamp(log.timestamp.toDate()) : '—'}
                   </span>
                 </div>
               </div>

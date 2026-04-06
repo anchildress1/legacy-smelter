@@ -9,7 +9,7 @@ import {
   doc,
 } from '../firebase';
 import { SmeltLog, GlobalStats } from '../types';
-import { formatPixels, getFiveDistinctColors, getLogShareLinks } from '../lib/utils';
+import { formatPixels, getFiveDistinctColors, getLogShareLinks, formatTimestamp } from '../lib/utils';
 import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
 import { IncidentReportOverlay } from './IncidentReportOverlay';
 import { Flame, ArrowLeft } from 'lucide-react';
@@ -130,16 +130,11 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
                   {/* Meta row */}
                   <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 items-end">
                     <span className="text-hazard-amber font-mono text-xs font-bold">
-                      {fmt.value} {fmt.unit} THERMALLY DECOMMISSIONED
+                      {fmt.value} {fmt.unit}
                     </span>
-                    {log.severity && (
-                      <span className="text-stone-gray font-mono text-xs">
-                        {log.severity}
-                      </span>
-                    )}
                     <span className="text-stone-gray font-mono text-xs ml-auto">
                       {log.timestamp?.toDate
-                        ? new Date(log.timestamp.toDate()).toLocaleString()
+                        ? formatTimestamp(log.timestamp.toDate())
                         : '—'}
                     </span>
                   </div>

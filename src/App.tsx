@@ -16,7 +16,7 @@ import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
 import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
-import { formatPixels, getFiveDistinctColors, getLogShareLinks, buildShareLinks } from './lib/utils';
+import { formatPixels, getFiveDistinctColors, getLogShareLinks, buildShareLinks, formatTimestamp } from './lib/utils';
 import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
@@ -494,16 +494,11 @@ export default function App({ onNavigateManifest }: AppProps) {
                         </div>
                         <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 items-end">
                           <span className="text-hazard-amber font-mono text-xs font-bold">
-                            {fmt.value} {fmt.unit} THERMALLY DECOMMISSIONED
+                            {fmt.value} {fmt.unit}
                           </span>
-                          {log.severity && (
-                            <span className="text-stone-gray font-mono text-xs">
-                              {log.severity}
-                            </span>
-                          )}
                           <span className="text-stone-gray font-mono text-xs ml-auto">
                             {log.timestamp?.toDate
-                              ? new Date(log.timestamp.toDate()).toLocaleString()
+                              ? formatTimestamp(log.timestamp.toDate())
                               : '—'}
                           </span>
                         </div>
