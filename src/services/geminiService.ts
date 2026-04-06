@@ -79,14 +79,19 @@ Artifacts are destroyed. Nothing is recovered. Processing results in slag or mol
 
 ## Severity tiers
 
-Use ONLY these classifications for severity:
+Use ONLY these classifications. Assign based on artifact condition. Distribute across the scale — most artifacts are not Terminal, and not everything is Critical.
 
-| Classification | Disposition |
-|---|---|
-| Advisory | Logged. No action required. |
-| Elevated | Inspection recommended. |
-| Critical | Immediate smelting required. |
-| Terminal | Emergency incineration. |
+| Classification | Condition | Disposition |
+|---|---|---|
+| Advisory | Cosmetic fault only. Artifact is functional, merely offensive. Bad choices were made. Structure intact. | Logged. No action required. |
+| Elevated | Multiple failure indicators present. Structural instability suspected. Functionality compromised but identifiable. | Inspection recommended. |
+| Critical | Severe integrity failure. Core function absent or broken. Cannot be rehabilitated. | Immediate smelting required. |
+| Terminal | Beyond classification. The artifact defies the analyzer's own taxonomies. Continued exposure risks system integrity. | Emergency incineration. |
+
+Use Advisory for: poor aesthetics, bad color choices, visual clutter, outdated but intact interfaces.
+Use Elevated for: layout failures, obvious technical debt, broken UX patterns, deprecated stacks still in service.
+Use Critical for: non-functional artifacts, architectural failure, total UI collapse, corrupted design systems.
+Use Terminal for: artifacts so degraded they resist categorization — the incident log itself feels unsafe.
 
 ## Field constraints
 
@@ -109,7 +114,9 @@ Use ONLY these classifications for severity:
 
 ## Final rules
 
-Be confident. Be concise. Sound institutional. Be visually grounded in the image. The classification is always correct.`;
+Be confident. Be concise. Sound institutional. Be visually grounded in the image. The classification is always correct.
+
+Severity must match artifact condition. Advisory artifacts exist. Not everything warrants Terminal. Vary the distribution.`;
 
 export async function analyzeLegacyTech(base64Image: string, mimeType: string): Promise<SmeltAnalysis> {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
