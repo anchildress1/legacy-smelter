@@ -16,7 +16,6 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
   return (
     <button
       onClick={onClick}
-      aria-label={`Inspect incident report${log.legacy_infra_class ? `: ${log.legacy_infra_class}` : ''}`}
       className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
     >
       <div className="w-2 shrink-0 flex flex-col" aria-hidden="true">

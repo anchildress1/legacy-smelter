@@ -267,7 +267,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     className="w-7 h-7 flex items-center justify-center rounded-md text-white hover:brightness-110 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
                     style={{ backgroundColor: cfg.bg }}
                     aria-label={`Share on ${cfg.name}`}
-                    title={cfg.name}
+                    title={`Share on ${cfg.name}`}
                   >
                     {cfg.icon}
                   </a>
@@ -277,7 +277,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 onClick={handleCopy}
                 className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
                 aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy to clipboard'}
-                title={copyState === 'copied' ? 'Copied!' : 'Copy text'}
+                title={copyState === 'copied' ? 'Copied to clipboard' : 'Copy to clipboard'}
               >
                 {copyState === 'copied'
                   ? <Check size={12} aria-hidden="true" />
@@ -289,7 +289,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 className="w-7 h-7 flex items-center justify-center rounded-full bg-concrete-mid/80 text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
                 aria-label="Close report"
               >
-                <X size={15} />
+                <X size={15} aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -305,7 +305,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             <div className="flex items-center gap-3 mt-2.5 flex-wrap">
               <span
                 className="inline-flex items-center gap-1.5 text-xs font-mono text-concrete-light bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold"
-                aria-label={`Severity: ${report.severity}`}
               >
                 <AlertTriangle size={10} aria-hidden="true" />
                 {report.severity}

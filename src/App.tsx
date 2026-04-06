@@ -350,8 +350,8 @@ export default function App({ onNavigateManifest }: AppProps) {
             </div>
 
             {/* Hidden file inputs */}
-            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" aria-label="Upload image file" />
-            <input type="file" ref={cameraInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" capture="environment" aria-label="Capture photo from camera" />
+            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" />
+            <input type="file" ref={cameraInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" capture="environment" />
 
             {/* Animation Window */}
             <div className="modern-card aspect-video relative overflow-hidden">
