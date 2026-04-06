@@ -1,0 +1,114 @@
+/**
+ * Legacy Smelter — OG pre-render server
+ *
+ * Serves the built SPA for all routes. For `/s/:id` requests, injects
+ * incident-specific Open Graph meta tags into the HTML so Slack and other
+ * platform crawlers receive meaningful unfurl data without executing JS.
+ *
+ * Firestore data is fetched via the public REST API (no admin SDK required).
+ * The client-side SPA then reads `?id` and opens the incident overlay normally.
+ */
+
+import express from 'express';
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import 'dotenv/config';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DIST = resolve(__dirname, 'dist');
+const PORT = process.env.PORT || 8080;
+const APP_URL = (process.env.APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+
+const FIREBASE_API_KEY = process.env.VITE_FIREBASE_API_KEY;
+const FIREBASE_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID;
+const FIREBASE_DB_ID = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)';
+
+// GitHub banner used as the og:image for all incident shares
+const OG_IMAGE = 'https://repository-images.githubusercontent.com/1201373945/f2802097-2afe-4c31-848f-a94cc13ca0b1';
+
+function esc(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function fetchIncident(docId) {
+  const encodedDb = encodeURIComponent(FIREBASE_DB_ID);
+  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${encodedDb}/documents/incident_logs/${docId}?key=${FIREBASE_API_KEY}`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data.fields) return null;
+  const str = (k) => data.fields[k]?.stringValue ?? '';
+  return {
+    og_headline: str('og_headline'),
+    incident_feed_summary: str('incident_feed_summary'),
+    severity: str('severity'),
+    legacy_infra_class: str('legacy_infra_class'),
+  };
+}
+
+let _spaHtml = null;
+function getSpaHtml() {
+  if (!_spaHtml) _spaHtml = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
+  return _spaHtml;
+}
+
+function injectIncidentOg(html, incident, canonicalUrl) {
+  const title = `${incident.og_headline} — Legacy Smelter`;
+  const rawDesc = `[${incident.severity}] ${incident.legacy_infra_class}: ${incident.incident_feed_summary}`;
+  const desc = rawDesc.slice(0, 300);
+
+  return html
+    .replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`)
+    .replace(/<meta name="description" content="[^"]*"/, `<meta name="description" content="${esc(desc)}"`)
+    .replace(/<meta property="og:title" content="[^"]*"/, `<meta property="og:title" content="${esc(title)}"`)
+    .replace(/<meta property="og:description" content="[^"]*"/, `<meta property="og:description" content="${esc(desc)}"`)
+    .replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${esc(canonicalUrl)}"`)
+    .replace(/<meta property="og:image" content="[^"]*"/, `<meta property="og:image" content="${OG_IMAGE}"`)
+    .replace(/<meta property="og:image:width" content="[^"]*"/, `<meta property="og:image:width" content="1280"`)
+    .replace(/<meta property="og:image:height" content="[^"]*"/, `<meta property="og:image:height" content="640"`)
+    .replace(/<meta property="og:type" content="[^"]*"/, `<meta property="og:type" content="article"`)
+    .replace(/<meta name="twitter:title" content="[^"]*"/, `<meta name="twitter:title" content="${esc(title)}"`)
+    .replace(/<meta name="twitter:description" content="[^"]*"/, `<meta name="twitter:description" content="${esc(desc)}"`)
+    .replace(/<meta name="twitter:image" content="[^"]*"/, `<meta name="twitter:image" content="${OG_IMAGE}"`);
+}
+
+const app = express();
+
+// Incident share URLs: /s/:id
+// Injects incident-specific OG meta tags so Slack, X, LinkedIn etc. unfurl correctly.
+// Crawlers stop at the meta tags; browsers get the full SPA and the React app
+// reads window.location.pathname to open the incident overlay.
+app.get('/s/:id', async (req, res, next) => {
+  const { id } = req.params;
+  if (!FIREBASE_API_KEY || !FIREBASE_PROJECT_ID) return next();
+
+  try {
+    const incident = await fetchIncident(id);
+    if (!incident?.og_headline) return next();
+
+    const canonicalUrl = `${APP_URL}/s/${encodeURIComponent(id)}`;
+    const html = injectIncidentOg(getSpaHtml(), incident, canonicalUrl);
+    res.setHeader('Content-Type', 'text/html');
+    return res.send(html);
+  } catch (err) {
+    console.error('[server] OG render failed for id=%s: %s', id, err.message);
+    return next();
+  }
+});
+
+app.use(express.static(DIST));
+
+// SPA fallback for client-side routing
+app.get('*', (_req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(getSpaHtml());
+});
+
+app.listen(PORT, () => {
+  console.log(`[server] Legacy Smelter on port ${PORT}`);
+});

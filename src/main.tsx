@@ -14,8 +14,19 @@ function getPageFromHash(): Page {
   }
 }
 
+// Read the incident ID from /s/:id on initial load — deep link to a specific incident.
+function getDeepLinkId(): string | null {
+  try {
+    const match = window.location.pathname.match(/^\/s\/([^/?#]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
 function Root() {
   const [page, setPage] = useState<Page>(getPageFromHash);
+  const deepLinkId = getDeepLinkId();
 
   useEffect(() => {
     const sync = () => setPage(getPageFromHash());
@@ -39,7 +50,7 @@ function Root() {
   if (page === 'manifest') {
     return <IncidentManifest onNavigateHome={() => navigateTo('smelter')} />;
   }
-  return <App onNavigateManifest={() => navigateTo('manifest')} />;
+  return <App onNavigateManifest={() => navigateTo('manifest')} deepLinkId={deepLinkId} />;
 }
 
 createRoot(document.getElementById('root')!).render(

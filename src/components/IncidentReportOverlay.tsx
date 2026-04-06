@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog, Severity } from '../types';
-import { formatPixels, formatTimestamp, getFiveDistinctColors } from '../lib/utils';
+import { formatPixels, formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
 import { X, AlertTriangle, Check, Copy } from 'lucide-react';
 
 // analysis and log are mutually exclusive — exactly one should be non-null per call site
@@ -9,6 +9,7 @@ interface OverlayProps {
   analysis?: SmeltAnalysis | null;
   log?: SmeltLog | null;
   shareLinks?: { label: string; href: string }[];
+  incidentId?: string | null;  // Firestore doc ID — enables copy-link and share card
   onClose: () => void;
 }
 
@@ -92,14 +93,6 @@ const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> =
       </svg>
     ),
   },
-  facebook: {
-    name: 'FACEBOOK',
-    icon: (
-      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-      </svg>
-    ),
-  },
   linkedin: {
     name: 'LINKEDIN',
     icon: (
@@ -126,19 +119,25 @@ const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> =
   },
 };
 
-export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, onClose }) => {
+export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose }) => {
   const report = normalise(analysis, log);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const lastActiveElementRef = useRef<HTMLElement | null>(null);
-  const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle');
+  const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
+  const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
+
+  // Derive incident URL from incidentId — used for the Slack copy button
+  const incidentUrl = incidentId ? buildIncidentUrl(incidentId) : null;
 
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
+      if (copyLinkTimeoutRef.current !== null) clearTimeout(copyLinkTimeoutRef.current);
     };
   }, []);
 
@@ -202,15 +201,27 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     if (e.target === overlayRef.current) onClose();
   };
 
-  const handleCopy = async () => {
+  const handleCopyText = async () => {
     try {
       await navigator.clipboard.writeText(`${report.incidentFeedSummary}\n\n${report.archiveNote}`);
-      setCopyState('copied');
+      setCopyTextState('copied');
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
-      copyTimeoutRef.current = setTimeout(() => setCopyState('idle'), 2000);
+      copyTimeoutRef.current = setTimeout(() => setCopyTextState('idle'), 2000);
     } catch (err) {
-    console.error('[IncidentReportOverlay] Clipboard write failed:', err);
-  }
+      console.error('[IncidentReportOverlay] Clipboard write failed:', err);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (!incidentUrl) return;
+    try {
+      await navigator.clipboard.writeText(incidentUrl);
+      setCopyLinkState('copied');
+      if (copyLinkTimeoutRef.current !== null) clearTimeout(copyLinkTimeoutRef.current);
+      copyLinkTimeoutRef.current = setTimeout(() => setCopyLinkState('idle'), 2000);
+    } catch (err) {
+      console.error('[IncidentReportOverlay] Clipboard write failed:', err);
+    }
   };
 
   const platforms = (shareLinks || []).filter(l => SHARE_PLATFORMS[l.label]);
@@ -269,13 +280,29 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                   </a>
                 );
               })}
+              {incidentUrl && (
+                <button
+                  onClick={handleCopyLink}
+                  className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
+                  aria-label={copyLinkState === 'copied' ? 'Copied' : 'Copy for Slack'}
+                  title={copyLinkState === 'copied' ? 'Copied' : 'Copy for Slack'}
+                >
+                  {copyLinkState === 'copied'
+                    ? <Check size={12} aria-hidden="true" />
+                    : (
+                      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z" />
+                      </svg>
+                    )}
+                </button>
+              )}
               <button
-                onClick={handleCopy}
+                onClick={handleCopyText}
                 className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
-                aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy to clipboard'}
-                title={copyState === 'copied' ? 'Copied to clipboard' : 'Copy to clipboard'}
+                aria-label={copyTextState === 'copied' ? 'Text copied' : 'Copy text'}
+                title={copyTextState === 'copied' ? 'Text copied' : 'Copy text'}
               >
-                {copyState === 'copied'
+                {copyTextState === 'copied'
                   ? <Check size={12} aria-hidden="true" />
                   : <Copy size={12} aria-hidden="true" />}
               </button>

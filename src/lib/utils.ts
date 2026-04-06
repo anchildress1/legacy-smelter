@@ -35,22 +35,30 @@ export function formatPixels(pixels: number): { value: string, unit: string } {
 
 export const FALLBACK_COLORS = ["#ffff00", "#00c3f5", "#4db542", "#fb0094", "#fc9103"];
 
+// Builds a shareable incident URL. Uses VITE_APP_URL if set (production),
+// otherwise falls back to the current origin (works in all environments).
+// /s/:id is the canonical share path — handled by server.js for OG pre-rendering.
+export function buildIncidentUrl(docId: string): string {
+  const base = (import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '');
+  return `${base}/s/${encodeURIComponent(docId)}`;
+}
+
 export function buildShareLinks(shareText: string, headline: string, pageUrl: string): { label: string; href: string }[] {
   return [
-    { label: 'twitter',  href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}` },
-    { label: 'facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}` },
+    { label: 'twitter',  href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(pageUrl)}` },
     { label: 'linkedin', href: `https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(pageUrl)}&title=${encodeURIComponent(headline)}&summary=${encodeURIComponent(shareText)}` },
-    { label: 'bluesky',  href: `https://bsky.app/intent/compose?text=${encodeURIComponent(shareText)}` },
-    { label: 'reddit',   href: `https://www.reddit.com/submit?title=${encodeURIComponent(headline)}&selftext=true&text=${encodeURIComponent(shareText)}` },
+    { label: 'bluesky',  href: `https://bsky.app/intent/compose?text=${encodeURIComponent(`${shareText} ${pageUrl}`)}` },
+    { label: 'reddit',   href: `https://www.reddit.com/submit?url=${encodeURIComponent(pageUrl)}&title=${encodeURIComponent(headline)}` },
   ];
 }
 
 export function getLogShareLinks(log: SmeltLog): { label: string; href: string }[] {
+  const incidentUrl = buildIncidentUrl(log.id);
   const shareText = log.share_quote
     ? `${log.share_quote}\n\n${log.incident_feed_summary}`
     : log.incident_feed_summary;
   const headline = log.og_headline || 'Legacy Smelter Incident Report';
-  return buildShareLinks(shareText, headline, window.location.origin);
+  return buildShareLinks(shareText, headline, incidentUrl);
 }
 
 export function getFiveDistinctColors(colors: string[]): string[] {

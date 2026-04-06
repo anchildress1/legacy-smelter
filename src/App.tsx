@@ -8,6 +8,7 @@ import {
   orderBy,
   limit,
   doc,
+  getDoc,
   setDoc,
   increment,
   serverTimestamp
@@ -17,7 +18,7 @@ import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
-import { formatPixels, getFiveDistinctColors, getLogShareLinks, buildShareLinks } from './lib/utils';
+import { formatPixels, getFiveDistinctColors, getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
 import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
@@ -28,9 +29,10 @@ const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, v
 
 interface AppProps {
   onNavigateManifest: () => void;
+  deepLinkId?: string | null;
 }
 
-export default function App({ onNavigateManifest }: AppProps) {
+export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
   const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
   const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
@@ -44,6 +46,8 @@ export default function App({ onNavigateManifest }: AppProps) {
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  // Firestore doc ID of the most recently smelted incident — used for share links
+  const [loggedIncidentId, setLoggedIncidentId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -91,6 +95,22 @@ export default function App({ onNavigateManifest }: AppProps) {
       }
     };
   }, []);
+
+  // Deep link: fetch incident by Firestore doc ID and open its overlay
+  useEffect(() => {
+    if (!deepLinkId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'incident_logs', deepLinkId));
+        if (cancelled || !snap.exists()) return;
+        setSelectedRecentLog({ id: snap.id, ...snap.data() } as SmeltLog);
+      } catch (err) {
+        if (!cancelled) console.error('[App] Deep link fetch failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [deepLinkId]);
 
   const startCamera = async () => {
     try {
@@ -259,6 +279,7 @@ export default function App({ onNavigateManifest }: AppProps) {
           total_pixels_melted: increment(completedAnalysis.pixelCount)
         }, { merge: true });
 
+        setLoggedIncidentId(logRef.id);
         setIsComplete(true);
         setIsWritingData(false);
         smeltTimerRef.current = setTimeout(() => {
@@ -296,6 +317,7 @@ export default function App({ onNavigateManifest }: AppProps) {
     setIsWritingData(false);
     setButtonsDelayed(false);
     setIsPlaying(false);
+    setLoggedIncidentId(null);
   };
 
   const handleReplay = () => {
@@ -309,7 +331,7 @@ export default function App({ onNavigateManifest }: AppProps) {
     ? buildShareLinks(
         `${analysis.shareQuote}\n\n${analysis.incidentFeedSummary}`,
         analysis.ogHeadline,
-        window.location.origin
+        loggedIncidentId ? buildIncidentUrl(loggedIncidentId) : window.location.origin
       )
     : [];
 
@@ -522,6 +544,7 @@ export default function App({ onNavigateManifest }: AppProps) {
         <IncidentReportOverlay
           log={selectedRecentLog}
           shareLinks={getLogShareLinks(selectedRecentLog)}
+          incidentId={selectedRecentLog.id}
           onClose={() => setSelectedRecentLog(null)}
         />
       )}
@@ -530,6 +553,7 @@ export default function App({ onNavigateManifest }: AppProps) {
         <IncidentReportOverlay
           analysis={analysis}
           shareLinks={shareLinks}
+          incidentId={loggedIncidentId}
           onClose={() => setShowReport(false)}
         />
       )}
