@@ -13,11 +13,12 @@ import {
   serverTimestamp
 } from './firebase';
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
-import { SmeltLog, GlobalStats as GlobalStatsType } from './types';
+import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
-import { SmeltManifest } from './components/SmeltManifest';
-import { GlobalStats } from './components/GlobalStats';
-import { Camera, Upload, X, Zap, RotateCcw } from 'lucide-react';
+import { IncidentReportOverlay } from './components/IncidentReportOverlay';
+import { IncidentLogCard } from './components/IncidentLogCard';
+import { formatPixels, getFiveDistinctColors, getLogShareLinks, buildShareLinks } from './lib/utils';
+import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
 // Audio
@@ -25,51 +26,66 @@ const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
 
-export default function App() {
-  const [logs, setLogs] = useState<SmeltLog[]>([]);
+interface AppProps {
+  onNavigateManifest: () => void;
+}
+
+export default function App({ onNavigateManifest }: AppProps) {
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
+  const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
+  const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [isWritingData, setIsWritingData] = useState(false);
+  const [buttonsDelayed, setButtonsDelayed] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<SmelterCanvasHandle>(null);
   const activeRequestIdRef = useRef(0);
-  const activeSmeltRunIdRef = useRef(0);
   const analysisRef = useRef<SmeltAnalysis | null>(null);
+  const hasWrittenRef = useRef(false);
+  const smeltTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const logsQuery = query(collection(db, 'smelt_logs'), orderBy('timestamp', 'desc'), limit(10));
-    const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
-      const newLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SmeltLog));
-      setLogs(newLogs);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'smelt_logs');
-    });
-
     const statsDoc = doc(db, 'global_stats', 'main');
-    const unsubscribeStats = onSnapshot(statsDoc, (snapshot) => {
+    const unsubStats = onSnapshot(statsDoc, (snapshot) => {
       if (snapshot.exists()) {
         setGlobalStats(snapshot.data() as GlobalStatsType);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'global_stats/main');
+      handleFirestoreError(error, OperationType.GET, 'global_stats/main', setAnalysisError);
     });
 
-    return () => {
-      unsubscribeLogs();
-      unsubscribeStats();
-    };
+    const logsQuery = query(
+      collection(db, 'incident_logs'),
+      orderBy('timestamp', 'desc'),
+      limit(3)
+    );
+    const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
+      const entries = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SmeltLog));
+      setRecentLogs(entries);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'incident_logs', setAnalysisError);
+    });
+
+    return () => { unsubStats(); unsubLogs(); };
   }, []);
 
-  // Stop camera on unmount
+  // Release camera hardware and pending timers if component unmounts mid-flow
   useEffect(() => {
     return () => {
+      if (smeltTimerRef.current !== null) {
+        clearTimeout(smeltTimerRef.current);
+        smeltTimerRef.current = null;
+      }
       if (videoRef.current?.srcObject) {
         (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
       }
@@ -89,11 +105,11 @@ export default function App() {
     } catch (err) {
       const name = err instanceof Error ? err.name : '';
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        // User denied permission — silently fall back to file picker
+        setAnalysisError('CAMERA PERMISSION DENIED. FILE PICKER OPENED AS FALLBACK.');
         cameraInputRef.current?.click();
       } else {
         console.error(`[App] Camera unavailable (${name || 'unknown'}):`, err);
-        setAnalysisError(`CAMERA UNAVAILABLE. USE THE UPLOAD BUTTON INSTEAD.`);
+        setAnalysisError('CAMERA UNAVAILABLE. USE PROCESS ARTIFACT.');
       }
     }
   };
@@ -120,9 +136,12 @@ export default function App() {
         processImage(base64, 'image/jpeg');
       } else {
         console.error('[App] captureImage: failed to get 2D canvas context');
-        setAnalysisError('CAMERA CAPTURE FAILED. USE THE UPLOAD BUTTON INSTEAD.');
+        setAnalysisError('CAMERA CAPTURE FAILED. USE PROCESS ARTIFACT.');
         stopCamera();
       }
+    } else {
+      console.error('[App] captureImage: videoRef not available');
+      stopCamera();
     }
   };
 
@@ -130,12 +149,11 @@ export default function App() {
     const requestId = ++activeRequestIdRef.current;
 
     if (import.meta.env.DEV) console.log("Processing image...", mimeType);
+    resetToIdle();
     setCurrentImage(base64);
-    setIsComplete(false);
-    setIsAnalyzing(true);
+    setSelectedRecentLog(null);
     setAnalysisError(null);
-    setAnalysis(null);
-    analysisRef.current = null;
+    setIsAnalyzing(true);
     flyInSound.stop();
     fireSound.stop();
     purrSound.stop();
@@ -149,7 +167,7 @@ export default function App() {
       console.error("Gemini analysis failed", error);
       setIsAnalyzing(false);
       setCurrentImage(null);
-      setAnalysisError("GEMINI ANALYSIS FAILED. CHECK API KEY AND RETRY.");
+      setAnalysisError('GEMINI ANALYSIS FAILED. CHECK API KEY AND RETRY.');
       return;
     }
 
@@ -160,15 +178,13 @@ export default function App() {
     setIsAnalyzing(false);
 
     try {
-      activeSmeltRunIdRef.current = requestId;
       await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
     } catch (error) {
       if (requestId !== activeRequestIdRef.current) return;
-      console.error("Canvas render failed", error);
+      console.error('[App] Canvas rendering failed:', error);
+      resetToIdle();
       setCurrentImage(null);
-      setAnalysis(null);
-      analysisRef.current = null;
-      setAnalysisError("CANVAS RENDER FAILED. YOUR BROWSER MAY NOT SUPPORT WEBGL.");
+      setAnalysisError('CANVAS RENDER FAILED. TRY A DIFFERENT BROWSER OR ENABLE HARDWARE ACCELERATION.');
     }
   };
 
@@ -193,74 +209,170 @@ export default function App() {
     if (import.meta.env.DEV) console.log("Smelt complete");
     fireSound.stop();
     purrSound.play();
-
-    if (activeSmeltRunIdRef.current !== activeRequestIdRef.current) return;
+    setIsPlaying(false);
 
     const completedAnalysis = analysisRef.current;
+    if (!completedAnalysis) return;
 
-    // Skip Firestore write on replay (isComplete already true)
-    if (isComplete || !completedAnalysis) return;
+    // Always delay buttons — works for both first smelt and replay
+    setButtonsDelayed(true);
 
-    try {
-      const logRef = doc(collection(db, 'smelt_logs'));
-      await setDoc(logRef, {
-        pixel_count: completedAnalysis.pixelCount,
-        damage_report: completedAnalysis.damageReport,
-        dominant_colors: completedAnalysis.dominantColors,
-        timestamp: serverTimestamp(),
-        uid: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
-      });
+    if (!hasWrittenRef.current) {
+      // First completion — write to Firestore
+      hasWrittenRef.current = true;
+      setIsWritingData(true);
+      try {
+        const colors = getFiveDistinctColors(completedAnalysis.dominantColors);
+        const box = completedAnalysis.subjectBox;
+        const logRef = doc(collection(db, 'incident_logs'));
+        await setDoc(logRef, {
+          pixel_count: completedAnalysis.pixelCount,
+          incident_feed_summary: completedAnalysis.incidentFeedSummary,
+          color_1: colors[0],
+          color_2: colors[1],
+          color_3: colors[2],
+          color_4: colors[3],
+          color_5: colors[4],
+          subject_box_ymin: box[0] ?? 100,
+          subject_box_xmin: box[1] ?? 100,
+          subject_box_ymax: box[2] ?? 900,
+          subject_box_xmax: box[3] ?? 900,
+          legacy_infra_class: completedAnalysis.legacyInfraClass,
+          diagnosis: completedAnalysis.diagnosis,
+          chromatic_profile: completedAnalysis.chromaticProfile,
+          system_dx: completedAnalysis.systemDx,
+          severity: completedAnalysis.severity,
+          primary_contamination: completedAnalysis.primaryContamination,
+          contributing_factor: completedAnalysis.contributingFactor,
+          failure_origin: completedAnalysis.failureOrigin,
+          disposition: completedAnalysis.disposition,
+          archive_note: completedAnalysis.archiveNote,
+          og_headline: completedAnalysis.ogHeadline,
+          share_quote: completedAnalysis.shareQuote,
+          anon_handle: completedAnalysis.anonHandle,
+          timestamp: serverTimestamp(),
+          uid: crypto.randomUUID()
+        });
 
-      const statsRef = doc(db, 'global_stats', 'main');
-      await setDoc(statsRef, {
-        total_pixels_melted: increment(completedAnalysis.pixelCount)
-      }, { merge: true });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'smelt_logs / global_stats');
+        const statsRef = doc(db, 'global_stats', 'main');
+        await setDoc(statsRef, {
+          total_pixels_melted: increment(completedAnalysis.pixelCount)
+        }, { merge: true });
+
+        setIsComplete(true);
+        setIsWritingData(false);
+        smeltTimerRef.current = setTimeout(() => {
+          smeltTimerRef.current = null;
+          setButtonsDelayed(false);
+          setShowReport(true);
+        }, 3000);
+      } catch (error) {
+        hasWrittenRef.current = false;
+        setIsWritingData(false);
+        setButtonsDelayed(false);
+        setIsComplete(true); // animation finished — allow replay and in-memory report even though write failed
+        setAnalysisError('ARCHIVE WRITE FAILED. INCIDENT NOT PERSISTED TO MANIFEST.');
+        handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
+      }
+    } else {
+      // Replay — no Firestore write, just delay the buttons
+      smeltTimerRef.current = setTimeout(() => {
+        smeltTimerRef.current = null;
+        setButtonsDelayed(false);
+      }, 3000);
     }
-    // Show damage report regardless of whether Firestore write succeeded
-    setIsComplete(true);
+  };
+
+  const resetToIdle = () => {
+    if (smeltTimerRef.current !== null) {
+      clearTimeout(smeltTimerRef.current);
+      smeltTimerRef.current = null;
+    }
+    setIsComplete(false);
+    setShowReport(false);
+    setAnalysis(null);
+    analysisRef.current = null;
+    hasWrittenRef.current = false;
+    setIsWritingData(false);
+    setButtonsDelayed(false);
+    setIsPlaying(false);
   };
 
   const handleReplay = () => {
     purrSound.stop();
+    setShowReport(false);
+    setIsPlaying(true);
     canvasRef.current?.replay();
   };
 
+  const shareLinks = analysis
+    ? buildShareLinks(
+        `${analysis.shareQuote}\n\n${analysis.incidentFeedSummary}`,
+        analysis.ogHeadline,
+        window.location.origin
+      )
+    : [];
+
+  const formatted = formatPixels(globalStats.total_pixels_melted);
+
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
-      {/* Header */}
-      <header className="p-6 border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto w-full flex justify-between items-center">
-          <h1 className="text-2xl font-black font-mono tracking-tighter uppercase">
-            LEGACY <span className="text-hazard-amber">SMELTER</span>
-          </h1>
-          <div className="text-hazard-amber font-mono text-xs uppercase font-bold">
-            [ ACCESS_GRANTED ]
+      <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto w-full flex flex-col gap-3 px-4 py-4 sm:flex-row sm:justify-between sm:items-center sm:px-6">
+          <div>
+            <h1 className="text-2xl font-black font-mono tracking-tighter uppercase">
+              LEGACY <span className="text-hazard-amber">SMELTER</span>
+            </h1>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse shrink-0" />
+              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">
+                If a bug exists, apply Hotfix.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-4 w-full sm:w-auto sm:justify-end">
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <div className="font-mono font-extrabold text-hazard-amber text-lg leading-none tracking-tight">
+                  {formatted.value} <span className="text-xs text-stone-gray font-bold">{formatted.unit}</span>
+                </div>
+                <div className="text-[10px] font-mono text-stone-gray uppercase tracking-widest mt-0.5">
+                  DECOMMISSION INDEX
+                </div>
+              </div>
+              <div className="hazard-stripe w-2 h-10 rounded-sm shrink-0" aria-hidden="true" />
+            </div>
+            <button
+              onClick={onNavigateManifest}
+              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:rounded"
+            >
+              INCIDENT MANIFEST
+              <ArrowRight size={14} />
+            </button>
           </div>
         </div>
       </header>
 
       <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
 
           {/* Left Column: Smelter Area */}
-          <div className="lg:col-span-7 space-y-4">
-            {/* Controls — always visible */}
+          <div className="md:col-span-7 space-y-4">
+            {/* Controls */}
             <div className="flex gap-3">
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="modern-button flex-1 flex items-center justify-center gap-2"
               >
-                <Upload size={18} aria-hidden={true} />
-                UPLOAD
+                <Upload size={18} />
+                PROCESS ARTIFACT
               </button>
               <button
                 onClick={startCamera}
                 className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-concrete-border hover:brightness-110"
               >
-                <Camera size={18} aria-hidden={true} />
-                CAMERA
+                <Camera size={18} />
+                DEPLOY SCANNER
               </button>
             </div>
 
@@ -269,25 +381,23 @@ export default function App() {
             <input type="file" ref={cameraInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" capture="environment" />
 
             {/* Animation Window */}
-            <div className="modern-card aspect-video relative overflow-hidden bg-concrete">
+            <div className="modern-card aspect-video relative overflow-hidden">
               {/* Camera overlay */}
               {isCameraActive && (
                 <div className="absolute inset-0 bg-black z-30">
                   <video ref={videoRef} playsInline className="w-full h-full object-cover" aria-label="Camera preview" />
                   <button
                     onClick={stopCamera}
-                    aria-label="Close camera"
-                    title="Close camera"
                     className="absolute top-4 right-4 w-10 h-10 bg-concrete-mid/80 rounded-full flex items-center justify-center text-stone-gray hover:text-ash-white z-50"
+                    aria-label="Close camera capture"
                   >
-                    <X size={20} aria-hidden={true} />
+                    <X size={20} />
                   </button>
                   <div className="absolute bottom-6 left-0 w-full flex justify-center z-50">
                     <button
                       onClick={captureImage}
-                      aria-label="Capture photo"
-                      title="Capture photo"
                       className="w-16 h-16 rounded-full border-4 border-white flex items-center justify-center bg-white/20 hover:bg-white/40 backdrop-blur-sm transition-all"
+                      aria-label="Capture photo"
                     >
                       <div className="w-12 h-12 bg-white rounded-full" />
                     </button>
@@ -295,35 +405,55 @@ export default function App() {
                 </div>
               )}
 
-              {/* Empty state */}
-              {!currentImage && !isCameraActive && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <Zap className="text-hazard-amber mx-auto mb-3" size={32} aria-hidden={true} />
-                    <p className="text-stone-gray font-mono text-xs uppercase">
-                      INPUT LEGACY HARDWARE FOR SMELTING
-                    </p>
-                  </div>
-                </div>
-              )}
+              {/* PixiJS Canvas — always mounted so idle animation runs immediately */}
+              <SmelterCanvas
+                ref={canvasRef}
+                onComplete={handleSmeltComplete}
+                onFlyInStart={() => flyInSound.play()}
+                onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
+              />
 
-              {/* PixiJS Canvas */}
-              {currentImage && (
-                <SmelterCanvas
-                  ref={canvasRef}
-                  onComplete={handleSmeltComplete}
-                  onFlyInStart={() => flyInSound.play()}
-                  onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
-                />
-              )}
 
               {/* Analyzing overlay */}
               {isAnalyzing && (
                 <div role="status" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
                   <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
                   <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
-                    GEMINI_VISION: ANALYZING_DECAY_PATTERNS...
+                    HOTFIX PROCESSING
                   </p>
+                </div>
+              )}
+
+              {/* Loading post-mortem overlay */}
+              {isWritingData && !showReport && (
+                <div role="status" aria-live="polite" className="absolute inset-0 z-40 flex items-center justify-center">
+                  <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border flex items-center gap-3">
+                    <div className="w-4 h-4 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin shrink-0" />
+                    <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
+                      COMPILING INCIDENT POSTMORTEM // STAND BY
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Post-smelt controls — replay + view report */}
+              {isComplete && !buttonsDelayed && !isPlaying && (
+                <div className="absolute inset-0 z-40 bg-concrete/70 backdrop-blur-sm flex items-center justify-center gap-3">
+                  <button
+                    onClick={handleReplay}
+                    className="modern-button flex items-center gap-2 text-sm bg-concrete/80 text-hazard-amber border border-concrete-border backdrop-blur-sm hover:bg-concrete/90"
+                  >
+                    <RotateCcw size={16} aria-hidden="true" />
+                    REPLAY SMELT
+                  </button>
+                  {!showReport && (
+                    <button
+                      onClick={() => setShowReport(true)}
+                      className="modern-button flex items-center gap-2 text-sm"
+                    >
+                      VIEW POSTMORTEM
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -335,28 +465,41 @@ export default function App() {
                 </p>
               </div>
             )}
-
-            {/* Damage report + replay */}
-            {isComplete && analysis && (
-              <div className="modern-card p-6">
-                <p className="text-ash-white font-mono text-sm leading-relaxed mb-4">
-                  {analysis.damageReport}
-                </p>
-                <button
-                  onClick={handleReplay}
-                  className="modern-button flex items-center justify-center gap-2"
-                >
-                  <RotateCcw size={18} aria-hidden={true} />
-                  REPLAY SMELT
-                </button>
-              </div>
-            )}
           </div>
 
-          {/* Right Column: Stats & Feed */}
-          <div className="lg:col-span-5 space-y-8">
-            <GlobalStats totalPixels={globalStats.total_pixels_melted} />
-            <SmeltManifest logs={logs} />
+          {/* Right Column: Recent Incidents */}
+          <div className="md:col-span-5">
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-hazard-amber font-mono text-xs md:text-sm uppercase tracking-wide md:tracking-widest font-bold">
+                  RECENT INCIDENTS
+                </h2>
+                <button
+                  onClick={onNavigateManifest}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-concrete-border bg-concrete-mid/60 px-2.5 py-1.5 text-[11px] font-mono uppercase tracking-wider text-stone-gray hover:text-hazard-amber hover:border-hazard-amber/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
+                >
+                  VIEW MANIFEST
+                  <ArrowRight size={12} aria-hidden="true" />
+                </button>
+              </div>
+              <div className="space-y-3">
+                {recentLogs.map((log) => (
+                  <IncidentLogCard
+                    key={log.id}
+                    log={log}
+                    onClick={() => setSelectedRecentLog(log)}
+                  />
+                ))}
+                {recentLogs.length === 0 && (
+                  <div className="modern-card p-12 text-center">
+                    <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
+                    <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
+                      Furnace idle. Awaiting condemned infrastructure.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
         </div>
@@ -369,10 +512,27 @@ export default function App() {
             &copy; 2026 Ashley Childress
           </p>
           <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
-            Powered by Gemini | Built with Google AI Studio, Gemini &amp; Claude
+            Powered by Gemini
           </p>
         </div>
       </footer>
+
+      {/* Post-mortem overlay */}
+      {selectedRecentLog && (
+        <IncidentReportOverlay
+          log={selectedRecentLog}
+          shareLinks={getLogShareLinks(selectedRecentLog)}
+          onClose={() => setSelectedRecentLog(null)}
+        />
+      )}
+
+      {showReport && analysis && (
+        <IncidentReportOverlay
+          analysis={analysis}
+          shareLinks={shareLinks}
+          onClose={() => setShowReport(false)}
+        />
+      )}
     </div>
   );
 }

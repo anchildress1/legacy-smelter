@@ -1,8 +1,27 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import type { SmeltLog } from '../types';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+// Server is us-east1 (America/New_York). Format: 2026.04.05 // 21:19:01 EST
+const _tsFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+  timeZoneName: 'short',
+});
+
+export function formatTimestamp(date: Date): string {
+  const p = Object.fromEntries(_tsFormatter.formatToParts(date).map(({ type, value }) => [type, value]));
+  return `${p.year}.${p.month}.${p.day} // ${p.hour}:${p.minute}:${p.second} ${p.timeZoneName}`;
 }
 
 export function formatPixels(pixels: number): { value: string, unit: string } {
@@ -16,13 +35,31 @@ export function formatPixels(pixels: number): { value: string, unit: string } {
 
 export const FALLBACK_COLORS = ["#ffff00", "#00c3f5", "#4db542", "#fb0094", "#fc9103"];
 
+export function buildShareLinks(shareText: string, headline: string, pageUrl: string): { label: string; href: string }[] {
+  return [
+    { label: 'twitter',  href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}` },
+    { label: 'facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}` },
+    { label: 'linkedin', href: `https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(pageUrl)}&title=${encodeURIComponent(headline)}&summary=${encodeURIComponent(shareText)}` },
+    { label: 'bluesky',  href: `https://bsky.app/intent/compose?text=${encodeURIComponent(shareText)}` },
+    { label: 'reddit',   href: `https://www.reddit.com/submit?title=${encodeURIComponent(headline)}&selftext=true&text=${encodeURIComponent(shareText)}` },
+  ];
+}
+
+export function getLogShareLinks(log: SmeltLog): { label: string; href: string }[] {
+  const shareText = log.share_quote
+    ? `${log.share_quote}\n\n${log.incident_feed_summary}`
+    : log.incident_feed_summary;
+  const headline = log.og_headline || 'Legacy Smelter Incident Report';
+  return buildShareLinks(shareText, headline, window.location.origin);
+}
+
 export function getFiveDistinctColors(colors: string[]): string[] {
   const hexRegex = /^#([0-9a-f]{6})$/i;
   const validColors = (colors || [])
     .filter(c => typeof c === 'string')
     .map(c => c.toLowerCase().trim())
     .filter(c => hexRegex.test(c));
-    
+
   const uniqueSrc = Array.from(new Set(validColors));
   const combined = Array.from(new Set([...uniqueSrc, ...FALLBACK_COLORS]));
   return combined.slice(0, 5);

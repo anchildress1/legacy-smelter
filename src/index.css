@@ -23,12 +23,21 @@
 
   /* Text hierarchy — warm tones */
   --color-ash-white: #e8e4dc;       /* primary text */
-  --color-stone-gray: #b0aaa4;      /* secondary/de-emphasized text */
+  --color-stone-gray: #b0aaa4;      /* secondary text */
+  --color-dead-gray: #5c5955;       /* timestamps, de-emphasized */
 }
 
 @layer base {
   body {
     @apply bg-concrete text-ash-white font-sans selection:bg-hazard-amber selection:text-zinc-950;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
@@ -38,16 +47,16 @@
   }
 
   .modern-button {
-    @apply bg-hazard-amber text-zinc-950 font-bold px-6 py-3 rounded-lg shadow-md hover:brightness-110 active:scale-95 transition-all uppercase tracking-wide;
+    @apply bg-hazard-amber text-zinc-950 font-bold px-6 py-3 rounded-lg shadow-md hover:brightness-110 active:scale-95 transition-all uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-offset-2 focus-visible:ring-offset-concrete-light;
   }
 
   .hazard-stripe {
     background: repeating-linear-gradient(
       -45deg,
-      #f5c842,
-      #f5c842 10px,
-      #1a1917 10px,
-      #1a1917 20px
+      var(--color-hazard-amber),
+      var(--color-hazard-amber) 10px,
+      var(--color-concrete) 10px,
+      var(--color-concrete) 20px
     );
   }
 }

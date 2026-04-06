@@ -1,11 +1,35 @@
 import type { Timestamp } from 'firebase/firestore';
 
+export type Severity = 'Advisory' | 'Elevated' | 'Critical' | 'Terminal';
+
 export interface SmeltLog {
   id: string;
-  timestamp: Timestamp | null;
   pixel_count: number;
-  damage_report: string;
-  dominant_colors: string[];
+  incident_feed_summary: string;
+  color_1: string;
+  color_2: string;
+  color_3: string;
+  color_4: string;
+  color_5: string;
+  subject_box_ymin: number;
+  subject_box_xmin: number;
+  subject_box_ymax: number;
+  subject_box_xmax: number;
+  legacy_infra_class: string;
+  diagnosis: string;
+  chromatic_profile: string;
+  system_dx: string;
+  severity: Severity;
+  primary_contamination: string;
+  contributing_factor: string;
+  failure_origin: string;
+  disposition: string;
+  archive_note: string;
+  og_headline: string;
+  share_quote: string;
+  anon_handle: string;
+  timestamp: Timestamp | null;
+  uid: string;
 }
 
 export interface GlobalStats {

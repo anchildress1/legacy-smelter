@@ -1,49 +1,73 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: smelt_logs
-    // Fields:
-    //   - pixel_count: number (required)
-    //   - damage_report: string (required, max 100 chars)
-    //   - dominant_colors: list (required, 5 strings)
-    //   - timestamp: timestamp (required)
-    //   - uid: string (required)
-    //
-    // Collection: global_stats
-    // Document: main
-    // Fields:
-    //   - total_pixels_melted: number (required)
-    //
-    // ===============================================================
 
-    function isValidSmeltLog(data) {
-      return data.pixel_count is number && data.pixel_count > 0 &&
-             data.damage_report is string &&
-             data.dominant_colors is list &&
+    function isHexColor(val) {
+      return val is string && val.matches('^#[0-9a-fA-F]{6}$');
+    }
+
+    function isValidSeverity(val) {
+      return val in ['Advisory', 'Elevated', 'Critical', 'Terminal'];
+    }
+
+    function isValidIncidentLog(data) {
+      let fields = [
+               'pixel_count', 'incident_feed_summary',
+               'color_1', 'color_2', 'color_3', 'color_4', 'color_5',
+               'subject_box_ymin', 'subject_box_xmin', 'subject_box_ymax', 'subject_box_xmax',
+               'legacy_infra_class', 'diagnosis',
+               'chromatic_profile', 'system_dx', 'severity',
+               'primary_contamination', 'contributing_factor', 'failure_origin',
+               'disposition', 'archive_note',
+               'og_headline', 'share_quote', 'anon_handle',
+               'timestamp', 'uid'
+             ];
+      return data.keys().hasAll(fields) &&
+             data.keys().hasOnly(fields) &&
+             data.pixel_count is number && data.pixel_count > 0 &&
+             data.incident_feed_summary is string && data.incident_feed_summary.size() <= 500 &&
+             isHexColor(data.color_1) &&
+             isHexColor(data.color_2) &&
+             isHexColor(data.color_3) &&
+             isHexColor(data.color_4) &&
+             isHexColor(data.color_5) &&
+             data.subject_box_ymin is number &&
+             data.subject_box_xmin is number &&
+             data.subject_box_ymax is number &&
+             data.subject_box_xmax is number &&
+             data.legacy_infra_class is string && data.legacy_infra_class.size() <= 80 &&
+             data.diagnosis is string && data.diagnosis.size() <= 200 &&
+             data.chromatic_profile is string && data.chromatic_profile.size() <= 60 &&
+             data.system_dx is string && data.system_dx.size() <= 300 &&
+             isValidSeverity(data.severity) &&
+             data.primary_contamination is string && data.primary_contamination.size() <= 80 &&
+             data.contributing_factor is string && data.contributing_factor.size() <= 80 &&
+             data.failure_origin is string && data.failure_origin.size() <= 400 &&
+             data.disposition is string && data.disposition.size() <= 300 &&
+             data.archive_note is string && data.archive_note.size() <= 800 &&
+             data.og_headline is string && data.og_headline.size() <= 200 &&
+             data.share_quote is string && data.share_quote.size() <= 300 &&
+             data.anon_handle is string && data.anon_handle.size() <= 50 &&
              data.timestamp is timestamp &&
-             data.uid is string;
+             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 100;
     }
 
     function isValidGlobalStats(data) {
       return data.total_pixels_melted is number && data.total_pixels_melted >= 0;
     }
 
-    // Rules
-    match /smelt_logs/{logId} {
+    match /incident_logs/{logId} {
       allow read: if true;
-      allow create: if isValidSmeltLog(request.resource.data);
+      allow create: if isValidIncidentLog(request.resource.data);
     }
 
     match /global_stats/main {
       allow read: if true;
-      allow write: if isValidGlobalStats(request.resource.data);
+      allow create: if isValidGlobalStats(request.resource.data);
+      allow update: if isValidGlobalStats(request.resource.data) &&
+                       request.resource.data.total_pixels_melted >= resource.data.total_pixels_melted;
     }
-    
-    // Default deny
+
     match /{document=**} {
       allow read, write: if false;
     }
