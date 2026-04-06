@@ -1,6 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 
-export type Severity = 'Advisory' | 'Elevated' | 'Critical' | 'Terminal';
+export type Severity = string;
 
 export interface SmeltLog {
   id: string;

@@ -25,20 +25,18 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
       </div>
       <div className="p-4 flex-1 min-w-0">
         <div className="flex justify-between items-start gap-4">
-          <div className="min-w-0 flex-1">
-            {log.legacy_infra_class && (
-              <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
-                {log.legacy_infra_class}
-              </p>
-            )}
-            <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-3">
-              {log.incident_feed_summary}
+          {log.legacy_infra_class && (
+            <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest min-w-0">
+              {log.legacy_infra_class}
             </p>
-          </div>
-          <span className="font-mono text-[10px] uppercase tracking-wider font-bold shrink-0 mt-0.5 bg-hazard-amber text-zinc-950 px-1.5 py-0.5 rounded">
+          )}
+          <span className="font-mono text-[10px] uppercase tracking-wider font-bold shrink-0 bg-hazard-amber text-zinc-950 px-1.5 py-0.5 rounded">
             {log.severity}
           </span>
         </div>
+        <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-3">
+          {log.incident_feed_summary}
+        </p>
         <div className="mt-2 flex items-end gap-x-5 gap-y-1 flex-wrap">
           <span className="text-hazard-amber font-mono text-xs font-bold">
             {fmt.value} {fmt.unit}

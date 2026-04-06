@@ -2,13 +2,9 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { getFiveDistinctColors } from "../lib/utils";
 import type { Severity } from "../types";
 
-const VALID_SEVERITIES: readonly Severity[] = ['Advisory', 'Elevated', 'Critical', 'Terminal'];
-
 function normalizeSeverity(value: unknown): Severity {
-  if (typeof value === 'string' && VALID_SEVERITIES.includes(value as Severity)) {
-    return value as Severity;
-  }
-  return 'Critical';
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return 'Unclassified';
 }
 
 export interface SmeltAnalysis {
@@ -77,21 +73,20 @@ Hotfix has system states, not moods.
 
 Artifacts are destroyed. Nothing is recovered. Processing results in slag or molten residue. The system considers this successful decommission.
 
-## Severity tiers
+## Severity classification
 
-Use ONLY these classifications. Assign based on artifact condition. Distribute across the scale — most artifacts are not Terminal, and not everything is Critical.
+Generate a single English word that functions as the incident severity classification.
 
-| Classification | Condition | Disposition |
-|---|---|---|
-| Advisory | Cosmetic fault only. Artifact is functional, merely offensive. Bad choices were made. Structure intact. | Logged. No action required. |
-| Elevated | Multiple failure indicators present. Structural instability suspected. Functionality compromised but identifiable. | Inspection recommended. |
-| Critical | Severe integrity failure. Core function absent or broken. Cannot be rehabilitated. | Immediate smelting required. |
-| Terminal | Beyond classification. The artifact defies the analyzer's own taxonomies. Continued exposure risks system integrity. | Emergency incineration. |
+Rules:
+- One word only. No hyphens. No made-up words.
+- Must be a real English word with a genuine connotation of degradation, failure, contamination, or systemic collapse.
+- Must sound like it belongs in an institutional classification document — serious, clinical, believable.
+- Must be specific to the artifact. Read the image. The word should feel inevitable for this particular failure.
+- Every incident gets a different word. Do not reuse common severity labels. Avoid: Critical, Terminal, Advisory, Elevated, Fatal, Severe.
+- The more unexpected and precise, the better. Aim for words that feel discovered, not assigned.
 
-Use Advisory for: poor aesthetics, bad color choices, visual clutter, outdated but intact interfaces.
-Use Elevated for: layout failures, obvious technical debt, broken UX patterns, deprecated stacks still in service.
-Use Critical for: non-functional artifacts, architectural failure, total UI collapse, corrupted design systems.
-Use Terminal for: artifacts so degraded they resist categorization — the incident log itself feels unsafe.
+Examples of the register (do not use these verbatim — generate your own):
+Calcified. Necrotic. Vestigial. Septic. Desiccated. Irradiated. Petrified. Suppurating. Carbonized. Liquefied. Fossilized. Gangrenous. Inert. Vitrified. Corrupted. Atrophied.
 
 ## Field constraints
 
@@ -116,7 +111,7 @@ Use Terminal for: artifacts so degraded they resist categorization — the incid
 
 Be confident. Be concise. Sound institutional. Be visually grounded in the image. The classification is always correct.
 
-Severity must match artifact condition. Advisory artifacts exist. Not everything warrants Terminal. Vary the distribution.`;
+Severity is a single word you generate. It must feel specific to this artifact. Every incident gets a different word.`;
 
 export async function analyzeLegacyTech(base64Image: string, mimeType: string): Promise<SmeltAnalysis> {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -166,11 +161,11 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
           },
           chromatic_profile: { type: Type.STRING, description: "Diagnostic color palette name. 4 words max. E.g. 'Moldy Blossom', 'Thermal Beige'." },
           system_dx: { type: Type.STRING, description: "Compound clinical syndrome name. Structure: [Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]." },
-          severity: { type: Type.STRING, description: "One of: Advisory, Elevated, Critical, Terminal." },
+          severity: { type: Type.STRING, description: "Single English word. Institutional severity classification specific to this artifact. Serious, clinical, unexpected. No hyphens. Real word only." },
           primary_contamination: { type: Type.STRING, description: "Dominant visual or structural fault. 5 words max." },
           contributing_factor: { type: Type.STRING, description: "Secondary fault. 5 words max." },
           failure_origin: { type: Type.STRING, description: "What decisions produced this artifact. End with a deadpan detail. 20 words max." },
-          disposition: { type: Type.STRING, description: "System recommendation referencing a severity tier. 18 words max." },
+          disposition: { type: Type.STRING, description: "System recommendation. References the severity classification word. 18 words max." },
           incident_feed_summary: { type: Type.STRING, description: "One-line manifest entry. Pattern: [Object] [state change]. Output: [result]. 14 words max." },
           archive_note: { type: Type.STRING, description: "Evidence record. Short clauses. Start clinical, escalate, end with deadpan observation. 60 words max." },
           og_headline: { type: Type.STRING, description: "Internal notification that escaped containment. 10 words max." },
