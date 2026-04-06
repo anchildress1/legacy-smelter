@@ -281,7 +281,7 @@ export default function App({ onNavigateManifest }: AppProps) {
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto w-full flex justify-between items-center px-6 py-4">
+        <div className="max-w-7xl mx-auto w-full flex flex-col gap-3 px-4 py-4 md:flex-row md:justify-between md:items-center md:px-6">
           <div>
             <h1 className="text-2xl font-black font-mono tracking-tighter uppercase">
               LEGACY <span className="text-hazard-amber">SMELTER</span>
@@ -293,7 +293,7 @@ export default function App({ onNavigateManifest }: AppProps) {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between gap-4 w-full md:w-auto md:justify-end">
             <div className="flex items-center gap-3">
               <div className="text-right">
                 <div className="font-mono font-extrabold text-hazard-amber text-lg leading-none tracking-tight">
@@ -307,7 +307,7 @@ export default function App({ onNavigateManifest }: AppProps) {
             </div>
             <button
               onClick={onNavigateManifest}
-              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:rounded"
+              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:rounded"
             >
               INCIDENT MANIFEST
               <ArrowRight size={14} />
@@ -439,9 +439,10 @@ export default function App({ onNavigateManifest }: AppProps) {
                 </h2>
                 <button
                   onClick={onNavigateManifest}
-                  className="text-stone-gray hover:text-hazard-amber transition-colors font-mono text-xs md:text-[10px] uppercase tracking-wide md:tracking-wider"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-concrete-border bg-concrete-mid/60 px-2.5 py-1.5 text-[11px] font-mono uppercase tracking-wider text-stone-gray hover:text-hazard-amber hover:border-hazard-amber/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
                 >
                   VIEW ALL
+                  <ArrowRight size={12} aria-hidden="true" />
                 </button>
               </div>
               <div className="space-y-3">
@@ -456,7 +457,6 @@ export default function App({ onNavigateManifest }: AppProps) {
                       key={log.id}
                       onClick={() => setSelectedRecentLog(log)}
                       className={`modern-card relative overflow-hidden w-full text-left hover:border-hazard-amber/40 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${visibilityClass}`}
-                      aria-label={`Open incident report: ${log.legacy_infra_class || log.incident_feed_summary}`}
                     >
                       {/* Color strip */}
                       <div className="w-2 shrink-0 flex flex-col" aria-hidden="true">

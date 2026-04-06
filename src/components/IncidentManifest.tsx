@@ -54,7 +54,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       {/* Header */}
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto w-full flex justify-between items-center px-6 py-4">
+        <div className="max-w-5xl mx-auto w-full flex flex-col gap-3 px-4 py-4 md:flex-row md:justify-between md:items-center md:px-6">
           <div className="flex items-center gap-4">
             <button
               onClick={onNavigateHome}
@@ -64,7 +64,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
               RETURN TO SMELTER
             </button>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between gap-3 w-full md:w-auto md:justify-end">
             <div className="text-right">
               <div className="font-mono font-extrabold text-hazard-amber text-lg leading-none tracking-tight">
                 {formatted.value} <span className="text-xs text-stone-gray font-bold">{formatted.unit}</span>
@@ -101,7 +101,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
               <button
                 key={log.id}
                 onClick={() => setSelectedLog(log)}
-                className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors cursor-pointer group"
+                className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
               >
                 {/* Color strip */}
                 <div className="w-2 shrink-0 flex flex-col" aria-hidden="true">
