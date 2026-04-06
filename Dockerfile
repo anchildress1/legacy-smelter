@@ -3,7 +3,7 @@
 FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 RUN npm run build
 
@@ -12,7 +12,7 @@ RUN npm run build
 FROM node:24-alpine AS server
 WORKDIR /app
 ENV NODE_ENV=production
-RUN npm install express dotenv
+RUN --mount=type=cache,target=/root/.npm npm install express dotenv
 COPY server.js .
 COPY --from=builder /app/dist ./dist
 EXPOSE 8080
