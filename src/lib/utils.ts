@@ -22,11 +22,13 @@ export function getLogShareLinks(log: SmeltLog): { label: string; href: string }
     ? `${log.share_quote}\n\n${log.incident_feed_summary}`
     : log.incident_feed_summary;
   const headline = log.og_headline || 'Legacy Smelter Incident Report';
+  const pageUrl = window.location.origin;
   return [
-    { label: 'POST TO X', href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}` },
-    { label: 'POST TO REDDIT', href: `https://www.reddit.com/submit?title=${encodeURIComponent(headline)}&selftext=true&text=${encodeURIComponent(shareText)}` },
-    { label: 'POST TO BLUESKY', href: `https://bsky.app/intent/compose?text=${encodeURIComponent(shareText)}` },
-    { label: 'POST TO LINKEDIN', href: `https://www.linkedin.com/shareArticle?mini=true&title=${encodeURIComponent(headline)}&summary=${encodeURIComponent(shareText)}` },
+    { label: 'twitter',  href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}` },
+    { label: 'facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl)}` },
+    { label: 'linkedin', href: `https://www.linkedin.com/shareArticle?mini=true&title=${encodeURIComponent(headline)}&summary=${encodeURIComponent(shareText)}` },
+    { label: 'bluesky',  href: `https://bsky.app/intent/compose?text=${encodeURIComponent(shareText)}` },
+    { label: 'reddit',   href: `https://www.reddit.com/submit?title=${encodeURIComponent(headline)}&selftext=true&text=${encodeURIComponent(shareText)}` },
   ];
 }
 

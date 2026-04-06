@@ -4,10 +4,6 @@ import { SmeltLog } from '../types';
 import { formatPixels } from '../lib/utils';
 import { X, AlertTriangle, Check, Copy } from 'lucide-react';
 
-/**
- * Accepts either a SmeltAnalysis (from the current session)
- * or a SmeltLog (from Firestore history). Normalises internally.
- */
 interface OverlayProps {
   analysis?: SmeltAnalysis | null;
   log?: SmeltLog | null;
@@ -15,7 +11,6 @@ interface OverlayProps {
   onClose: () => void;
 }
 
-// Normalised shape used inside the component
 interface NormalisedReport {
   legacyInfraClass: string;
   incidentFeedSummary: string;
@@ -84,6 +79,55 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
   return null;
 }
 
+// Brand-colored share platform config
+const SHARE_PLATFORMS: Record<string, { name: string; bg: string; icon: React.ReactNode }> = {
+  twitter: {
+    name: 'TWITTER',
+    bg: '#000000',
+    icon: (
+      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.742l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+      </svg>
+    ),
+  },
+  facebook: {
+    name: 'FACEBOOK',
+    bg: '#1877F2',
+    icon: (
+      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+      </svg>
+    ),
+  },
+  linkedin: {
+    name: 'LINKEDIN',
+    bg: '#0A66C2',
+    icon: (
+      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+      </svg>
+    ),
+  },
+  bluesky: {
+    name: 'BLUESKY',
+    bg: '#0085FF',
+    icon: (
+      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 10.8c-1.087-2.114-4.046-6.053-6.798-7.995C2.566.944 1.561 1.266.902 1.565.139 1.908 0 3.08 0 3.768c0 .69.378 5.65.624 6.479.815 2.736 3.713 3.66 6.383 3.364.136-.02.275-.039.415-.056-.138.022-.276.04-.415.056-3.912.58-7.387 2.005-2.83 7.078 5.013 5.19 6.87-1.113 7.823-4.308.953 3.195 2.05 9.271 7.733 4.308 4.267-4.308 1.172-6.498-2.74-7.078a8.741 8.741 0 01-.415-.056c.14.017.279.036.415.056 2.67.297 5.568-.628 6.383-3.364.246-.828.624-5.79.624-6.478 0-.69-.139-1.861-.902-2.206-.659-.298-1.664-.62-4.3 1.24C16.046 4.748 13.087 8.687 12 10.8z" />
+      </svg>
+    ),
+  },
+  reddit: {
+    name: 'REDDIT',
+    bg: '#FF4500',
+    icon: (
+      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z" />
+      </svg>
+    ),
+  },
+};
+
 export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, onClose }) => {
   const report = normalise(analysis, log);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -93,7 +137,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle');
   const headingId = useId();
 
-  // Trap focus inside modal and restore focus on close.
   useEffect(() => {
     lastActiveElementRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -141,7 +184,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     };
   }, [onClose]);
 
-  // Lock body scroll
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
@@ -163,6 +205,8 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     } catch { /* clipboard unavailable */ }
   };
 
+  const platforms = (shareLinks || []).filter(l => SHARE_PLATFORMS[l.label]);
+
   return (
     <div
       ref={overlayRef}
@@ -178,21 +222,22 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         aria-labelledby={headingId}
         tabIndex={-1}
       >
-        {/* Color palette strip — top edge on mobile, left edge on desktop */}
+        {/* Color palette strip — left on desktop, top on mobile */}
         <div className="hidden sm:flex w-2 shrink-0 flex-col rounded-l-xl overflow-hidden" aria-hidden="true">
           {report.dominantColors.map((color, i) => (
             <div key={i} className="flex-1" style={{ backgroundColor: color }} />
           ))}
         </div>
-        <div className="flex sm:hidden h-1.5 w-full" aria-hidden="true">
+        <div className="flex sm:hidden h-1.5 w-full shrink-0" aria-hidden="true">
           {report.dominantColors.map((color, i) => (
             <div key={i} className="flex-1" style={{ backgroundColor: color }} />
           ))}
         </div>
 
-        <div className="sm:flex-1 sm:min-w-0 sm:overflow-y-auto">
+        {/* Content — fixed header zone + scrollable details on desktop */}
+        <div className="sm:flex-1 sm:min-w-0 sm:flex sm:flex-col sm:overflow-hidden">
           {/* Hazard stripe */}
-          <div className="hazard-stripe h-1.5 w-full" />
+          <div className="hazard-stripe h-1.5 w-full shrink-0" />
 
           {/* Close button */}
           <button
@@ -204,22 +249,23 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             <X size={16} />
           </button>
 
-          <div className="p-6 sm:p-8 space-y-5">
-            {/* Header */}
+          {/* ── NON-SCROLLING HEADER ZONE ── */}
+          <div className="shrink-0 p-5 sm:p-6 space-y-4">
+            {/* Title, class, summary, severity */}
             <div className="pr-8">
-              <h2 id={headingId} className="text-hazard-amber font-mono text-sm uppercase tracking-widest">
+              <h2 id={headingId} className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
                 INCIDENT POSTMORTEM
               </h2>
-              <p className="text-hazard-amber font-mono text-lg sm:text-xl uppercase tracking-widest mt-2 font-bold">
+              <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide mt-1.5 font-bold leading-tight">
                 {report.legacyInfraClass}
               </p>
-              <p className="text-ash-white font-mono text-base sm:text-lg leading-snug mt-2">
+              <p className="text-ash-white font-mono text-sm sm:text-base leading-snug mt-1.5">
                 {report.incidentFeedSummary}
               </p>
-              <div className="flex items-center gap-3 mt-3 flex-wrap">
+              <div className="flex items-center gap-3 mt-2.5 flex-wrap">
                 <span
                   className="inline-flex items-center gap-1.5 text-xs font-mono text-concrete-light bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold"
-                  aria-label={`Severity classification: ${report.severity}`}
+                  aria-label={`Severity: ${report.severity}`}
                 >
                   <AlertTriangle size={10} aria-hidden="true" />
                   {report.severity}
@@ -230,106 +276,103 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               </div>
             </div>
 
+            {/* ── SHARE BUTTONS — prominent, always visible ── */}
+            <div className="border-t border-concrete-border pt-4">
+              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-widest mb-2.5">
+                DISTRIBUTE INCIDENT REPORT
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {platforms.map(({ label, href }) => {
+                  const cfg = SHARE_PLATFORMS[label];
+                  return (
+                    <a
+                      key={label}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg text-white text-[10px] font-mono font-bold uppercase tracking-wide hover:brightness-110 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                      style={{ backgroundColor: cfg.bg }}
+                      aria-label={`Share on ${cfg.name}`}
+                    >
+                      {cfg.icon}
+                      {cfg.name}
+                    </a>
+                  );
+                })}
+                <button
+                  onClick={handleCopy}
+                  className="flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-lg bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white text-[10px] font-mono font-bold uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
+                  aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy to clipboard'}
+                >
+                  {copyState === 'copied' ? (
+                    <><Check size={12} aria-hidden="true" /> COPIED</>
+                  ) : (
+                    <><Copy size={12} aria-hidden="true" /> COPY</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── SCROLLABLE TELEMETRY ZONE ── */}
+          <div className="sm:flex-1 sm:overflow-y-auto border-t border-concrete-border px-5 sm:px-6 pb-6 space-y-4">
+
             {/* Telemetry fields */}
             {(report.failureOrigin || report.primaryContamination || report.contributingFactor || report.systemDx) && (
-            <div className="border-t border-concrete-border pt-4">
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 font-mono">
-                {report.failureOrigin && (
-                <div>
-                  <dt className="text-stone-gray uppercase text-sm tracking-widest">FAILURE ORIGIN</dt>
-                  <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
-                </div>
-                )}
-                {report.systemDx && (
-                <div>
-                  <dt className="text-stone-gray uppercase text-sm tracking-widest">SYSTEM DIAGNOSIS</dt>
-                  <dd className="text-ash-white text-sm mt-0.5">{report.systemDx}</dd>
-                </div>
-                )}
-                {report.primaryContamination && (
-                <div>
-                  <dt className="text-stone-gray uppercase text-sm tracking-widest">PRIMARY CONTAMINANT</dt>
-                  <dd className="text-ash-white text-sm mt-0.5">{report.primaryContamination}</dd>
-                </div>
-                )}
-                {report.contributingFactor && (
-                <div>
-                  <dt className="text-stone-gray uppercase text-sm tracking-widest">CONTRIBUTING FACTOR</dt>
-                  <dd className="text-ash-white text-sm mt-0.5">{report.contributingFactor}</dd>
-                </div>
-                )}
-              </dl>
-            </div>
+              <div className="pt-4">
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 font-mono">
+                  {report.failureOrigin && (
+                    <div>
+                      <dt className="text-stone-gray uppercase text-xs tracking-widest">FAILURE ORIGIN</dt>
+                      <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
+                    </div>
+                  )}
+                  {report.systemDx && (
+                    <div>
+                      <dt className="text-stone-gray uppercase text-xs tracking-widest">SYSTEM DIAGNOSIS</dt>
+                      <dd className="text-ash-white text-sm mt-0.5">{report.systemDx}</dd>
+                    </div>
+                  )}
+                  {report.primaryContamination && (
+                    <div>
+                      <dt className="text-stone-gray uppercase text-xs tracking-widest">PRIMARY CONTAMINANT</dt>
+                      <dd className="text-ash-white text-sm mt-0.5">{report.primaryContamination}</dd>
+                    </div>
+                  )}
+                  {report.contributingFactor && (
+                    <div>
+                      <dt className="text-stone-gray uppercase text-xs tracking-widest">CONTRIBUTING FACTOR</dt>
+                      <dd className="text-ash-white text-sm mt-0.5">{report.contributingFactor}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
             )}
 
             {/* Disposition */}
             <div className="border-t border-concrete-border pt-4">
-              <h2 className="text-stone-gray font-mono text-sm uppercase tracking-widest mt-2 mb-1.5">
-                DISPOSITION
-              </h2>
+              <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5">DISPOSITION</h3>
               <p className="text-ash-white font-mono text-sm">{report.disposition}</p>
             </div>
 
             {/* Archive Note */}
             <div className="border-t border-concrete-border pt-4">
-              <h2 className="text-stone-gray font-mono text-sm uppercase tracking-widest mt-2 mb-1.5">
-                ARCHIVE NOTE
-              </h2>
-              <p className="text-ash-white font-mono text-sm leading-relaxed">
-                {report.archiveNote}
-              </p>
+              <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5">ARCHIVE NOTE</h3>
+              <p className="text-ash-white font-mono text-sm leading-relaxed">{report.archiveNote}</p>
             </div>
 
             {/* Filed by + Chromatic Profile */}
-            <div className="border-t border-concrete-border pt-4 flex justify-between items-center">
+            <div className="border-t border-concrete-border pt-4 flex justify-between items-start">
               <div>
-                <span className="text-stone-gray font-mono text-xs uppercase tracking-widest">
-                  INCIDENT FILED BY
-                </span>
-                <p className="text-hazard-amber font-mono text-sm font-bold mt-0.5">
-                  {report.anonHandle}
-                </p>
+                <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">INCIDENT FILED BY</span>
+                <p className="text-hazard-amber font-mono text-sm font-bold mt-0.5">{report.anonHandle}</p>
               </div>
               <div className="text-right">
-                <span className="text-stone-gray font-mono text-xs uppercase tracking-widest">
-                  CHROMATIC PROFILE
-                </span>
-                <p className="text-stone-gray font-mono text-xs mt-0.5">
-                  {report.chromaticProfile}
-                </p>
+                <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">CHROMATIC PROFILE</span>
+                <p className="text-stone-gray font-mono text-xs mt-0.5">{report.chromaticProfile}</p>
               </div>
             </div>
 
-            {/* Share / Distribute */}
-            <div className="border-t border-concrete-border pt-4">
-              <h2 className="text-stone-gray font-mono text-sm uppercase tracking-widest mt-2 mb-2.5">
-                DISTRIBUTE INCIDENT REPORT
-              </h2>
-              <div className="flex items-center gap-3 flex-wrap">
-                {(shareLinks || []).map((link, i) => (
-                  <a
-                    key={i}
-                    href={link.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-hazard-amber font-mono text-xs font-bold uppercase hover:brightness-125 transition-all"
-                  >
-                    {link.label}
-                  </a>
-                ))}
-                <button
-                  onClick={handleCopy}
-                  className="text-stone-gray font-mono text-xs uppercase hover:text-ash-white transition-colors flex items-center gap-1"
-                  aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Extract to clipboard'}
-                >
-                  {copyState === 'copied' ? (
-                    <><Check size={10} aria-hidden="true" /> EXTRACTED</>
-                  ) : (
-                    <><Copy size={10} aria-hidden="true" /> EXTRACT</>
-                  )}
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       </div>
