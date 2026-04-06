@@ -59,7 +59,7 @@ src/
 │   ├── SmelterCanvas.tsx            PixiJS dragon animation
 │   ├── IncidentReportOverlay.tsx    Postmortem modal + share
 │   ├── IncidentManifest.tsx         Global incident manifest page
-│   └── SmeltManifest.tsx            Manifest entry list
+│   └── IncidentLogCard.tsx          Shared incident log card
 ├── services/
 │   └── geminiService.ts             Gemini prompt, schema, analysis
 └── lib/

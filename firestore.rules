@@ -11,7 +11,7 @@ service cloud.firestore {
     }
 
     function isValidIncidentLog(data) {
-      return data.keys().hasAll([
+      let fields = [
                'pixel_count', 'incident_feed_summary',
                'color_1', 'color_2', 'color_3', 'color_4', 'color_5',
                'subject_box_ymin', 'subject_box_xmin', 'subject_box_ymax', 'subject_box_xmax',
@@ -21,7 +21,9 @@ service cloud.firestore {
                'disposition', 'archive_note',
                'og_headline', 'share_quote', 'anon_handle',
                'timestamp', 'uid'
-             ]) &&
+             ];
+      return data.keys().hasAll(fields) &&
+             data.keys().hasOnly(fields) &&
              data.pixel_count is number && data.pixel_count > 0 &&
              data.incident_feed_summary is string && data.incident_feed_summary.size() <= 500 &&
              isHexColor(data.color_1) &&

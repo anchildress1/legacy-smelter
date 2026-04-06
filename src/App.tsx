@@ -52,6 +52,7 @@ export default function App({ onNavigateManifest }: AppProps) {
   const activeRequestIdRef = useRef(0);
   const analysisRef = useRef<SmeltAnalysis | null>(null);
   const hasWrittenRef = useRef(false);
+  const smeltTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
@@ -243,7 +244,8 @@ export default function App({ onNavigateManifest }: AppProps) {
 
         setIsComplete(true);
         setIsWritingData(false);
-        setTimeout(() => {
+        smeltTimerRef.current = setTimeout(() => {
+          smeltTimerRef.current = null;
           setButtonsDelayed(false);
           setShowReport(true);
         }, 3000);
@@ -256,11 +258,18 @@ export default function App({ onNavigateManifest }: AppProps) {
       }
     } else {
       // Replay — no Firestore write, just delay the buttons
-      setTimeout(() => setButtonsDelayed(false), 3000);
+      smeltTimerRef.current = setTimeout(() => {
+        smeltTimerRef.current = null;
+        setButtonsDelayed(false);
+      }, 3000);
     }
   };
 
   const resetToIdle = () => {
+    if (smeltTimerRef.current !== null) {
+      clearTimeout(smeltTimerRef.current);
+      smeltTimerRef.current = null;
+    }
     setIsComplete(false);
     setShowReport(false);
     setAnalysis(null);
