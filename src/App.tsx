@@ -131,17 +131,10 @@ export default function App({ onNavigateManifest }: AppProps) {
     const requestId = ++activeRequestIdRef.current;
 
     if (import.meta.env.DEV) console.log("Processing image...", mimeType);
+    resetToIdle();
     setCurrentImage(base64);
-    setIsComplete(false);
-    setShowReport(false);
     setSelectedRecentLog(null);
     setAnalysisError(null);
-    setAnalysis(null);
-    analysisRef.current = null;
-    hasWrittenRef.current = false;
-    setIsWritingData(false);
-    setButtonsDelayed(false);
-    setIsPlaying(false);
     setIsAnalyzing(true);
     flyInSound.stop();
     fireSound.stop();
@@ -171,15 +164,8 @@ export default function App({ onNavigateManifest }: AppProps) {
     } catch (error) {
       if (requestId !== activeRequestIdRef.current) return;
       console.error('[App] Canvas rendering failed:', error);
+      resetToIdle();
       setCurrentImage(null);
-      setAnalysis(null);
-      analysisRef.current = null;
-      hasWrittenRef.current = false;
-      setIsComplete(false);
-      setShowReport(false);
-      setIsWritingData(false);
-      setButtonsDelayed(false);
-      setIsPlaying(false);
       setAnalysisError('CANVAS RENDER FAILED. PLEASE RETRY.');
     }
   };
@@ -274,6 +260,17 @@ export default function App({ onNavigateManifest }: AppProps) {
     }
   };
 
+  const resetToIdle = () => {
+    setIsComplete(false);
+    setShowReport(false);
+    setAnalysis(null);
+    analysisRef.current = null;
+    hasWrittenRef.current = false;
+    setIsWritingData(false);
+    setButtonsDelayed(false);
+    setIsPlaying(false);
+  };
+
   const handleReplay = () => {
     purrSound.stop();
     setShowReport(false);
@@ -353,15 +350,15 @@ export default function App({ onNavigateManifest }: AppProps) {
             </div>
 
             {/* Hidden file inputs */}
-            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" />
-            <input type="file" ref={cameraInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" capture="environment" />
+            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" aria-label="Upload image file" />
+            <input type="file" ref={cameraInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" capture="environment" aria-label="Capture photo from camera" />
 
             {/* Animation Window */}
             <div className="modern-card aspect-video relative overflow-hidden">
               {/* Camera overlay */}
               {isCameraActive && (
                 <div className="absolute inset-0 bg-black z-30">
-                  <video ref={videoRef} playsInline className="w-full h-full object-cover" />
+                  <video ref={videoRef} playsInline className="w-full h-full object-cover" aria-label="Camera preview" />
                   <button
                     onClick={stopCamera}
                     className="absolute top-4 right-4 w-10 h-10 bg-concrete-mid/80 rounded-full flex items-center justify-center text-stone-gray hover:text-ash-white z-50"
@@ -402,7 +399,7 @@ export default function App({ onNavigateManifest }: AppProps) {
 
               {/* Loading post-mortem overlay */}
               {isWritingData && !showReport && (
-                <div className="absolute inset-0 z-40 flex items-center justify-center">
+                <div role="status" aria-live="polite" className="absolute inset-0 z-40 flex items-center justify-center">
                   <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border flex items-center gap-3">
                     <div className="w-4 h-4 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin shrink-0" />
                     <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest">

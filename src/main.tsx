@@ -28,12 +28,10 @@ function Root() {
   }, []);
 
   const navigateTo = useCallback((p: Page) => {
-    if (p === 'smelter') {
-      // replaceState strips the hash without triggering hashchange or navigation
-      history.replaceState(null, '', window.location.pathname + window.location.search);
-    } else {
-      history.pushState(null, '', '#' + p);
-    }
+    const url = p === 'smelter'
+      ? window.location.pathname + window.location.search
+      : '#' + p;
+    history.pushState(null, '', url);
     setPage(p);
     window.scrollTo(0, 0);
   }, []);

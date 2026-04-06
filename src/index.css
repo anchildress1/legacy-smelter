@@ -53,10 +53,10 @@
   .hazard-stripe {
     background: repeating-linear-gradient(
       -45deg,
-      #f5c842,
-      #f5c842 10px,
-      #1a1917 10px,
-      #1a1917 20px
+      var(--color-hazard-amber),
+      var(--color-hazard-amber) 10px,
+      var(--color-concrete) 10px,
+      var(--color-concrete) 20px
     );
   }
 }

@@ -85,10 +85,22 @@ const PUDDLE_FRAG = `
     }
 `;
 
-const DRAGON_TEX_H = 672;
+const DRAGON_TEX_H = 672;     // native pixel height of dragon sprite frames
 const ANIM_SPEED = 0.2;
 const FLY_SPEED = 0.005;
-const MELT_SPEED = 0.012; // ~1.4s dissolve
+const MELT_SPEED = 0.012;     // ~1.4s dissolve
+
+// Layout ratios and reference dimensions
+const LAYOUT_REF_WIDTH = 900; // canvas width at which dragon renders at full scale
+const DRAGON_MAX_SCALE = 0.7;
+const DRAGON_REST_X = 0.38;   // dragon rests at 38% width (leaves right side for artifact)
+const DRAGON_Y = 0.55;
+const IMAGE_X = 0.65;
+const IMAGE_Y = 0.45;
+const PUDDLE_Y = 0.88;
+const FLY_OFFSCREEN_PAD = 200; // px beyond canvas right edge where dragon starts fly-in
+const PUDDLE_SPRITE_W = 885;   // native pixel width of puddle sprite frames
+const PUDDLE_WIDTH_RATIO = 0.3; // puddle renders at 30% of canvas width
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
@@ -363,12 +375,12 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
           try {
             time += 0.05 * ticker.deltaTime;
             const { width, height } = app.screen;
-            const baseScale = Math.min(0.7, (width / 900) * 0.7);
-            const dragonRestX = width * 0.38;
-            const dragonY = height * 0.55;
-            const imageX = width * 0.65;
-            const imageY = height * 0.45;
-            const puddleY = height * 0.88;
+            const baseScale = Math.min(DRAGON_MAX_SCALE, (width / LAYOUT_REF_WIDTH) * DRAGON_MAX_SCALE);
+            const dragonRestX = width * DRAGON_REST_X;
+            const dragonY = height * DRAGON_Y;
+            const imageX = width * IMAGE_X;
+            const imageY = height * IMAGE_Y;
+            const puddleY = height * PUDDLE_Y;
 
             switch (phaseRef.current) {
               case 'empty': {
@@ -386,7 +398,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 flyProgressRef.current += FLY_SPEED * ticker.deltaTime;
                 const t = Math.min(flyProgressRef.current, 1);
                 const eased = 1 - Math.pow(1 - t, 3);
-                dragon.x = (width + 200) + (dragonRestX - width - 200) * eased;
+                dragon.x = (width + FLY_OFFSCREEN_PAD) + (dragonRestX - width - FLY_OFFSCREEN_PAD) * eased;
                 dragon.y = dragonY;
                 dragon.scale.set(baseScale);
                 if (t >= 1) {
@@ -464,7 +476,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                   puddle.alpha = puddleAlpha;
                   puddle.x = imageX;
                   puddle.y = puddleY;
-                  puddle.scale.set((width * 0.3) / 885);
+                  puddle.scale.set((width * PUDDLE_WIDTH_RATIO) / PUDDLE_SPRITE_W);
                 }
 
                 if (mp >= 1) {
@@ -483,7 +495,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 if (!puddle.playing) puddle.play();
                 puddle.x = imageX;
                 puddle.y = puddleY;
-                puddle.scale.set((width * 0.3) / 885);
+                puddle.scale.set((width * PUDDLE_WIDTH_RATIO) / PUDDLE_SPRITE_W);
                 break;
               }
             }

@@ -33,21 +33,21 @@ service cloud.firestore {
              data.subject_box_xmin is number &&
              data.subject_box_ymax is number &&
              data.subject_box_xmax is number &&
-             data.legacy_infra_class is string &&
-             data.diagnosis is string &&
-             data.chromatic_profile is string &&
-             data.system_dx is string &&
+             data.legacy_infra_class is string && data.legacy_infra_class.size() <= 80 &&
+             data.diagnosis is string && data.diagnosis.size() <= 200 &&
+             data.chromatic_profile is string && data.chromatic_profile.size() <= 60 &&
+             data.system_dx is string && data.system_dx.size() <= 300 &&
              isValidSeverity(data.severity) &&
-             data.primary_contamination is string &&
-             data.contributing_factor is string &&
-             data.failure_origin is string &&
-             data.disposition is string &&
-             data.archive_note is string &&
-             data.og_headline is string &&
-             data.share_quote is string &&
-             data.anon_handle is string &&
+             data.primary_contamination is string && data.primary_contamination.size() <= 80 &&
+             data.contributing_factor is string && data.contributing_factor.size() <= 80 &&
+             data.failure_origin is string && data.failure_origin.size() <= 400 &&
+             data.disposition is string && data.disposition.size() <= 300 &&
+             data.archive_note is string && data.archive_note.size() <= 800 &&
+             data.og_headline is string && data.og_headline.size() <= 200 &&
+             data.share_quote is string && data.share_quote.size() <= 300 &&
+             data.anon_handle is string && data.anon_handle.size() <= 50 &&
              data.timestamp is timestamp &&
-             data.uid is string && data.uid.size() > 0;
+             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 100;
     }
 
     function isValidGlobalStats(data) {

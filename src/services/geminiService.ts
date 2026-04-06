@@ -1,12 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { getFiveDistinctColors } from "../lib/utils";
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-if (!apiKey) {
-  throw new Error("Missing VITE_GEMINI_API_KEY environment variable. Gemini analysis will not work.");
-}
-const ai = new GoogleGenAI({ apiKey });
-
 export interface SmeltAnalysis {
   legacyInfraClass: string;
   diagnosis: string;
@@ -108,6 +102,11 @@ Use ONLY these classifications for severity:
 Be confident. Be concise. Sound institutional. Be visually grounded in the image. The classification is always correct.`;
 
 export async function analyzeLegacyTech(base64Image: string, mimeType: string): Promise<SmeltAnalysis> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing VITE_GEMINI_API_KEY. Add it to your .env file.");
+  }
+  const ai = new GoogleGenAI({ apiKey });
   const model = "gemini-3.1-flash-lite-preview";
 
   let actualPixelCount = 2073600;
