@@ -78,7 +78,7 @@ Use only these classifications for `severity`.
 | `archive_note` | 60 | Evidence record. Short clauses. Start clinical, then commit past the point of reason. Find one specific absurd detail in the image and diagnose it with full institutional confidence. End with a deadpan trailing observation. |
 | `og_headline` | 10 | Social share headline. Reads like an internal notification that escaped containment. |
 | `share_quote` | 14 | Social share body. An incident summary someone screenshotted. |
-| `severity` | 4 | One of: Advisory, Elevated, Critical, Terminal. |
+| `severity` | — | Enum: Advisory, Elevated, Critical, Terminal. No other values. |
 | `anon_handle` | 3 | Generated submitter alias. Format: [Compound]_[Number]. Specific to the artifact. Reads like an internal system account. Examples: "ThermalOperator_41," "DeprecatedNode_7," "IncidentClerk_404." |
 | `dominant_hex_colors` | — | Exactly 5 vivid, saturated hex colors pulled from the image. These are diagnostic data. |
 | `subject_box` | — | Bounding box [ymin, xmin, ymax, xmax] in 1000x1000 scale covering the primary artifact. |

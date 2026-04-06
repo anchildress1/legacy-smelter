@@ -1,5 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 
+export type Severity = 'Advisory' | 'Elevated' | 'Critical' | 'Terminal';
+
 export interface SmeltLog {
   id: string;
   pixel_count: number;
@@ -17,7 +19,7 @@ export interface SmeltLog {
   diagnosis: string;
   chromatic_profile: string;
   system_dx: string;
-  severity: string;
+  severity: Severity;
   primary_contamination: string;
   contributing_factor: string;
   failure_origin: string;

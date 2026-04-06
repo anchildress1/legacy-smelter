@@ -1,7 +1,7 @@
 # Design Decisions — Deliberate Deviations from Original Spec
 
 This document records intentional changes made during development that diverge from
-`original-ai-studio-prompt.md`. The spec is the source of truth; this is the rationale layer.
+`archive/original-ai-studio-prompt.md`. The spec is the source of truth; this is the rationale layer.
 
 ---
 
@@ -27,8 +27,8 @@ This document records intentional changes made during development that diverge f
 
 | Spec | Current | Reason |
 |------|---------|--------|
-| Acid Green (data text), Neon Pink (accents), Neon Orange (highlights) | Hazard-amber, ash-white | Pure neon clashed with the final UI direction. Hazard-amber preserves the warning/industrial feel, while ash-white improves contrast and readability. **Color scheme is not final.** |
-| Public feed: 5 most recent entries | 10 most recent entries | More context in the live feed is more interesting for a shared experience. |
+| Acid Green (data text), Neon Pink (accents), Neon Orange (highlights) | Hazard-amber, ash-white | Pure neon clashed with the final UI direction. Hazard-amber preserves the warning/industrial feel, while ash-white improves contrast and readability. |
+| Public feed: 5 most recent entries | Main page: 3 most recent; manifest page: up to 50 | Main page feed is a quick preview. Manifest page provides the full incident archive. |
 
 ---
 

@@ -92,7 +92,7 @@ const MELT_SPEED = 0.012;     // ~1.4s dissolve
 
 // Layout ratios and reference dimensions
 const LAYOUT_REF_WIDTH = 900; // canvas width at which dragon renders at full scale
-const DRAGON_MAX_SCALE = 0.7;
+const DRAGON_MAX_SCALE = 0.7; // caps dragon scale on narrow viewports relative to LAYOUT_REF_WIDTH
 const DRAGON_REST_X = 0.38;   // dragon rests at 38% width (leaves right side for artifact)
 const DRAGON_Y = 0.55;
 const IMAGE_X = 0.65;
@@ -192,10 +192,9 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         if (puddleFilterRef.current) { puddleFilterRef.current.destroy(); puddleFilterRef.current = null; }
         if (meltFilterRef.current) { meltFilterRef.current.destroy(); meltFilterRef.current = null; }
 
-        // Pick 3 colors for puddle
+        // Pick top 3 dominant colors for puddle
         const palette = getFiveDistinctColors(colors);
-        const shuffled = [...palette].sort(() => Math.random() - 0.5);
-        const picked = shuffled.slice(0, Math.min(3, shuffled.length)).map(h => ensureBright(hexToInt(h)));
+        const picked = palette.slice(0, Math.min(3, palette.length)).map(h => ensureBright(hexToInt(h)));
         while (picked.length < 3) picked.push(picked[0] || 0xcccccc);
 
         // Create puddle palette-swap filter
@@ -353,7 +352,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         dragon.loop = true;
         dragon.play();
 
-        // Z-order: [image@0 later] → puddle → dragon
+        // Z-order: puddle(1) → dragon(2). Image sprite inserted at index 0 in loadAndSmelt, placing it behind both.
         app.stage.addChild(puddle);
         app.stage.addChild(dragon);
 

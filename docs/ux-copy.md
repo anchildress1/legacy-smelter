@@ -4,6 +4,10 @@ This document is a generation constraint — rules for AI-produced copy and a st
 
 The priority stack: clarity first, concision second, character as a controlled layer on top. Plain language performs better even with expert users (NN/g, Carbon, Material all confirm this through 2026). Labels state the action they trigger. Button labels use 2–4 words, lead with a verb, reflect the future state, and drop articles. Sentence case is the default for all source copy; uppercase presentation is a visual/CSS layer, not a copy decision.
 
+## Operating principle
+
+If a bug exists, apply Hotfix.
+
 ## Archetype
 
 A dead-serious internal incident system that fully believes incineration is a reasonable technical response. The system is powered by a dragon named Hotfix. It does not find this remarkable.
@@ -143,7 +147,7 @@ Disposition labels on buttons and badges should use the exact phrasing from this
 ## Copy behavior by surface
 
 ### UI copy
-Shortest and clearest. Command-heavy. No throat-clearing. Buttons name the future state: "Process artifact," "Deploy field scanner," "Post to X." Empty states describe system status in operational language. Users scan, not read — labels must make sense without surrounding body text (NN/g: titles and buttons should stand alone).
+Shortest and clearest. Command-heavy. No throat-clearing. Buttons name the future state: "Process artifact," "Deploy scanner," "Post to X." Empty states describe system status in operational language. Users scan, not read — labels must make sense without surrounding body text (NN/g: titles and buttons should stand alone).
 
 ### Result card copy
 Fast, sharp, screenshot-friendly. One strong diagnosis. The summary line should read like the first sentence of a postmortem — what failed and how badly. Section labels are terse diagnostic nouns: "Failure origin," "System diagnosis," "Primary contaminant," "Contributing factor," "Disposition." No label needs more than two words.

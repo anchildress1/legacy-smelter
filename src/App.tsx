@@ -61,7 +61,7 @@ export default function App({ onNavigateManifest }: AppProps) {
         setGlobalStats(snapshot.data() as GlobalStatsType);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'global_stats/main');
+      handleFirestoreError(error, OperationType.GET, 'global_stats/main', setAnalysisError);
     });
 
     const logsQuery = query(
@@ -73,10 +73,23 @@ export default function App({ onNavigateManifest }: AppProps) {
       const entries = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SmeltLog));
       setRecentLogs(entries);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'incident_logs');
+      handleFirestoreError(error, OperationType.LIST, 'incident_logs', setAnalysisError);
     });
 
     return () => { unsubStats(); unsubLogs(); };
+  }, []);
+
+  // Release camera hardware and pending timers if component unmounts mid-flow
+  useEffect(() => {
+    return () => {
+      if (smeltTimerRef.current !== null) {
+        clearTimeout(smeltTimerRef.current);
+        smeltTimerRef.current = null;
+      }
+      if (videoRef.current?.srcObject) {
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      }
+    };
   }, []);
 
   const startCamera = async () => {
@@ -92,10 +105,11 @@ export default function App({ onNavigateManifest }: AppProps) {
     } catch (err) {
       const name = err instanceof Error ? err.name : '';
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setAnalysisError('CAMERA PERMISSION DENIED. FILE PICKER OPENED AS FALLBACK.');
         cameraInputRef.current?.click();
       } else {
         console.error(`[App] Camera unavailable (${name || 'unknown'}):`, err);
-        setAnalysisError('CAMERA UNAVAILABLE. USE THE PROCESS ARTIFACT BUTTON INSTEAD.');
+        setAnalysisError('CAMERA UNAVAILABLE. USE PROCESS ARTIFACT.');
       }
     }
   };
@@ -122,9 +136,12 @@ export default function App({ onNavigateManifest }: AppProps) {
         processImage(base64, 'image/jpeg');
       } else {
         console.error('[App] captureImage: failed to get 2D canvas context');
-        setAnalysisError('CAMERA CAPTURE FAILED. USE THE PROCESS ARTIFACT BUTTON INSTEAD.');
+        setAnalysisError('CAMERA CAPTURE FAILED. USE PROCESS ARTIFACT.');
         stopCamera();
       }
+    } else {
+      console.error('[App] captureImage: videoRef not available');
+      stopCamera();
     }
   };
 
@@ -167,7 +184,7 @@ export default function App({ onNavigateManifest }: AppProps) {
       console.error('[App] Canvas rendering failed:', error);
       resetToIdle();
       setCurrentImage(null);
-      setAnalysisError('CANVAS RENDER FAILED. PLEASE RETRY.');
+      setAnalysisError('CANVAS RENDER FAILED. TRY A DIFFERENT BROWSER OR ENABLE HARDWARE ACCELERATION.');
     }
   };
 
@@ -254,6 +271,7 @@ export default function App({ onNavigateManifest }: AppProps) {
         setIsWritingData(false);
         setButtonsDelayed(false);
         setIsComplete(true); // animation finished — allow replay and in-memory report even though write failed
+        setAnalysisError('ARCHIVE WRITE FAILED. INCIDENT NOT PERSISTED TO MANIFEST.');
         handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
       }
     } else {
@@ -401,7 +419,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                 <div role="status" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
                   <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
                   <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
-                    HOTFIX PENDING...
+                    HOTFIX PROCESSING
                   </p>
                 </div>
               )}
@@ -460,7 +478,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                   onClick={onNavigateManifest}
                   className="inline-flex items-center gap-1.5 rounded-md border border-concrete-border bg-concrete-mid/60 px-2.5 py-1.5 text-[11px] font-mono uppercase tracking-wider text-stone-gray hover:text-hazard-amber hover:border-hazard-amber/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
                 >
-                  VIEW ALL
+                  VIEW MANIFEST
                   <ArrowRight size={12} aria-hidden="true" />
                 </button>
               </div>
@@ -476,7 +494,7 @@ export default function App({ onNavigateManifest }: AppProps) {
                   <div className="modern-card p-12 text-center">
                     <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
                     <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
-                      NO INCIDENTS ON RECORD.
+                      Furnace idle. Awaiting condemned infrastructure.
                     </p>
                   </div>
                 )}

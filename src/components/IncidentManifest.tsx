@@ -85,9 +85,6 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           <h1 className="text-hazard-amber font-mono text-2xl uppercase tracking-widest font-black">
             GLOBAL INCIDENT MANIFEST
           </h1>
-          <p className="text-stone-gray font-mono text-xs md:text-[11px] uppercase tracking-wide leading-relaxed mt-1">
-            SELECT ENTRY TO INSPECT POSTMORTEM
-          </p>
           <div className="hazard-stripe h-1 w-full mt-4 rounded-sm" />
         </div>
 
@@ -105,7 +102,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             <div className="modern-card p-12 text-center">
               <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
               <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
-                NO INCIDENTS ON RECORD.
+                Furnace idle. Awaiting condemned infrastructure.
               </p>
             </div>
           )}

@@ -1,5 +1,15 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { getFiveDistinctColors } from "../lib/utils";
+import type { Severity } from "../types";
+
+const VALID_SEVERITIES: readonly Severity[] = ['Advisory', 'Elevated', 'Critical', 'Terminal'];
+
+function normalizeSeverity(value: unknown): Severity {
+  if (typeof value === 'string' && VALID_SEVERITIES.includes(value as Severity)) {
+    return value as Severity;
+  }
+  return 'Critical';
+}
 
 export interface SmeltAnalysis {
   legacyInfraClass: string;
@@ -7,7 +17,7 @@ export interface SmeltAnalysis {
   dominantColors: string[];
   chromaticProfile: string;
   systemDx: string;
-  severity: string;
+  severity: Severity;
   primaryContamination: string;
   contributingFactor: string;
   failureOrigin: string;
@@ -18,7 +28,7 @@ export interface SmeltAnalysis {
   shareQuote: string;
   anonHandle: string;
   pixelCount: number;
-  subjectBox: number[]; // [ymin, xmin, ymax, xmax] 0-1000
+  subjectBox: [number, number, number, number]; // [ymin, xmin, ymax, xmax] 0-1000
 }
 
 const GEMINI_PROMPT = `You are the incident analysis engine for Legacy Smelter.
@@ -109,7 +119,7 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
   const ai = new GoogleGenAI({ apiKey });
   const model = "gemini-3.1-flash-lite-preview";
 
-  let actualPixelCount = 2073600;
+  let actualPixelCount = 2073600; // fallback: 1920×1080 (full-HD) — used when window is unavailable
 
   if (typeof window !== "undefined") {
     try {
@@ -188,14 +198,18 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
     }
     try {
       const response = await ai.models.generateContent(requestConfig);
-      result = JSON.parse(response.text || "{}");
+      const responseText = response.text;
+      if (!responseText || !responseText.trim()) {
+        throw new Error('Gemini returned an empty response. Image may have been blocked by safety filters.');
+      }
+      result = JSON.parse(responseText);
       break;
     } catch (err) {
       lastError = err;
       console.error(`[geminiService] Attempt ${attempt + 1} failed:`, err);
     }
   }
-  if (!result) throw lastError;
+  if (!result) throw lastError ?? new Error('Gemini analysis failed after all retries');
 
   const rawColors = Array.isArray(result.dominant_hex_colors) ? result.dominant_hex_colors as string[] : [];
   const dominantColors = getFiveDistinctColors(rawColors);
@@ -206,7 +220,7 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
     dominantColors,
     chromaticProfile: String(result.chromatic_profile || "Standard Slag Spectrum"),
     systemDx: String(result.system_dx || "Chronic Legacy Retention Syndrome"),
-    severity: String(result.severity || "Critical"),
+    severity: normalizeSeverity(result.severity),
     primaryContamination: String(result.primary_contamination || "unresolved dependencies"),
     contributingFactor: String(result.contributing_factor || "ambient technical debt"),
     failureOrigin: String(result.failure_origin || "Unauthorized backwards compatibility. Also, the architecture."),
@@ -217,6 +231,8 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
     shareQuote: String(result.share_quote || "Hotfix deployed. Output: molten slag."),
     anonHandle: String(result.anon_handle || "IncidentClerk_404"),
     pixelCount: actualPixelCount,
-    subjectBox: Array.isArray(result.subject_box) && result.subject_box.length === 4 ? result.subject_box : [100, 100, 900, 900]
+    subjectBox: (Array.isArray(result.subject_box) && result.subject_box.length === 4 && result.subject_box.every(v => typeof v === 'number')
+      ? result.subject_box
+      : [100, 100, 900, 900]) as [number, number, number, number]
   };
 }

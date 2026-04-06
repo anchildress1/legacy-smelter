@@ -69,7 +69,9 @@ docs/
 ├── ai-prompt.md                     AI generation constraints and field spec
 ├── ux-copy.md                       Voice, persona, and copy rules
 ├── design-decisions.md              Deliberate spec deviations
-└── gemini-implementation-and-share-spec.md  Original Gemini spec (superseded)
+└── archive/
+    ├── gemini-implementation-and-share-spec.md  Original Gemini spec (superseded)
+    └── original-ai-studio-prompt.md             Original AI Studio scaffold prompt
 ```
 
 ## Docs
