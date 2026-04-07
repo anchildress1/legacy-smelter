@@ -47,13 +47,16 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
     .filter((el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
 }
 
-function buildMarkdown(report: NormalisedReport, liveBreachCount: number): string {
+function buildMarkdown(report: NormalisedReport, liveBreachCount: number, liveEscalationCount: number): string {
+  const impact = computeImpact(liveEscalationCount, liveBreachCount);
   const lines: string[] = [
     `# ${report.legacyInfraClass}`,
     '',
     report.incidentFeedSummary,
     '',
     `**Severity:** ${report.severity}`,
+    `**Impact:** ${impact}`,
+    `**Escalations:** ${liveEscalationCount}`,
     `**Containment Breaches:** ${liveBreachCount}`,
   ];
 
@@ -259,7 +262,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   const handleCopyText = async () => {
     try {
-      await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount));
+      await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount, liveEscalationCount));
       handleBreach();
       setCopyTextState('copied');
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
