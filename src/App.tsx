@@ -256,7 +256,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
           const colors = getFiveDistinctColors(completedAnalysis.dominantColors);
           const box = completedAnalysis.subjectBox;
           const logRef = doc(collection(db, 'incident_logs'));
-          setLoggedIncidentId(logRef.id);
           await setDoc(logRef, {
             pixel_count: completedAnalysis.pixelCount,
             incident_feed_summary: completedAnalysis.incidentFeedSummary,
@@ -286,6 +285,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             uid: crypto.randomUUID(),
             breach_count: 0
           });
+          setLoggedIncidentId(logRef.id);
 
           const statsRef = doc(db, 'global_stats', 'main');
           await setDoc(statsRef, {
