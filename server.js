@@ -65,6 +65,7 @@ function injectIncidentOg(html, incident, canonicalUrl) {
   const title = `${incident.og_headline} — Legacy Smelter`;
   const rawDesc = `[${incident.severity}] ${incident.legacy_infra_class}: ${incident.incident_feed_summary}`;
   const desc = rawDesc.slice(0, 300);
+  const imageAlt = `${incident.og_headline} — ${incident.severity} incident`;
 
   return html
     .replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`)
@@ -75,10 +76,12 @@ function injectIncidentOg(html, incident, canonicalUrl) {
     .replace(/<meta property="og:image" content="[^"]*"/, `<meta property="og:image" content="${OG_IMAGE}"`)
     .replace(/<meta property="og:image:width" content="[^"]*"/, `<meta property="og:image:width" content="${OG_IMAGE_WIDTH}"`)
     .replace(/<meta property="og:image:height" content="[^"]*"/, `<meta property="og:image:height" content="${OG_IMAGE_HEIGHT}"`)
+    .replace(/<meta property="og:image:alt" content="[^"]*"/, `<meta property="og:image:alt" content="${esc(imageAlt)}"`)
     .replace(/<meta property="og:type" content="[^"]*"/, `<meta property="og:type" content="article"`)
     .replace(/<meta name="twitter:title" content="[^"]*"/, `<meta name="twitter:title" content="${esc(title)}"`)
     .replace(/<meta name="twitter:description" content="[^"]*"/, `<meta name="twitter:description" content="${esc(desc)}"`)
-    .replace(/<meta name="twitter:image" content="[^"]*"/, `<meta name="twitter:image" content="${OG_IMAGE}"`);
+    .replace(/<meta name="twitter:image" content="[^"]*"/, `<meta name="twitter:image" content="${OG_IMAGE}"`)
+    .replace(/<meta name="twitter:image:alt" content="[^"]*"/, `<meta name="twitter:image:alt" content="${esc(imageAlt)}"`);
 }
 
 const app = express();
