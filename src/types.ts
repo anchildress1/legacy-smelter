@@ -32,6 +32,9 @@ export interface SmeltLog {
   uid: string;
   breach_count?: number;
   escalation_count?: number;
+  judged?: boolean;
+  audience_favorite?: boolean;
+  audience_favorite_rationale?: string;
 }
 
 export interface GlobalStats {

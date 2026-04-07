@@ -16,7 +16,8 @@ service cloud.firestore {
                'primary_contamination', 'contributing_factor', 'failure_origin',
                'disposition', 'archive_note',
                'og_headline', 'share_quote', 'anon_handle',
-               'timestamp', 'uid', 'breach_count', 'escalation_count'
+               'timestamp', 'uid', 'breach_count', 'escalation_count',
+               'judged'
              ];
       return data.keys().hasAll(fields) &&
              data.keys().hasOnly(fields) &&
@@ -47,7 +48,8 @@ service cloud.firestore {
              data.timestamp is timestamp &&
              data.uid is string && data.uid.size() > 0 && data.uid.size() <= 100 &&
              data.breach_count is number && data.breach_count == 0 &&
-             data.escalation_count is number && data.escalation_count == 0;
+             data.escalation_count is number && data.escalation_count == 0 &&
+             data.judged is bool && data.judged == false;
     }
 
     function isValidGlobalStats(data) {

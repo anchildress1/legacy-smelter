@@ -1,8 +1,9 @@
 /**
  * Audience Favorite cron script.
  *
- * Picks the 5 most recent unjudged incidents, sends them to Gemini
- * for scoring, and awards the winner an escalation vote.
+ * Queries incidents where judged == false. When 5+ exist, takes the
+ * oldest 5, sends them to Gemini for scoring, marks all 5 as judged,
+ * and awards the winner an escalation vote + audience_favorite flag.
  *
  * Run: npx tsx scripts/audience-favorite.ts
  * Env: GEMINI_API_KEY, FIREBASE_PROJECT_ID, FIREBASE_FIRESTORE_DATABASE_ID,
@@ -11,7 +12,7 @@
 
 import 'dotenv/config';
 import { initializeApp, cert, type ServiceAccount } from 'firebase-admin/app';
-import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { GoogleGenAI } from '@google/genai';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -32,15 +33,12 @@ if (!DATABASE_ID) throw new Error('Missing FIREBASE_FIRESTORE_DATABASE_ID');
 // ── Firebase Admin init ─────────────────────────────────────────────────
 
 function getServiceAccountCredential(): ServiceAccount | undefined {
-  // Option 1: JSON string in env var (for CI)
   const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (json) return JSON.parse(json) as ServiceAccount;
 
-  // Option 2: GOOGLE_APPLICATION_CREDENTIALS file path (standard)
   const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (credPath) return JSON.parse(readFileSync(credPath, 'utf-8')) as ServiceAccount;
 
-  // Option 3: Default credentials (Cloud Run, etc.)
   return undefined;
 }
 
@@ -67,9 +65,6 @@ interface IncidentDoc {
   system_dx: string;
   incident_feed_summary: string;
   share_quote: string;
-  timestamp: Timestamp;
-  escalation_count: number;
-  breach_count: number;
 }
 
 interface JudgingResult {
@@ -77,41 +72,27 @@ interface JudgingResult {
   rationale: string;
 }
 
-interface CronState {
-  last_judged_timestamp: Timestamp;
-}
-
 // ── Main ────────────────────────────────────────────────────────────────
 
 async function run(): Promise<void> {
   console.log('[audience-favorite] Starting run...');
 
-  // 1. Get last judged timestamp (or epoch if first run)
-  const stateRef = db.collection('cron_state').doc('audience_favorite');
-  const stateSnap = await stateRef.get();
-  const lastJudged: Timestamp = stateSnap.exists
-    ? (stateSnap.data() as CronState).last_judged_timestamp
-    : Timestamp.fromDate(new Date(0));
-
-  console.log(`[audience-favorite] Last judged: ${lastJudged.toDate().toISOString()}`);
-
-  // 2. Query unjudged incidents (newer than last judged, ordered by timestamp)
-  const incidentsSnap = await db
+  // 1. Query unjudged incidents, oldest first
+  const unjudgedSnap = await db
     .collection('incident_logs')
-    .where('timestamp', '>', lastJudged)
+    .where('judged', '==', false)
     .orderBy('timestamp', 'asc')
     .get();
 
-  const unjudged = incidentsSnap.docs;
-  console.log(`[audience-favorite] Found ${unjudged.length} unjudged incident(s)`);
+  console.log(`[audience-favorite] ${unjudgedSnap.size} unjudged incident(s)`);
 
-  if (unjudged.length < MIN_BATCH) {
+  if (unjudgedSnap.size < MIN_BATCH) {
     console.log(`[audience-favorite] < ${MIN_BATCH} unjudged — skipping, will retry next run.`);
     return;
   }
 
-  // 3. Take exactly 5 most recent (last 5 in asc order)
-  const batch = unjudged.slice(-MIN_BATCH);
+  // 2. Take oldest 5 (FIFO — no incident gets starved)
+  const batch = unjudgedSnap.docs.slice(0, MIN_BATCH);
   const candidates = batch.map((d) => {
     const data = d.data() as IncidentDoc;
     return {
@@ -130,7 +111,7 @@ async function run(): Promise<void> {
 
   console.log('[audience-favorite] Candidates:', candidates.map((c) => c.uid));
 
-  // 4. Send to Gemini
+  // 3. Send to Gemini
   const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
   const prompt = `${JUDGING_PROMPT}\n\n## Incidents\n\n${JSON.stringify(candidates, null, 2)}`;
 
@@ -157,35 +138,39 @@ async function run(): Promise<void> {
   console.log(`[audience-favorite] Winner: ${result.winner}`);
   console.log(`[audience-favorite] Rationale: ${result.rationale}`);
 
-  // 5. Find the winner's Firestore doc and award an escalation
+  // 4. Find the winner doc
   const winnerDoc = batch.find((d) => (d.data() as IncidentDoc).uid === result.winner);
   if (!winnerDoc) {
     throw new Error(`Winner UID "${result.winner}" not found in candidate batch`);
   }
 
-  const firestoreBatch = db.batch();
+  // 5. Atomic batch: mark all 5 judged, award the winner
+  const writeBatch = db.batch();
 
-  // Award escalation vote to winner
-  firestoreBatch.update(winnerDoc.ref, {
-    escalation_count: FieldValue.increment(1),
-  });
+  for (const d of batch) {
+    if (d.id === winnerDoc.id) {
+      writeBatch.update(d.ref, {
+        judged: true,
+        audience_favorite: true,
+        audience_favorite_rationale: result.rationale,
+        escalation_count: FieldValue.increment(1),
+      });
+    } else {
+      writeBatch.update(d.ref, { judged: true });
+    }
+  }
 
-  // Record the system vote in the escalations subcollection
+  // Record the system vote in the winner's escalations subcollection
   const systemEscalationRef = winnerDoc.ref.collection('escalations').doc('system_audience_favorite');
-  firestoreBatch.set(systemEscalationRef, {
+  writeBatch.set(systemEscalationRef, {
     uid: 'system_audience_favorite',
     timestamp: FieldValue.serverTimestamp(),
     rationale: result.rationale,
   });
 
-  // Update cron state — advance to the newest candidate's timestamp
-  // so all 5 candidates are marked as judged
-  const newestTimestamp = (batch[batch.length - 1].data() as IncidentDoc).timestamp;
-  firestoreBatch.set(stateRef, { last_judged_timestamp: newestTimestamp }, { merge: true });
+  await writeBatch.commit();
 
-  await firestoreBatch.commit();
-
-  console.log(`[audience-favorite] Escalation awarded to ${result.winner}. State updated.`);
+  console.log(`[audience-favorite] All 5 marked judged. Winner: ${result.winner}`);
 }
 
 run().catch((err) => {

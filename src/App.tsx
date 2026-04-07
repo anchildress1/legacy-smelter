@@ -300,7 +300,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             timestamp: serverTimestamp(),
             uid: crypto.randomUUID(),
             breach_count: 0,
-            escalation_count: 0
+            escalation_count: 0,
+            judged: false
           });
           if (writeRequestId !== activeRequestIdRef.current) return;
           setLoggedIncidentId(logRef.id);
