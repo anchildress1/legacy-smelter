@@ -1,6 +1,7 @@
 GCP_PROJECT  ?= anchildress1
 GCP_REGION   ?= us-east1
 SERVICE_NAME ?= legacy-smelter
+SERVICE_SA   ?= legacy-smelter-run@$(GCP_PROJECT).iam.gserviceaccount.com
 IMAGE        := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT)/cloud-run-source-deploy/$(SERVICE_NAME)
 
 .PHONY: dev server build docker-build deploy ai-checks
@@ -31,6 +32,7 @@ deploy: docker-build
 		--project=$(GCP_PROJECT) \
 		--region=$(GCP_REGION) \
 		--image=$(IMAGE) \
+		--service-account=$(SERVICE_SA) \
 		--set-secrets=GEMINI_API_KEY=gemini-api-key:latest \
 		--allow-unauthenticated
 
