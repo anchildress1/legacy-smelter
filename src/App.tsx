@@ -38,6 +38,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [isWritingData, setIsWritingData] = useState(false);
@@ -104,10 +105,17 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     (async () => {
       try {
         const snap = await getDoc(doc(db, 'incident_logs', deepLinkId));
-        if (cancelled || !snap.exists()) return;
+        if (cancelled) return;
+        if (!snap.exists()) {
+          setDeepLinkError('Incident not found — the link may have expired or been removed.');
+          return;
+        }
         setSelectedRecentLog({ id: snap.id, ...snap.data() } as SmeltLog);
       } catch (err) {
-        if (!cancelled) console.error('[App] Deep link fetch failed:', err);
+        if (!cancelled) {
+          console.error('[App] Deep link fetch failed:', err);
+          setDeepLinkError('Could not load incident — check your connection and try the link again.');
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -378,6 +386,11 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       </header>
 
       <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+        {deepLinkError && (
+          <div className="modern-card p-4 mb-6" role="alert" aria-live="assertive">
+            <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">{deepLinkError}</p>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
 
           {/* Left Column: Smelter Area */}

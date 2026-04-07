@@ -252,9 +252,9 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   };
 
   const handleCopyText = async () => {
-    handleBreach();
     try {
       await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount));
+      handleBreach();
       setCopyTextState('copied');
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
       copyTimeoutRef.current = setTimeout(() => setCopyTextState('idle'), 2000);
@@ -269,9 +269,9 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   const handleCopyLink = async () => {
     if (!incidentUrl) return;
-    handleBreach();
     try {
       await navigator.clipboard.writeText(incidentUrl);
+      handleBreach();
       setCopyLinkState('copied');
       if (copyLinkTimeoutRef.current !== null) clearTimeout(copyLinkTimeoutRef.current);
       copyLinkTimeoutRef.current = setTimeout(() => setCopyLinkState('idle'), 2000);

@@ -69,7 +69,7 @@ service cloud.firestore {
                        request.resource.data.total_pixels_melted >= resource.data.total_pixels_melted;
     }
 
-match /{document=**} {
+    match /{document=**} {
       allow read, write: if false;
     }
   }

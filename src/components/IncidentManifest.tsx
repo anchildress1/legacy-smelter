@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   db,
   collection,
@@ -34,7 +34,11 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isLoadingPage, setIsLoadingPage] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const currentPageCursor = pageStartCursors[currentPage] ?? null;
+  // Ref keeps the latest cursors readable inside the fetch effect without
+  // making pageStartCursors a dep — avoids a spurious re-fetch when the cursor
+  // for the *next* page is stored after the current page's fetch completes.
+  const pageStartCursorsRef = useRef(pageStartCursors);
+  pageStartCursorsRef.current = pageStartCursors;
 
   useEffect(() => {
     const unsubStats = onSnapshot(doc(db, 'global_stats', 'main'), (snap) => {
@@ -46,6 +50,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
   useEffect(() => {
     let cancelled = false;
+    const currentPageCursor = pageStartCursorsRef.current[currentPage] ?? null;
 
     const fetchPage = async () => {
       setIsLoadingPage(true);
@@ -83,7 +88,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
     void fetchPage();
     return () => { cancelled = true; };
-  }, [currentPage, currentPageCursor]);
+  }, [currentPage]);
 
   const goToPreviousPage = () => {
     if (currentPage === 0 || isLoadingPage) return;
