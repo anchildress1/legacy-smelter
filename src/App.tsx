@@ -258,7 +258,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
         smeltTimerRef.current = null;
         setButtonsDelayed(false);
         setShowReport(true);
-      }, 3000);
+      }, 5000);
 
       (async () => {
         try {
@@ -317,7 +317,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       smeltTimerRef.current = setTimeout(() => {
         smeltTimerRef.current = null;
         setButtonsDelayed(false);
-      }, 3000);
+      }, 5000);
     }
   };
 

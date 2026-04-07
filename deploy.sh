@@ -11,7 +11,12 @@ set -euo pipefail
 #   ./deploy.sh --project my-proj --region us-central1
 #
 # Required env vars (set in env file or exported):
-#   VITE_FIREBASE_API_KEY, VITE_FIREBASE_PROJECT_ID
+#   VITE_FIREBASE_API_KEY
+#   VITE_FIREBASE_AUTH_DOMAIN
+#   VITE_FIREBASE_PROJECT_ID
+#   VITE_FIREBASE_STORAGE_BUCKET
+#   VITE_FIREBASE_MESSAGING_SENDER_ID
+#   VITE_FIREBASE_APP_ID
 #
 # VITE_APP_URL is auto-resolved from the existing Cloud Run service URL
 # if not set, so switching gcloud projects just works.
@@ -71,7 +76,11 @@ fi
 
 required_vars=(
   VITE_FIREBASE_API_KEY
+  VITE_FIREBASE_AUTH_DOMAIN
   VITE_FIREBASE_PROJECT_ID
+  VITE_FIREBASE_STORAGE_BUCKET
+  VITE_FIREBASE_MESSAGING_SENDER_ID
+  VITE_FIREBASE_APP_ID
 )
 missing=()
 for var in "${required_vars[@]}"; do
@@ -84,6 +93,9 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   echo "Set them in $ENV_FILE or export before running."
   exit 1
 fi
+
+# Keep runtime and firebase.json aligned on a single named Firestore database.
+VITE_FIREBASE_FIRESTORE_DATABASE_ID="${VITE_FIREBASE_FIRESTORE_DATABASE_ID:-legacy-smelter}"
 
 # Auto-resolve VITE_APP_URL from existing Cloud Run service if not set.
 if [[ -z "${VITE_APP_URL:-}" ]]; then
