@@ -11,7 +11,10 @@ set -euo pipefail
 #   ./deploy.sh --project my-proj --region us-central1
 #
 # Required env vars (set in env file or exported):
-#   VITE_FIREBASE_API_KEY, VITE_FIREBASE_PROJECT_ID, VITE_APP_URL
+#   VITE_FIREBASE_API_KEY, VITE_FIREBASE_PROJECT_ID
+#
+# VITE_APP_URL is auto-resolved from the existing Cloud Run service URL
+# if not set, so switching gcloud projects just works.
 #
 # Optional overrides (flags or env vars):
 #   --project   / GCP_PROJECT   (default: from gcloud config)
@@ -69,7 +72,6 @@ fi
 required_vars=(
   VITE_FIREBASE_API_KEY
   VITE_FIREBASE_PROJECT_ID
-  VITE_APP_URL
 )
 missing=()
 for var in "${required_vars[@]}"; do
@@ -81,6 +83,20 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   echo "ERROR: missing required env vars: ${missing[*]}"
   echo "Set them in $ENV_FILE or export before running."
   exit 1
+fi
+
+# Auto-resolve VITE_APP_URL from existing Cloud Run service if not set.
+if [[ -z "${VITE_APP_URL:-}" ]]; then
+  VITE_APP_URL=$(gcloud run services describe "$SERVICE_NAME" \
+    --region="$REGION" --project="$PROJECT_ID" \
+    --format="value(status.url)" 2>/dev/null || true)
+  if [[ -n "$VITE_APP_URL" ]]; then
+    echo "==> Resolved VITE_APP_URL from existing service: $VITE_APP_URL"
+  else
+    echo "ERROR: VITE_APP_URL not set and no existing service to resolve from."
+    echo "Set VITE_APP_URL in $ENV_FILE or export it for first deploy."
+    exit 1
+  fi
 fi
 
 # ── Derived values ───────────────────────────────────────────────────────────
