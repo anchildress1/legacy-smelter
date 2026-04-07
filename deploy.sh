@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # ── Legacy Smelter deploy script ────────────────────────────────────────────
-# Builds, pushes, and deploys to Cloud Run for any environment.
+# Builds via Cloud Build, pushes to Artifact Registry, and deploys to
+# Cloud Run for any environment.
 #
 # Usage:
 #   ./deploy.sh                          # uses .env + defaults
@@ -13,13 +14,12 @@ set -euo pipefail
 #   VITE_FIREBASE_API_KEY, VITE_FIREBASE_PROJECT_ID, VITE_APP_URL
 #
 # Optional overrides (flags or env vars):
-#   --project   / GCP_PROJECT   (default: anchildress1)
+#   --project   / GCP_PROJECT   (default: from gcloud config)
 #   --region    / GCP_REGION    (default: us-east1)
 #   --service   / SERVICE_NAME  (default: legacy-smelter)
 # ─────────────────────────────────────────────────────────────────────────────
 
-GCP_PROJECT="${GCP_PROJECT:-anchildress1}"
-GCP_REGION="${GCP_REGION:-us-east1}"
+REGION="${GCP_REGION:-us-east1}"
 SERVICE_NAME="${SERVICE_NAME:-legacy-smelter}"
 ENV_FILE=""
 
@@ -27,17 +27,31 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --env-file) ENV_FILE="$2"; shift 2 ;;
     --project)  GCP_PROJECT="$2"; shift 2 ;;
-    --region)   GCP_REGION="$2"; shift 2 ;;
+    --region)   REGION="$2"; shift 2 ;;
     --service)  SERVICE_NAME="$2"; shift 2 ;;
     -h|--help)
-      sed -n '3,14p' "$0"
+      sed -n '3,18p' "$0"
       exit 0
       ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
 
-# Load env file (default: .env in repo root)
+# ── Preflight ────────────────────────────────────────────────────────────────
+
+if ! command -v gcloud &>/dev/null; then
+  echo "ERROR: gcloud CLI not found. Install from https://cloud.google.com/sdk/docs/install"
+  exit 1
+fi
+
+PROJECT_ID="${GCP_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
+  echo "ERROR: No GCP project set. Pass --project or run: gcloud config set project <ID>"
+  exit 1
+fi
+
+# ── Load env ─────────────────────────────────────────────────────────────────
+
 ENV_FILE="${ENV_FILE:-.env}"
 if [[ -f "$ENV_FILE" ]]; then
   echo "==> Loading VITE_* vars from $ENV_FILE"
@@ -47,7 +61,7 @@ if [[ -f "$ENV_FILE" ]]; then
     export "$key=$value"
   done < <(grep -E '^VITE_' "$ENV_FILE")
 else
-  echo "==> No env file found at $ENV_FILE — expecting vars from environment"
+  echo "==> No env file at $ENV_FILE — expecting vars from environment"
 fi
 
 # ── Validate ─────────────────────────────────────────────────────────────────
@@ -64,61 +78,93 @@ for var in "${required_vars[@]}"; do
   fi
 done
 if [[ ${#missing[@]} -gt 0 ]]; then
-  echo "Error: missing required env vars: ${missing[*]}"
+  echo "ERROR: missing required env vars: ${missing[*]}"
   echo "Set them in $ENV_FILE or export before running."
   exit 1
 fi
 
 # ── Derived values ───────────────────────────────────────────────────────────
 
-SERVICE_SA="legacy-smelter-run@${GCP_PROJECT}.iam.gserviceaccount.com"
-IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/cloud-run-source-deploy/${SERVICE_NAME}"
+SERVICE_SA="${SERVICE_NAME}-run@${PROJECT_ID}.iam.gserviceaccount.com"
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${SERVICE_NAME}/${SERVICE_NAME}:latest"
 
 echo ""
-echo "  Project:  $GCP_PROJECT"
-echo "  Region:   $GCP_REGION"
+echo "  Project:  $PROJECT_ID"
+echo "  Region:   $REGION"
 echo "  Service:  $SERVICE_NAME"
 echo "  SA:       $SERVICE_SA"
 echo "  Image:    $IMAGE"
 echo "  App URL:  $VITE_APP_URL"
 echo ""
 
+# ── Enable APIs ──────────────────────────────────────────────────────────────
+
+echo "==> Enabling required GCP APIs..."
+gcloud services enable \
+  artifactregistry.googleapis.com \
+  cloudbuild.googleapis.com \
+  run.googleapis.com \
+  secretmanager.googleapis.com \
+  --project "$PROJECT_ID" --quiet
+
+# ── Artifact Registry ────────────────────────────────────────────────────────
+
+if ! gcloud artifacts repositories describe "$SERVICE_NAME" \
+  --location="$REGION" --project "$PROJECT_ID" --quiet &>/dev/null; then
+  echo "==> Creating Artifact Registry repository: $SERVICE_NAME"
+  gcloud artifacts repositories create "$SERVICE_NAME" \
+    --repository-format=docker \
+    --location="$REGION" \
+    --project "$PROJECT_ID" \
+    --description="Docker images for $SERVICE_NAME"
+else
+  echo "==> Artifact Registry repository exists: $SERVICE_NAME"
+fi
+
 # ── Build ────────────────────────────────────────────────────────────────────
 
-echo "==> Building Docker image..."
-docker build \
-  --build-arg VITE_FIREBASE_API_KEY="${VITE_FIREBASE_API_KEY}" \
-  --build-arg VITE_FIREBASE_AUTH_DOMAIN="${VITE_FIREBASE_AUTH_DOMAIN:-}" \
-  --build-arg VITE_FIREBASE_PROJECT_ID="${VITE_FIREBASE_PROJECT_ID}" \
-  --build-arg VITE_FIREBASE_STORAGE_BUCKET="${VITE_FIREBASE_STORAGE_BUCKET:-}" \
-  --build-arg VITE_FIREBASE_MESSAGING_SENDER_ID="${VITE_FIREBASE_MESSAGING_SENDER_ID:-}" \
-  --build-arg VITE_FIREBASE_APP_ID="${VITE_FIREBASE_APP_ID:-}" \
-  --build-arg VITE_FIREBASE_FIRESTORE_DATABASE_ID="${VITE_FIREBASE_FIRESTORE_DATABASE_ID:-}" \
-  --build-arg VITE_APP_URL="${VITE_APP_URL}" \
-  -t "${SERVICE_NAME}" .
-
-# ── Push ─────────────────────────────────────────────────────────────────────
-
-echo "==> Pushing to Artifact Registry..."
-docker tag "${SERVICE_NAME}" "${IMAGE}"
-docker push "${IMAGE}"
+echo "==> Building image via Cloud Build..."
+gcloud builds submit \
+  --project "$PROJECT_ID" \
+  --config cloudbuild.yaml \
+  --substitutions "\
+_IMAGE_URI=${IMAGE},\
+_VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY},\
+_VITE_FIREBASE_AUTH_DOMAIN=${VITE_FIREBASE_AUTH_DOMAIN:-},\
+_VITE_FIREBASE_PROJECT_ID=${VITE_FIREBASE_PROJECT_ID},\
+_VITE_FIREBASE_STORAGE_BUCKET=${VITE_FIREBASE_STORAGE_BUCKET:-},\
+_VITE_FIREBASE_MESSAGING_SENDER_ID=${VITE_FIREBASE_MESSAGING_SENDER_ID:-},\
+_VITE_FIREBASE_APP_ID=${VITE_FIREBASE_APP_ID:-},\
+_VITE_FIREBASE_FIRESTORE_DATABASE_ID=${VITE_FIREBASE_FIRESTORE_DATABASE_ID:-},\
+_VITE_APP_URL=${VITE_APP_URL}" \
+  --quiet
 
 # ── Deploy ───────────────────────────────────────────────────────────────────
 
-# VITE_* vars are set as runtime env vars for server.js (OG pre-render).
-# GEMINI_API_KEY is injected from GSM.
 echo "==> Deploying to Cloud Run..."
-gcloud run deploy "${SERVICE_NAME}" \
-  --project="${GCP_PROJECT}" \
-  --region="${GCP_REGION}" \
-  --image="${IMAGE}" \
-  --service-account="${SERVICE_SA}" \
+gcloud run deploy "$SERVICE_NAME" \
+  --project "$PROJECT_ID" \
+  --region "$REGION" \
+  --image "$IMAGE" \
+  --port 8080 \
+  --service-account "$SERVICE_SA" \
   --set-secrets=GEMINI_API_KEY=gemini-api-key:latest \
   --set-env-vars="\
 VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY},\
 VITE_FIREBASE_PROJECT_ID=${VITE_FIREBASE_PROJECT_ID},\
 VITE_FIREBASE_FIRESTORE_DATABASE_ID=${VITE_FIREBASE_FIRESTORE_DATABASE_ID:-},\
 VITE_APP_URL=${VITE_APP_URL}" \
-  --allow-unauthenticated
+  --allow-unauthenticated \
+  --cpu-boost
 
-echo "==> Deploy complete: ${SERVICE_NAME} → ${GCP_REGION}"
+# ── Verify ───────────────────────────────────────────────────────────────────
+
+SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" \
+  --region="$REGION" --project="$PROJECT_ID" \
+  --format="value(status.url)")
+
+echo ""
+echo "=================================================="
+echo "Deploy complete!"
+echo "  URL: ${SERVICE_URL}"
+echo "=================================================="
