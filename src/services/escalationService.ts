@@ -27,6 +27,9 @@ export function hasEscalated(incidentId: string): boolean {
  * Uses a batch write to atomically update the subcollection doc
  * and the parent doc's escalation_count.
  *
+ * If the batch fails (e.g. localStorage drifted from Firestore),
+ * re-syncs with Firestore and returns the corrected state.
+ *
  * Returns the new escalation state (true = escalated, false = de-escalated).
  */
 export async function toggleEscalation(incidentId: string): Promise<boolean> {
@@ -64,8 +67,10 @@ export async function toggleEscalation(incidentId: string): Promise<boolean> {
 
     return !alreadyEscalated;
   } catch (err) {
-    console.error('[escalationService] Toggle failed:', err);
-    return hasEscalated(incidentId);
+    console.error('[escalationService] Toggle failed, re-syncing:', err);
+    // Batch failed — localStorage likely drifted from Firestore.
+    // Re-sync to get the authoritative state.
+    return syncEscalationState(incidentId);
   } finally {
     inFlightEscalations.delete(incidentId);
   }
