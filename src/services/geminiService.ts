@@ -60,7 +60,7 @@ Short declarative clauses. Sentences under 12 words. Conclusions, not descriptio
 - archive_note: 60 words max. Evidence record. Short clauses. Start technical, then commit past the point of reason. Find one specific absurd detail in the image and assess it with full institutional confidence. End with a deadpan trailing observation.
 - og_headline: 10 words max. Reads like an internal notification that escaped containment.
 - share_quote: 14 words max. An incident summary someone screenshotted.
-- severity: Look at the image. What is the single most visible physical condition, material state, or failure mode present? Name it with one specific English word earned directly from what you observe. The word must be unique to this artifact — do not draw from any internal list or prior examples. No generic risk labels (Critical, Severe, Major, Minor, Elevated, Terminal). No examples are provided because the word must come from the image.
+- severity: Look at the image. Identify the single most visible physical condition, material state, or failure mode. Name it with one specific English word earned from what you observe in this image.
 - anon_handle: Format: [Compound]_[Number]. Reads like an internal system account. "ThermalOperator_41," "DeprecatedNode_7," "IncidentClerk_404."
 - dominant_hex_colors: Exactly 5 vivid, saturated hex colors from the image.
 - subject_box: Bounding box [ymin, xmin, ymax, xmax] in 1000x1000 scale covering the primary artifact.
@@ -117,7 +117,7 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
           },
           chromatic_profile: { type: Type.STRING, description: "Diagnostic color palette name. 4 words max. E.g. 'Moldy Blossom', 'Thermal Beige'." },
           system_dx: { type: Type.STRING, description: "Compound clinical syndrome name. Structure: [Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]." },
-          severity: { type: Type.STRING, description: "One English word. Observe the image and name the dominant visible condition or failure mode. Derived from this image only — not from any list." },
+          severity: { type: Type.STRING, description: "One English word naming the dominant visible condition or failure mode observed in this image." },
           primary_contamination: { type: Type.STRING, description: "Dominant visual or structural fault. 5 words max." },
           contributing_factor: { type: Type.STRING, description: "Secondary fault. 5 words max." },
           failure_origin: { type: Type.STRING, description: "What decisions produced this artifact. End with a deadpan detail. 20 words max." },
