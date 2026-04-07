@@ -12,6 +12,9 @@ interface IncidentLogCardProps {
 export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }) => {
   const [escalated, setEscalated] = useState(() => hasEscalated(log.id));
   const [isToggling, setIsToggling] = useState(false);
+  // Optimistic offset applied immediately on toggle, cleared when Firestore snapshot updates the prop
+  const [escalationOffset, setEscalationOffset] = useState(0);
+  const prevEscalationCount = React.useRef(log.escalation_count ?? 0);
 
   useEffect(() => {
     let cancelled = false;
@@ -21,22 +24,41 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
     return () => { cancelled = true; };
   }, [log.id]);
 
+  // Clear optimistic offset when the Firestore snapshot delivers a new escalation_count
+  useEffect(() => {
+    const current = log.escalation_count ?? 0;
+    if (current !== prevEscalationCount.current) {
+      prevEscalationCount.current = current;
+      setEscalationOffset(0);
+    }
+  }, [log.escalation_count]);
+
   const finalColors = getFiveDistinctColors([
     log.color_1, log.color_2, log.color_3, log.color_4, log.color_5,
   ]);
 
   const breaches = log.breach_count ?? 0;
-  const escalations = log.escalation_count ?? 0;
+  const escalations = Math.max(0, (log.escalation_count ?? 0) + escalationOffset);
   const impact = computeImpact(escalations, breaches);
 
   const handleEscalate = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isToggling) return;
     setIsToggling(true);
+    const wasEscalated = escalated;
+    // Optimistic UI update
+    setEscalated(!wasEscalated);
+    setEscalationOffset((prev) => prev + (wasEscalated ? -1 : 1));
     const newState = await toggleEscalation(log.id);
-    setEscalated(newState);
+    // If the server disagreed, revert
+    if (newState === wasEscalated) {
+      setEscalated(wasEscalated);
+      setEscalationOffset((prev) => prev + (wasEscalated ? 1 : -1));
+    }
     setIsToggling(false);
   };
+
+  const infraClass = log.legacy_infra_class || 'Incident';
 
   return (
     <div className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors group">
@@ -85,7 +107,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
             ? 'bg-molten-orange/15 text-molten-orange'
             : 'text-dead-gray hover:text-stone-gray hover:bg-concrete-mid/50'
         } ${isToggling ? 'opacity-50' : ''}`}
-        aria-label={escalated ? 'Remove escalation' : 'Escalate incident'}
+        aria-label={escalated ? `Remove escalation for ${infraClass}` : `Escalate ${infraClass}`}
         title={escalated ? 'De-escalate' : 'Escalate'}
       >
         <Siren size={18} className={escalated ? 'animate-pulse' : ''} />
