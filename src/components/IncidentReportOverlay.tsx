@@ -396,7 +396,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </p>
             <div className="flex items-center gap-3 mt-2.5 flex-wrap">
               {report.audienceFavorite && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-100 bg-emerald-700/90 px-2.5 py-1 rounded uppercase font-bold">
+                <span className="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-950 bg-molten-orange px-2.5 py-1 rounded uppercase font-bold">
                   <ShieldCheck size={11} aria-hidden="true" />
                   SANCTIONED
                 </span>
@@ -413,7 +413,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 </span>
               )}
             </div>
-            {/* Impact / Escalation / Containment scores */}
+            {/* Scores: ordered by point weight (impact, escalations, containment) */}
             <div className="flex items-center gap-4 mt-3 pt-3 border-t border-concrete-border">
               <div className="text-center">
                 <div className="text-molten-orange font-mono text-lg font-black leading-none">
@@ -432,7 +432,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <div className="w-px h-8 bg-concrete-border" />
               <div className="text-center">
                 <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveBreachCount}</div>
-                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">CONTAINMENT</div>
+                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">CONTAINMENT BREACHES</div>
               </div>
             </div>
           </div>
@@ -488,10 +488,10 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             {report.audienceFavorite && report.audienceFavoriteRationale && (
               <div className="border-t border-concrete-border pt-4">
                 <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                  <ShieldCheck size={11} className="text-emerald-500" aria-hidden="true" />
+                  <ShieldCheck size={11} className="text-molten-orange" aria-hidden="true" />
                   SANCTIONED — RATIONALE
                 </h3>
-                <p className="text-emerald-300/90 font-mono text-sm leading-relaxed italic">
+                <p className="text-molten-orange/90 font-mono text-sm leading-relaxed italic">
                   {report.audienceFavoriteRationale}
                 </p>
               </div>

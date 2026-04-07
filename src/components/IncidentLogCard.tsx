@@ -79,11 +79,14 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
           )}
           <div className="flex items-center gap-1.5 shrink-0">
             {log.audience_favorite && (
-              <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider font-bold bg-emerald-700/90 text-emerald-100 px-1.5 py-0.5 rounded">
+              <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider font-bold bg-molten-orange text-zinc-950 px-1.5 py-0.5 rounded">
                 <ShieldCheck size={10} aria-hidden="true" />
                 SANCTIONED
               </span>
             )}
+            <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider font-bold bg-hazard-amber text-zinc-950 px-1.5 py-0.5 rounded">
+              IMPACT {impact}
+            </span>
             <span className="font-mono text-[10px] uppercase tracking-wider font-bold bg-hazard-amber text-zinc-950 px-1.5 py-0.5 rounded">
               {log.severity}
             </span>
@@ -92,13 +95,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
         <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-3">
           {log.incident_feed_summary}
         </p>
-        <div className="mt-2 flex items-end gap-x-4 gap-y-1 flex-wrap">
-          <span className="text-molten-orange font-mono text-xs font-bold">
-            IMPACT {impact}
-          </span>
-          <span className="text-hazard-amber font-mono text-xs font-bold">
-            {breaches} CONTAINMENT
-          </span>
+        <div className="mt-2 flex items-end">
           <span className="text-stone-gray font-mono text-xs ml-auto">
             {log.timestamp?.toDate ? formatTimestamp(log.timestamp.toDate()) : '—'}
           </span>
