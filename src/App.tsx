@@ -14,7 +14,7 @@ import {
   serverTimestamp
 } from './firebase';
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
-import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
+import { GlobalStats as GlobalStatsType, SmeltLog, computeImpact } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
@@ -72,11 +72,16 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     const logsQuery = query(
       collection(db, 'incident_logs'),
       orderBy('timestamp', 'desc'),
-      limit(3)
+      limit(50)
     );
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
       const entries = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SmeltLog));
-      setRecentLogs(entries);
+      const sorted = entries.sort((a, b) => {
+        const impactA = computeImpact(a.escalation_count ?? 0, a.breach_count ?? 0);
+        const impactB = computeImpact(b.escalation_count ?? 0, b.breach_count ?? 0);
+        return impactB - impactA;
+      });
+      setRecentLogs(sorted.slice(0, 3));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'incident_logs', setAnalysisError);
     });
@@ -292,7 +297,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             anon_handle: completedAnalysis.anonHandle,
             timestamp: serverTimestamp(),
             uid: crypto.randomUUID(),
-            breach_count: 0
+            breach_count: 0,
+            escalation_count: 0
           });
           if (writeRequestId !== activeRequestIdRef.current) return;
           setLoggedIncidentId(logRef.id);
@@ -513,7 +519,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             <div>
               <div className="mb-3">
                 <h2 className="text-hazard-amber font-mono text-xs md:text-sm uppercase tracking-wide md:tracking-widest font-bold">
-                  RECENT INCIDENTS
+                  HIGH PRI INCIDENTS
                 </h2>
               </div>
               <div className="space-y-3">
