@@ -54,7 +54,7 @@ function esc(str) {
 async function fetchIncident(docId) {
   const encodedDb = encodeURIComponent(FIREBASE_DB_ID);
   const encodedDocId = encodeURIComponent(docId);
-  const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${encodedDb}/documents/incident_logs/${encodedDocId}?key=${FIREBASE_API_KEY}`;
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_PROJECT_ID)}/databases/${encodedDb}/documents/incident_logs/${encodedDocId}?key=${FIREBASE_API_KEY}`;
   const res = await fetch(url);
   if (!res.ok) return null;
   const data = await res.json();
@@ -68,10 +68,8 @@ async function fetchIncident(docId) {
   };
 }
 
-let _spaHtml = null;
 function getSpaHtml() {
-  if (!_spaHtml) _spaHtml = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
-  return _spaHtml;
+  return readFileSync(resolve(DIST, 'index.html'), 'utf-8');
 }
 
 function injectIncidentOg(html, incident, canonicalUrl) {
@@ -232,7 +230,7 @@ function rateLimitAnalyzeRoute(req, res, next) {
   res.setHeader('X-RateLimit-Remaining', String(remaining));
   res.setHeader('X-RateLimit-Reset', String(Math.ceil(windowResetMs / 1000)));
 
-  if (bucket.count > API_RATE_LIMIT_MAX_REQUESTS) {
+  if (bucket.count >= API_RATE_LIMIT_MAX_REQUESTS) {
     const retryAfterSec = Math.max(1, Math.ceil((windowResetMs - now) / 1000));
     res.setHeader('Retry-After', String(retryAfterSec));
     return res.status(429).json({ error: 'Rate limit exceeded. Retry shortly.' });
@@ -241,8 +239,17 @@ function rateLimitAnalyzeRoute(req, res, next) {
   return next();
 }
 
+const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif']);
+const MAX_BASE64_LENGTH = 9 * 1024 * 1024; // ~6.75 MB decoded
+
+let _aiClient = null;
+function getAiClient() {
+  if (!_aiClient) _aiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  return _aiClient;
+}
+
 async function analyzeImage(base64Image, mimeType) {
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  const ai = getAiClient();
 
   const response = await ai.models.generateContent({
     model: GEMINI_MODEL,
@@ -318,6 +325,12 @@ app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
   const { image, mimeType } = body;
   if (typeof image !== 'string' || typeof mimeType !== 'string' || !image || !mimeType) {
     return res.status(400).json({ error: 'Request must include "image" (base64) and "mimeType".' });
+  }
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+    return res.status(400).json({ error: 'Unsupported image type.' });
+  }
+  if (image.length > MAX_BASE64_LENGTH) {
+    return res.status(413).json({ error: 'Image too large.' });
   }
 
   try {

@@ -63,8 +63,10 @@ fi
 ENV_FILE="${ENV_FILE:-.env}"
 if [[ -f "$ENV_FILE" ]]; then
   echo "==> Loading VITE_* vars from $ENV_FILE"
-  while IFS='=' read -r key value; do
-    [[ "$key" =~ ^VITE_ ]] || continue
+  while IFS= read -r line; do
+    [[ "$line" =~ ^(VITE_[^=]+)=(.*)$ ]] || continue
+    key="${BASH_REMATCH[1]}"
+    value="${BASH_REMATCH[2]}"
     value="${value%\"}" ; value="${value#\"}"
     export "$key=$value"
   done < <(grep -E '^VITE_' "$ENV_FILE")
