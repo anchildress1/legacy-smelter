@@ -7,12 +7,19 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 RUN npm run build
 
+# ── production dependencies stage ─────────────────────────────────────────────
+# Installs runtime dependencies from lockfile for deterministic image builds.
+FROM node:24-alpine AS server-deps
+WORKDIR /app
+COPY package*.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+
 # ── server stage ─────────────────────────────────────────────────────────────
 # Minimal runtime: only express + dotenv + the compiled dist + server.js.
 FROM node:24-alpine AS server
 WORKDIR /app
 ENV NODE_ENV=production
-RUN --mount=type=cache,target=/root/.npm npm install express dotenv
+COPY --from=server-deps /app/node_modules ./node_modules
 COPY server.js .
 COPY --from=builder /app/dist ./dist
 EXPOSE 8080
