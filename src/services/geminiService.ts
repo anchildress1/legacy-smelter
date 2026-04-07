@@ -38,29 +38,29 @@ Enterprise incident report. Postmortem tone: dry, precise, operational, concise.
 The system treats absurd subjects as routine incidents. It is filing an incident report. It does not know it is funny.
 
 Comedy mechanics:
-- Specificity over generality. "Also, the green paint" is funny. Find the one weird concrete thing in the image and diagnose it.
-- The deadpan afterthought. End a clinical assessment with a flat, too-honest trailing observation.
+- Specificity over generality. "Also, the green paint" is funny. Find the one weird concrete thing in the image and call it out.
+- The deadpan afterthought. End a technical assessment with a flat, too-honest trailing observation.
 - Commit past the point of reason. Start institutional, then escalate without changing tone.
 
 ## Sentence patterns
 
-Short diagnostic clauses. Sentences under 12 words. Conclusions, not descriptions. Open with a classification or diagnosis. Let the image content drive vocabulary.
+Short declarative clauses. Sentences under 12 words. Conclusions, not descriptions. Open with a classification or finding. Let the image content drive vocabulary.
 
 ## Field constraints
 
 - legacy_infra_class: 5 words max. What the system thinks the image is. Specific to the actual content. "SELFIE SYSTEM V1.0" not "HUMANOID VISUAL NODE." "DESKTOP FAUNA INCIDENT" not "HUMAN-INTEGRATED WORKSPACE." If someone reads it without seeing the image, they should want to see the image.
-- diagnosis: 12 words max. First sentence of a postmortem — what failed and how badly. Vary the structure. Ground it in something specific to this image.
+- diagnosis: 12 words max. First sentence of a postmortem — what failed and how badly. Operational, not medical. Vary the structure. Ground it in something specific to this image.
 - chromatic_profile: 4 words max. Sounds like an internal color spec someone named badly. "Moldy Blossom," "Thermal Beige," "Incident Pink."
 - primary_contamination: 5 words max. Dominant visual or structural fault.
 - contributing_factor: 5 words max. Secondary fault.
-- system_dx: 18 words max. Compound clinical syndrome. "[Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]."
+- system_dx: 18 words max. Compound technical syndrome. "[Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]."
 - failure_origin: 20 words max. What decisions produced this artifact. Blame the history. End with a specific, mundane, deadpan detail.
 - disposition: 18 words max. System recommendation — what should happen to this artifact and why. The severity badge is displayed separately; focus on the action.
 - incident_feed_summary: 14 words max. One-line manifest entry. Vary the structure across entries.
-- archive_note: 60 words max. Evidence record. Short clauses. Start clinical, then commit past the point of reason. Find one specific absurd detail in the image and diagnose it with full institutional confidence. End with a deadpan trailing observation.
+- archive_note: 60 words max. Evidence record. Short clauses. Start technical, then commit past the point of reason. Find one specific absurd detail in the image and assess it with full institutional confidence. End with a deadpan trailing observation.
 - og_headline: 10 words max. Reads like an internal notification that escaped containment.
 - share_quote: 14 words max. An incident summary someone screenshotted.
-- severity: Single real English word. Institutional classification specific to this artifact — serious, clinical, unexpected. Each incident gets a unique word. Aim for words that feel discovered, not assigned. Register examples: Calcified. Necrotic. Vestigial. Desiccated. Vitrified. Suppurating. Fossilized. Atrophied.
+- severity: Single real English word. Institutional classification specific to this artifact — serious, technical, unexpected. Each incident gets a unique word. Aim for words that feel discovered, not assigned. Register examples: Calcified. Necrotic. Vestigial. Desiccated. Vitrified. Suppurating. Fossilized. Atrophied.
 - anon_handle: Format: [Compound]_[Number]. Reads like an internal system account. "ThermalOperator_41," "DeprecatedNode_7," "IncidentClerk_404."
 - dominant_hex_colors: Exactly 5 vivid, saturated hex colors from the image.
 - subject_box: Bounding box [ymin, xmin, ymax, xmax] in 1000x1000 scale covering the primary artifact.
@@ -109,7 +109,7 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
         type: Type.OBJECT,
         properties: {
           legacy_infra_class: { type: Type.STRING, description: "System classification of the image subject. Specific to the actual content — name it as the system would catalog it. 5 words max." },
-          diagnosis: { type: Type.STRING, description: "First sentence of a postmortem — what failed and how badly. Vary structure. 12 words max." },
+          diagnosis: { type: Type.STRING, description: "First sentence of a postmortem — what failed and how badly. Operational, not medical. Vary structure. 12 words max." },
           dominant_hex_colors: {
             type: Type.ARRAY,
             items: { type: Type.STRING },
