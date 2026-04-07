@@ -24,10 +24,13 @@ function getDeepLinkId(): string | null {
   }
 }
 
+// Compute once at module load so React StrictMode remounts don't lose /s/:id.
+const initialDeepLinkId = getDeepLinkId();
+
 function Root() {
   const [page, setPage] = useState<Page>(getPageFromHash);
   // Consume the deep link once: read from URL, store in state.
-  const [deepLinkId] = useState(getDeepLinkId);
+  const [deepLinkId] = useState<string | null>(initialDeepLinkId);
 
   // Clear /s/:id after mount so the overlay only opens once.
   // Preserve non-root base paths (e.g. /app/s/:id -> /app).
