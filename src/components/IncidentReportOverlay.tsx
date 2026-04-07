@@ -46,6 +46,45 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
     .filter((el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
 }
 
+function buildMarkdown(report: NormalisedReport, liveBreachCount: number): string {
+  const lines: string[] = [
+    `# ${report.legacyInfraClass}`,
+    '',
+    report.incidentFeedSummary,
+    '',
+    `**Severity:** ${report.severity}`,
+    `**Containment Breaches:** ${liveBreachCount}`,
+  ];
+
+  if (report.timestamp) {
+    lines.push(`**Filed:** ${formatTimestamp(report.timestamp)}`);
+  }
+
+  const telemetry = [
+    report.failureOrigin ? `**Failure Origin:** ${report.failureOrigin}` : null,
+    report.systemDx ? `**System Diagnosis:** ${report.systemDx}` : null,
+    report.primaryContamination ? `**Primary Contaminant:** ${report.primaryContamination}` : null,
+    report.contributingFactor ? `**Contributing Factor:** ${report.contributingFactor}` : null,
+  ].filter((s): s is string => s !== null);
+
+  if (telemetry.length > 0) {
+    lines.push('', '---', '', '## Telemetry', '', ...telemetry);
+  }
+
+  lines.push(
+    '', '---', '',
+    '## Disposition', '',
+    report.disposition,
+    '',
+    '## Archive Note', '',
+    report.archiveNote,
+    '', '---', '',
+    `*Filed by ${report.anonHandle} · Chromatic Profile: ${report.chromaticProfile}*`,
+  );
+
+  return lines.join('\n');
+}
+
 function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedReport | null {
   if (a) {
     return {
@@ -215,7 +254,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const handleCopyText = async () => {
     handleBreach();
     try {
-      await navigator.clipboard.writeText(`${report.incidentFeedSummary}\n\n${report.archiveNote}`);
+      await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount));
       setCopyTextState('copied');
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
       copyTimeoutRef.current = setTimeout(() => setCopyTextState('idle'), 2000);
