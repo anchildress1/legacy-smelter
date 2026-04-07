@@ -14,8 +14,31 @@ function getPageFromHash(): Page {
   }
 }
 
+// Read the incident ID from /s/:id on initial load — deep link to a specific incident.
+function getDeepLinkId(): string | null {
+  try {
+    const match = window.location.pathname.match(/\/s\/([^/?#]+)$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Compute once at module load so React StrictMode remounts don't lose /s/:id.
+const initialDeepLinkId = getDeepLinkId();
+
 function Root() {
   const [page, setPage] = useState<Page>(getPageFromHash);
+  // Consume the deep link once: read from URL, store in state.
+  const [deepLinkId] = useState<string | null>(initialDeepLinkId);
+
+  // Clear /s/:id after mount so the overlay only opens once.
+  // Preserve non-root base paths (e.g. /app/s/:id -> /app).
+  useEffect(() => {
+    if (!deepLinkId) return;
+    const cleanedPath = window.location.pathname.replace(/\/s\/[^/?#]+$/, '') || '/';
+    history.replaceState(null, '', `${cleanedPath}${window.location.search}${window.location.hash}`);
+  }, [deepLinkId]);
 
   useEffect(() => {
     const sync = () => setPage(getPageFromHash());
@@ -39,7 +62,7 @@ function Root() {
   if (page === 'manifest') {
     return <IncidentManifest onNavigateHome={() => navigateTo('smelter')} />;
   }
-  return <App onNavigateManifest={() => navigateTo('manifest')} />;
+  return <App onNavigateManifest={() => navigateTo('manifest')} deepLinkId={deepLinkId} />;
 }
 
 createRoot(document.getElementById('root')!).render(

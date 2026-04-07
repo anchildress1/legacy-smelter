@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, onSnapshot, query, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, query, orderBy, limit, startAfter, getDocs, doc, getDoc, setDoc, updateDoc, increment, serverTimestamp, type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 
 // Validate environment variables
 const requiredVars = [
@@ -27,17 +28,35 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)');
+const auth = getAuth(app);
+let anonymousAuthPromise: Promise<void> | null = null;
 
-export { 
-  collection, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  limit, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  increment, 
-  serverTimestamp
+export async function ensureAnonymousAuth(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if (auth.currentUser) return;
+  if (!anonymousAuthPromise) {
+    anonymousAuthPromise = signInAnonymously(auth).then(() => undefined).catch((err) => {
+      anonymousAuthPromise = null;
+      throw err;
+    });
+  }
+  await anonymousAuthPromise;
+}
+
+export {
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  limit,
+  startAfter,
+  getDocs,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  increment,
+  serverTimestamp,
+  type QueryDocumentSnapshot,
+  type DocumentData,
 };

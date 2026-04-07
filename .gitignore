@@ -3,6 +3,7 @@ build/
 dist/
 coverage/
 .gemini/
+.claude/
 .DS_Store
 *.log
 *.tmp

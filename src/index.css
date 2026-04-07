@@ -50,6 +50,10 @@
     @apply bg-hazard-amber text-zinc-950 font-bold px-6 py-3 rounded-lg shadow-md hover:brightness-110 active:scale-95 transition-all uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-offset-2 focus-visible:ring-offset-concrete-light;
   }
 
+  .nav-btn {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-concrete-border bg-transparent px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-stone-gray hover:text-hazard-amber hover:border-hazard-amber/40 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber;
+  }
+
   .hazard-stripe {
     background: repeating-linear-gradient(
       -45deg,

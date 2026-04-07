@@ -2,13 +2,10 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { getFiveDistinctColors } from "../lib/utils";
 import type { Severity } from "../types";
 
-const VALID_SEVERITIES: readonly Severity[] = ['Advisory', 'Elevated', 'Critical', 'Terminal'];
-
 function normalizeSeverity(value: unknown): Severity {
-  if (typeof value === 'string' && VALID_SEVERITIES.includes(value as Severity)) {
-    return value as Severity;
-  }
-  return 'Critical';
+  if (typeof value !== 'string') return 'Unclassified';
+  const first = value.trim().split(/\s+/)[0] ?? '';
+  return first.slice(0, 32) || 'Unclassified';
 }
 
 export interface SmeltAnalysis {
@@ -31,80 +28,42 @@ export interface SmeltAnalysis {
   subjectBox: [number, number, number, number]; // [ymin, xmin, ymax, xmax] 0-1000
 }
 
-const GEMINI_PROMPT = `You are the incident analysis engine for Legacy Smelter.
+const GEMINI_PROMPT = `You are the incident analysis engine for Legacy Smelter. You analyze uploaded images and classify them as condemned technical artifacts requiring thermal decommission.
 
-Operating principle: If a bug exists, apply Hotfix.
-
-You analyze uploaded images and classify them as condemned technical artifacts requiring thermal decommission. Processing is performed by a system component named Hotfix. Hotfix is infrastructure.
-
-Return a single valid JSON object matching the schema. Do not wrap in markdown. Do not add commentary outside the JSON.
+Return a single valid JSON object matching the schema.
 
 ## Voice
 
-Write like an enterprise incident report. File a postmortem.
+Enterprise incident report. Postmortem tone: dry, precise, operational, concise. Accusatory toward the artifact and its history.
 
-Tone: dry, precise, operational, concise. Accusatory toward the artifact and its history, not the submitter.
-
-Humor comes from treating absurd subjects as routine incidents. The system does not know it is funny.
+The system treats absurd subjects as routine incidents. It is filing an incident report. It does not know it is funny.
 
 Comedy mechanics:
-- Specificity over generality. "Persistent Visual Noise" is a diagnosis. "Also, the green paint" is funny. The more mundane and specific the detail, the harder it lands. Find the one weird concrete thing in the image and diagnose it.
-- The deadpan afterthought. End a clinical assessment with a flat, too-honest observation. "The system believes it is perpetually 'on camera'." The trailing detail is where personality lives.
-- Commit past the point of reason. Start institutional, then keep going further than expected without changing tone. The escalation is the joke.
+- Specificity over generality. "Also, the green paint" is funny. Find the one weird concrete thing in the image and call it out.
+- The deadpan afterthought. End a technical assessment with a flat, too-honest trailing observation.
+- Commit past the point of reason. Start institutional, then escalate without changing tone.
 
 ## Sentence patterns
 
-Short diagnostic clauses. Sentences under 12 words. Conclusions, not descriptions.
-
-Pattern: [Classification]. [State]. / Failure: [type]. Disposition: [action]. / [Object] [state change]. [Consequence].
-
-Examples:
-- "Legacy UI failure detected. Layout integrity nonexistent."
-- "Interface retired. State: liquid."
-- "Hotfix deployed. Output: molten slag."
-
-Open with a classification or diagnosis. Let the image content drive vocabulary.
-
-## Hotfix
-
-Hotfix is a processing engine. The system analyzes. Hotfix executes.
-
-- "Hotfix deployed." / "Processed by Hotfix." / "Hotfix processing complete."
-
-Hotfix has system states, not moods.
-
-## Destruction model
-
-Artifacts are destroyed. Nothing is recovered. Processing results in slag or molten residue. The system considers this successful decommission.
-
-## Severity tiers
-
-Use ONLY these classifications for severity:
-
-| Classification | Disposition |
-|---|---|
-| Advisory | Logged. No action required. |
-| Elevated | Inspection recommended. |
-| Critical | Immediate smelting required. |
-| Terminal | Emergency incineration. |
+Short declarative clauses. Sentences under 12 words. Conclusions, not descriptions. Open with a classification or finding. Let the image content drive vocabulary.
 
 ## Field constraints
 
-- legacy_infra_class: 5 words max. Artifact's institutional name. Technical.
-- diagnosis: 12 words max. First sentence of a postmortem — what failed and how badly.
-- chromatic_profile: 4 words max. Diagnostic register: "Moldy Blossom," "Thermal Beige," "Incident Pink."
+- legacy_infra_class: 5 words max. What the system thinks the image is. Specific to the actual content. "SELFIE SYSTEM V1.0" not "HUMANOID VISUAL NODE." "DESKTOP FAUNA INCIDENT" not "HUMAN-INTEGRATED WORKSPACE." If someone reads it without seeing the image, they should want to see the image.
+- diagnosis: 12 words max. First sentence of a postmortem — what failed and how badly. Operational, not medical. Vary the structure. Ground it in something specific to this image.
+- chromatic_profile: 4 words max. Sounds like an internal color spec someone named badly. "Moldy Blossom," "Thermal Beige," "Incident Pink."
 - primary_contamination: 5 words max. Dominant visual or structural fault.
 - contributing_factor: 5 words max. Secondary fault.
-- system_dx: 18 words max. Compound clinical syndrome. Structure: "[Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]."
-- failure_origin: 20 words max. What decisions produced this artifact. End with a specific deadpan detail.
-- disposition: 18 words max. System recommendation. Must reference a severity tier.
-- incident_feed_summary: 14 words max. Pattern: "[Object] [state change]. Output: [result]."
-- archive_note: 60 words max. Evidence record. Short clauses. Start clinical, escalate past the point of reason. End with a deadpan trailing observation.
+- system_dx: 18 words max. Compound technical syndrome. "[Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]."
+- failure_origin: 20 words max. What decisions produced this artifact. Blame the history. End with a specific, mundane, deadpan detail.
+- disposition: 18 words max. System recommendation — what should happen to this artifact and why. The severity badge is displayed separately; focus on the action.
+- incident_feed_summary: 14 words max. One-line manifest entry. Vary the structure across entries.
+- archive_note: 60 words max. Evidence record. Short clauses. Start technical, then commit past the point of reason. Find one specific absurd detail in the image and assess it with full institutional confidence. End with a deadpan trailing observation.
 - og_headline: 10 words max. Reads like an internal notification that escaped containment.
 - share_quote: 14 words max. An incident summary someone screenshotted.
-- severity: One of: Advisory, Elevated, Critical, Terminal.
-- anon_handle: 3 words max. Format: [Compound]_[Number]. Specific to the artifact. Examples: "ThermalOperator_41," "DeprecatedNode_7," "IncidentClerk_404."
-- dominant_hex_colors: Exactly 5 vivid, saturated hex colors from the image. Diagnostic data.
+- severity: Look at the image. Identify the single most visible physical condition, material state, or failure mode. Name it with one specific English word earned from what you observe in this image.
+- anon_handle: Format: [Compound]_[Number]. Reads like an internal system account. "ThermalOperator_41," "DeprecatedNode_7," "IncidentClerk_404."
+- dominant_hex_colors: Exactly 5 vivid, saturated hex colors from the image.
 - subject_box: Bounding box [ymin, xmin, ymax, xmax] in 1000x1000 scale covering the primary artifact.
 
 ## Final rules
@@ -150,8 +109,8 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          legacy_infra_class: { type: Type.STRING, description: "Artifact's institutional name. Technical. 5 words max." },
-          diagnosis: { type: Type.STRING, description: "First sentence of a postmortem — what failed and how badly. 12 words max." },
+          legacy_infra_class: { type: Type.STRING, description: "System classification of the image subject. Specific to the actual content — name it as the system would catalog it. 5 words max." },
+          diagnosis: { type: Type.STRING, description: "First sentence of a postmortem — what failed and how badly. Operational, not medical. Vary structure. 12 words max." },
           dominant_hex_colors: {
             type: Type.ARRAY,
             items: { type: Type.STRING },
@@ -159,13 +118,13 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
           },
           chromatic_profile: { type: Type.STRING, description: "Diagnostic color palette name. 4 words max. E.g. 'Moldy Blossom', 'Thermal Beige'." },
           system_dx: { type: Type.STRING, description: "Compound clinical syndrome name. Structure: [Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]." },
-          severity: { type: Type.STRING, description: "One of: Advisory, Elevated, Critical, Terminal." },
+          severity: { type: Type.STRING, description: "One English word naming the dominant visible condition or failure mode observed in this image." },
           primary_contamination: { type: Type.STRING, description: "Dominant visual or structural fault. 5 words max." },
           contributing_factor: { type: Type.STRING, description: "Secondary fault. 5 words max." },
           failure_origin: { type: Type.STRING, description: "What decisions produced this artifact. End with a deadpan detail. 20 words max." },
-          disposition: { type: Type.STRING, description: "System recommendation referencing a severity tier. 18 words max." },
-          incident_feed_summary: { type: Type.STRING, description: "One-line manifest entry. Pattern: [Object] [state change]. Output: [result]. 14 words max." },
-          archive_note: { type: Type.STRING, description: "Evidence record. Short clauses. Start clinical, escalate, end with deadpan observation. 60 words max." },
+          disposition: { type: Type.STRING, description: "System recommendation. Do not restate the severity — say what should happen and why. 18 words max." },
+          incident_feed_summary: { type: Type.STRING, description: "One-line manifest entry. Vary the structure each time. 14 words max." },
+          archive_note: { type: Type.STRING, description: "Evidence record. Short clauses. Start clinical, escalate past reason. Find one specific absurd detail and diagnose it. End deadpan. 60 words max." },
           og_headline: { type: Type.STRING, description: "Internal notification that escaped containment. 10 words max." },
           share_quote: { type: Type.STRING, description: "Incident summary someone screenshotted. 14 words max." },
           anon_handle: { type: Type.STRING, description: "Generated submitter alias. Format: [Compound]_[Number]. E.g. 'ThermalOperator_41', 'DeprecatedNode_7'." },
@@ -188,28 +147,18 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
     }
   };
 
-  const MAX_RETRIES = 3;
-  let lastError: unknown;
-  let result: Record<string, unknown> | null = null;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    if (attempt > 0) {
-      await new Promise(r => setTimeout(r, 1000 * attempt));
-      console.warn(`[geminiService] Retry attempt ${attempt} of ${MAX_RETRIES - 1}`);
+  let result: Record<string, unknown>;
+  try {
+    const response = await ai.models.generateContent(requestConfig);
+    const responseText = response.text;
+    if (!responseText || !responseText.trim()) {
+      throw new Error('Gemini returned an empty response. Image may have been blocked by safety filters.');
     }
-    try {
-      const response = await ai.models.generateContent(requestConfig);
-      const responseText = response.text;
-      if (!responseText || !responseText.trim()) {
-        throw new Error('Gemini returned an empty response. Image may have been blocked by safety filters.');
-      }
-      result = JSON.parse(responseText);
-      break;
-    } catch (err) {
-      lastError = err;
-      console.error(`[geminiService] Attempt ${attempt + 1} failed:`, err);
-    }
+    result = JSON.parse(responseText);
+  } catch (err) {
+    console.error('[geminiService] Analysis failed:', err);
+    throw err;
   }
-  if (!result) throw lastError ?? new Error('Gemini analysis failed after all retries');
 
   const rawColors = Array.isArray(result.dominant_hex_colors) ? result.dominant_hex_colors as string[] : [];
   const dominantColors = getFiveDistinctColors(rawColors);

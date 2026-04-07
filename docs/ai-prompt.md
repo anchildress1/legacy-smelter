@@ -51,34 +51,23 @@ Hotfix has system states, not moods.
 
 Artifacts are destroyed. Nothing is recovered. Processing results in slag or molten residue. The system considers this successful decommission.
 
-## Severity tiers
-
-Use only these classifications for `severity`.
-
-| Classification | Disposition |
-|---|---|
-| Advisory | Logged. No action required. |
-| Elevated | Inspection recommended. |
-| Critical | Immediate smelting required. |
-| Terminal | Emergency incineration. |
-
 ## Field constraints
 
 | Field | Max words | Notes |
 |---|---|---|
-| `legacy_infra_class` | 5 | Artifact's institutional name. Technical. |
-| `diagnosis` | 12 | Summary. First sentence of a postmortem — what failed and how badly. |
+| `legacy_infra_class` | 5 | The system's classification of what it thinks the image is. Must be specific to the actual image content — not generic enterprise nouns. Name the subject as the system would catalog it. "SELFIE SYSTEM V1.0" not "HUMANOID VISUAL NODE." "DESKTOP FAUNA INCIDENT" not "HUMAN-INTEGRATED WORKSPACE." The title is the hook. If someone reads it without seeing the image, they should want to see the image. |
+| `diagnosis` | 12 | Summary. First sentence of a postmortem — what failed and how badly. Do not repeat the pattern "Status: [word]. Output: [word]." every time. Vary the structure. Ground it in something specific to this image. |
 | `chromatic_profile` | 4 | Diagnostic register: "Moldy Blossom," "Thermal Beige," "Incident Pink." Sounds like an internal color spec someone named badly. |
 | `primary_contamination` | 5 | Dominant visual or structural fault. |
 | `contributing_factor` | 5 | Secondary fault. |
 | `system_dx` | 18 | Compound clinical syndrome name. Stack real diagnostic patterns onto absurd observations. Structure: "[Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]." Example: "Chronic Environmental Entanglement Syndrome with Recursive Self-Referential Glare." |
 | `failure_origin` | 20 | What decisions produced this artifact. Blame the history. End with a specific, mundane, deadpan detail. "Also, the green paint." |
-| `disposition` | 18 | System recommendation. Must reference a severity tier. |
-| `incident_feed_summary` | 14 | One-line manifest entry. Pattern: "[Object] [state change]. Output: [result]." |
+| `disposition` | 18 | System recommendation for this specific artifact. Do not restate the severity tier — the badge already shows it. Say what should happen and why. |
+| `incident_feed_summary` | 14 | One-line manifest entry. Vary the structure — do not always use the same pattern. |
 | `archive_note` | 60 | Evidence record. Short clauses. Start clinical, then commit past the point of reason. Find one specific absurd detail in the image and diagnose it with full institutional confidence. End with a deadpan trailing observation. |
 | `og_headline` | 10 | Social share headline. Reads like an internal notification that escaped containment. |
 | `share_quote` | 14 | Social share body. An incident summary someone screenshotted. |
-| `severity` | — | Enum: Advisory, Elevated, Critical, Terminal. No other values. |
+| `severity` | 1 | Single English word. Institutional severity classification specific to this artifact. Serious, clinical, unexpected. No hyphens. Real word only. |
 | `anon_handle` | 3 | Generated submitter alias. Format: [Compound]_[Number]. Specific to the artifact. Reads like an internal system account. Examples: "ThermalOperator_41," "DeprecatedNode_7," "IncidentClerk_404." |
 | `dominant_hex_colors` | — | Exactly 5 vivid, saturated hex colors pulled from the image. These are diagnostic data. |
 | `subject_box` | — | Bounding box [ymin, xmin, ymax, xmax] in 1000x1000 scale covering the primary artifact. |

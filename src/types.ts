@@ -1,6 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 
-export type Severity = 'Advisory' | 'Elevated' | 'Critical' | 'Terminal';
+export type Severity = string;
 
 export interface SmeltLog {
   id: string;
@@ -30,6 +30,7 @@ export interface SmeltLog {
   anon_handle: string;
   timestamp: Timestamp | null;
   uid: string;
+  breach_count?: number;
 }
 
 export interface GlobalStats {

@@ -8,6 +8,7 @@ import {
   orderBy,
   limit,
   doc,
+  getDoc,
   setDoc,
   increment,
   serverTimestamp
@@ -17,7 +18,7 @@ import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
-import { formatPixels, getFiveDistinctColors, getLogShareLinks, buildShareLinks } from './lib/utils';
+import { formatPixels, getFiveDistinctColors, getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
 import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
@@ -28,14 +29,16 @@ const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, v
 
 interface AppProps {
   onNavigateManifest: () => void;
+  deepLinkId?: string | null;
 }
 
-export default function App({ onNavigateManifest }: AppProps) {
+export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
   const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
   const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [isWritingData, setIsWritingData] = useState(false);
@@ -44,6 +47,8 @@ export default function App({ onNavigateManifest }: AppProps) {
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  // Firestore doc ID of the most recently smelted incident — used for share links
+  const [loggedIncidentId, setLoggedIncidentId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -91,6 +96,30 @@ export default function App({ onNavigateManifest }: AppProps) {
       }
     };
   }, []);
+
+  // Deep link: fetch incident by Firestore doc ID and open its overlay.
+  // The URL is already cleared by Root — deepLinkId is a one-shot value.
+  useEffect(() => {
+    if (!deepLinkId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'incident_logs', deepLinkId));
+        if (cancelled) return;
+        if (!snap.exists()) {
+          setDeepLinkError('Incident not found — the link may have expired or been removed.');
+          return;
+        }
+        setSelectedRecentLog({ id: snap.id, ...snap.data() } as SmeltLog);
+      } catch (err) {
+        if (!cancelled) {
+          console.error('[App] Deep link fetch failed:', err);
+          setDeepLinkError('Could not load incident — check your connection and try the link again.');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [deepLinkId]);
 
   const startCamera = async () => {
     try {
@@ -218,62 +247,71 @@ export default function App({ onNavigateManifest }: AppProps) {
     setButtonsDelayed(true);
 
     if (!hasWrittenRef.current) {
-      // First completion — write to Firestore
+      // First completion — reveal report after delay regardless of write outcome,
+      // then write to Firestore in the background.
+      const writeRequestId = activeRequestIdRef.current;
       hasWrittenRef.current = true;
+      setIsComplete(true);
       setIsWritingData(true);
-      try {
-        const colors = getFiveDistinctColors(completedAnalysis.dominantColors);
-        const box = completedAnalysis.subjectBox;
-        const logRef = doc(collection(db, 'incident_logs'));
-        await setDoc(logRef, {
-          pixel_count: completedAnalysis.pixelCount,
-          incident_feed_summary: completedAnalysis.incidentFeedSummary,
-          color_1: colors[0],
-          color_2: colors[1],
-          color_3: colors[2],
-          color_4: colors[3],
-          color_5: colors[4],
-          subject_box_ymin: box[0] ?? 100,
-          subject_box_xmin: box[1] ?? 100,
-          subject_box_ymax: box[2] ?? 900,
-          subject_box_xmax: box[3] ?? 900,
-          legacy_infra_class: completedAnalysis.legacyInfraClass,
-          diagnosis: completedAnalysis.diagnosis,
-          chromatic_profile: completedAnalysis.chromaticProfile,
-          system_dx: completedAnalysis.systemDx,
-          severity: completedAnalysis.severity,
-          primary_contamination: completedAnalysis.primaryContamination,
-          contributing_factor: completedAnalysis.contributingFactor,
-          failure_origin: completedAnalysis.failureOrigin,
-          disposition: completedAnalysis.disposition,
-          archive_note: completedAnalysis.archiveNote,
-          og_headline: completedAnalysis.ogHeadline,
-          share_quote: completedAnalysis.shareQuote,
-          anon_handle: completedAnalysis.anonHandle,
-          timestamp: serverTimestamp(),
-          uid: crypto.randomUUID()
-        });
 
-        const statsRef = doc(db, 'global_stats', 'main');
-        await setDoc(statsRef, {
-          total_pixels_melted: increment(completedAnalysis.pixelCount)
-        }, { merge: true });
-
-        setIsComplete(true);
-        setIsWritingData(false);
-        smeltTimerRef.current = setTimeout(() => {
-          smeltTimerRef.current = null;
-          setButtonsDelayed(false);
-          setShowReport(true);
-        }, 3000);
-      } catch (error) {
-        hasWrittenRef.current = false;
-        setIsWritingData(false);
+      smeltTimerRef.current = setTimeout(() => {
+        smeltTimerRef.current = null;
         setButtonsDelayed(false);
-        setIsComplete(true); // animation finished — allow replay and in-memory report even though write failed
-        setAnalysisError('ARCHIVE WRITE FAILED. INCIDENT NOT PERSISTED TO MANIFEST.');
-        handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
-      }
+        setShowReport(true);
+      }, 3000);
+
+      (async () => {
+        try {
+          const colors = getFiveDistinctColors(completedAnalysis.dominantColors);
+          const box = completedAnalysis.subjectBox;
+          const logRef = doc(collection(db, 'incident_logs'));
+          await setDoc(logRef, {
+            pixel_count: completedAnalysis.pixelCount,
+            incident_feed_summary: completedAnalysis.incidentFeedSummary,
+            color_1: colors[0],
+            color_2: colors[1],
+            color_3: colors[2],
+            color_4: colors[3],
+            color_5: colors[4],
+            subject_box_ymin: box[0] ?? 100,
+            subject_box_xmin: box[1] ?? 100,
+            subject_box_ymax: box[2] ?? 900,
+            subject_box_xmax: box[3] ?? 900,
+            legacy_infra_class: completedAnalysis.legacyInfraClass,
+            diagnosis: completedAnalysis.diagnosis,
+            chromatic_profile: completedAnalysis.chromaticProfile,
+            system_dx: completedAnalysis.systemDx,
+            severity: completedAnalysis.severity,
+            primary_contamination: completedAnalysis.primaryContamination,
+            contributing_factor: completedAnalysis.contributingFactor,
+            failure_origin: completedAnalysis.failureOrigin,
+            disposition: completedAnalysis.disposition,
+            archive_note: completedAnalysis.archiveNote,
+            og_headline: completedAnalysis.ogHeadline,
+            share_quote: completedAnalysis.shareQuote,
+            anon_handle: completedAnalysis.anonHandle,
+            timestamp: serverTimestamp(),
+            uid: crypto.randomUUID(),
+            breach_count: 0
+          });
+          if (writeRequestId !== activeRequestIdRef.current) return;
+          setLoggedIncidentId(logRef.id);
+
+          const statsRef = doc(db, 'global_stats', 'main');
+          await setDoc(statsRef, {
+            total_pixels_melted: increment(completedAnalysis.pixelCount)
+          }, { merge: true });
+
+          if (writeRequestId !== activeRequestIdRef.current) return;
+          setIsWritingData(false);
+        } catch (error) {
+          if (writeRequestId !== activeRequestIdRef.current) return;
+          hasWrittenRef.current = false;
+          setIsWritingData(false);
+          setAnalysisError('ARCHIVE WRITE FAILED. INCIDENT NOT PERSISTED TO MANIFEST.');
+          handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
+        }
+      })();
     } else {
       // Replay — no Firestore write, just delay the buttons
       smeltTimerRef.current = setTimeout(() => {
@@ -296,6 +334,7 @@ export default function App({ onNavigateManifest }: AppProps) {
     setIsWritingData(false);
     setButtonsDelayed(false);
     setIsPlaying(false);
+    setLoggedIncidentId(null);
   };
 
   const handleReplay = () => {
@@ -309,7 +348,7 @@ export default function App({ onNavigateManifest }: AppProps) {
     ? buildShareLinks(
         `${analysis.shareQuote}\n\n${analysis.incidentFeedSummary}`,
         analysis.ogHeadline,
-        window.location.origin
+        loggedIncidentId ? buildIncidentUrl(loggedIncidentId) : window.location.origin
       )
     : [];
 
@@ -342,10 +381,7 @@ export default function App({ onNavigateManifest }: AppProps) {
               </div>
               <div className="hazard-stripe w-2 h-10 rounded-sm shrink-0" aria-hidden="true" />
             </div>
-            <button
-              onClick={onNavigateManifest}
-              className="text-stone-gray hover:text-hazard-amber transition-colors flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:rounded"
-            >
+            <button onClick={onNavigateManifest} className="nav-btn">
               INCIDENT MANIFEST
               <ArrowRight size={14} />
             </button>
@@ -354,6 +390,11 @@ export default function App({ onNavigateManifest }: AppProps) {
       </header>
 
       <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+        {deepLinkError && (
+          <div className="modern-card p-4 mb-6" role="alert" aria-live="assertive">
+            <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">{deepLinkError}</p>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
 
           {/* Left Column: Smelter Area */}
@@ -424,8 +465,8 @@ export default function App({ onNavigateManifest }: AppProps) {
                 </div>
               )}
 
-              {/* Loading post-mortem overlay */}
-              {isWritingData && !showReport && (
+              {/* Loading post-mortem overlay — visible from smelt-complete through Firestore write + 3s delay */}
+              {(isWritingData || (isComplete && buttonsDelayed && !isPlaying)) && !showReport && (
                 <div role="status" aria-live="polite" className="absolute inset-0 z-40 flex items-center justify-center">
                   <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border flex items-center gap-3">
                     <div className="w-4 h-4 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin shrink-0" />
@@ -470,17 +511,10 @@ export default function App({ onNavigateManifest }: AppProps) {
           {/* Right Column: Recent Incidents */}
           <div className="md:col-span-5">
             <div>
-              <div className="flex justify-between items-center mb-3">
+              <div className="mb-3">
                 <h2 className="text-hazard-amber font-mono text-xs md:text-sm uppercase tracking-wide md:tracking-widest font-bold">
                   RECENT INCIDENTS
                 </h2>
-                <button
-                  onClick={onNavigateManifest}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-concrete-border bg-concrete-mid/60 px-2.5 py-1.5 text-[11px] font-mono uppercase tracking-wider text-stone-gray hover:text-hazard-amber hover:border-hazard-amber/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
-                >
-                  VIEW MANIFEST
-                  <ArrowRight size={12} aria-hidden="true" />
-                </button>
               </div>
               <div className="space-y-3">
                 {recentLogs.map((log) => (
@@ -522,6 +556,8 @@ export default function App({ onNavigateManifest }: AppProps) {
         <IncidentReportOverlay
           log={selectedRecentLog}
           shareLinks={getLogShareLinks(selectedRecentLog)}
+          incidentId={selectedRecentLog.id}
+
           onClose={() => setSelectedRecentLog(null)}
         />
       )}
@@ -530,6 +566,8 @@ export default function App({ onNavigateManifest }: AppProps) {
         <IncidentReportOverlay
           analysis={analysis}
           shareLinks={shareLinks}
+          incidentId={loggedIncidentId}
+
           onClose={() => setShowReport(false)}
         />
       )}

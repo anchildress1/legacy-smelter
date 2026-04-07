@@ -1,14 +1,17 @@
 import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog, Severity } from '../types';
-import { formatPixels, formatTimestamp, getFiveDistinctColors } from '../lib/utils';
-import { X, AlertTriangle, Check, Copy } from 'lucide-react';
+import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
+import { X, AlertTriangle, Check, Copy, Link2 } from 'lucide-react';
+import { recordBreach } from '../services/breachService';
+import { db, doc, onSnapshot } from '../firebase';
 
 // analysis and log are mutually exclusive — exactly one should be non-null per call site
 interface OverlayProps {
   analysis?: SmeltAnalysis | null;
   log?: SmeltLog | null;
   shareLinks?: { label: string; href: string }[];
+  incidentId?: string | null;
   onClose: () => void;
 }
 
@@ -25,7 +28,7 @@ interface NormalisedReport {
   anonHandle: string;
   chromaticProfile: string;
   dominantColors: string[];
-  pixelCount: number;
+  breachCount: number;
   timestamp: Date | null;
 }
 
@@ -43,6 +46,45 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
     .filter((el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
 }
 
+function buildMarkdown(report: NormalisedReport, liveBreachCount: number): string {
+  const lines: string[] = [
+    `# ${report.legacyInfraClass}`,
+    '',
+    report.incidentFeedSummary,
+    '',
+    `**Severity:** ${report.severity}`,
+    `**Containment Breaches:** ${liveBreachCount}`,
+  ];
+
+  if (report.timestamp) {
+    lines.push(`**Filed:** ${formatTimestamp(report.timestamp)}`);
+  }
+
+  const telemetry = [
+    report.failureOrigin ? `**Failure Origin:** ${report.failureOrigin}` : null,
+    report.systemDx ? `**System Diagnosis:** ${report.systemDx}` : null,
+    report.primaryContamination ? `**Primary Contaminant:** ${report.primaryContamination}` : null,
+    report.contributingFactor ? `**Contributing Factor:** ${report.contributingFactor}` : null,
+  ].filter((s): s is string => s !== null);
+
+  if (telemetry.length > 0) {
+    lines.push('', '---', '', '## Telemetry', '', ...telemetry);
+  }
+
+  lines.push(
+    '', '---', '',
+    '## Disposition', '',
+    report.disposition,
+    '',
+    '## Archive Note', '',
+    report.archiveNote,
+    '', '---', '',
+    `*Filed by ${report.anonHandle} · Chromatic Profile: ${report.chromaticProfile}*`,
+  );
+
+  return lines.join('\n');
+}
+
 function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedReport | null {
   if (a) {
     return {
@@ -58,7 +100,7 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       anonHandle: a.anonHandle,
       chromaticProfile: a.chromaticProfile,
       dominantColors: a.dominantColors,
-      pixelCount: a.pixelCount,
+      breachCount: 0,
       timestamp: null,
     };
   }
@@ -76,7 +118,7 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       anonHandle: l.anon_handle,
       chromaticProfile: l.chromatic_profile,
       dominantColors: getFiveDistinctColors([l.color_1, l.color_2, l.color_3, l.color_4, l.color_5]),
-      pixelCount: l.pixel_count,
+      breachCount: l.breach_count ?? 0,
       timestamp: l.timestamp?.toDate?.() ?? null,
     };
   }
@@ -89,14 +131,6 @@ const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> =
     icon: (
       <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
         <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.742l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-      </svg>
-    ),
-  },
-  facebook: {
-    name: 'FACEBOOK',
-    icon: (
-      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
       </svg>
     ),
   },
@@ -126,26 +160,43 @@ const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> =
   },
 };
 
-export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, onClose }) => {
+export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose }) => {
   const report = normalise(analysis, log);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const lastActiveElementRef = useRef<HTMLElement | null>(null);
-  const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle');
+  const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
+  const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
+  const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
+
+  // Live-subscribe to breach_count while overlay is open
+  useEffect(() => {
+    if (!incidentId) return;
+    return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
+      if (snap.exists()) {
+        setLiveBreachCount(snap.data().breach_count ?? 0);
+      }
+    });
+  }, [incidentId]);
+
+  // Derive incident URL from incidentId — used for the copy-link button
+  const incidentUrl = incidentId ? buildIncidentUrl(incidentId) : null;
 
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
+      if (copyLinkTimeoutRef.current !== null) clearTimeout(copyLinkTimeoutRef.current);
     };
   }, []);
 
   useEffect(() => {
     lastActiveElementRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeButtonRef.current?.focus();
+    panelRef.current?.focus();
 
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -196,21 +247,38 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   if (!report) return null;
 
-  const formatted = formatPixels(report.pixelCount);
-
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === overlayRef.current) onClose();
   };
 
-  const handleCopy = async () => {
+  const handleCopyText = async () => {
     try {
-      await navigator.clipboard.writeText(`${report.incidentFeedSummary}\n\n${report.archiveNote}`);
-      setCopyState('copied');
+      await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount));
+      handleBreach();
+      setCopyTextState('copied');
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
-      copyTimeoutRef.current = setTimeout(() => setCopyState('idle'), 2000);
+      copyTimeoutRef.current = setTimeout(() => setCopyTextState('idle'), 2000);
     } catch (err) {
-    console.error('[IncidentReportOverlay] Clipboard write failed:', err);
-  }
+      console.error('[IncidentReportOverlay] Clipboard write failed:', err);
+    }
+  };
+
+  const handleBreach = () => {
+    if (incidentId) recordBreach(incidentId);
+  };
+
+
+  const handleCopyLink = async () => {
+    if (!incidentUrl) return;
+    try {
+      await navigator.clipboard.writeText(incidentUrl);
+      handleBreach();
+      setCopyLinkState('copied');
+      if (copyLinkTimeoutRef.current !== null) clearTimeout(copyLinkTimeoutRef.current);
+      copyLinkTimeoutRef.current = setTimeout(() => setCopyLinkState('idle'), 2000);
+    } catch (err) {
+      console.error('[IncidentReportOverlay] Clipboard write failed:', err);
+    }
   };
 
   const platforms = (shareLinks || []).filter(l => SHARE_PLATFORMS[l.label]);
@@ -224,7 +292,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       {/* Card — full-screen on mobile, constrained modal on desktop */}
       <div
         ref={panelRef}
-        className="bg-concrete-light w-full sm:max-w-3xl lg:max-w-4xl sm:rounded-xl border-t sm:border border-concrete-border shadow-2xl max-h-[100dvh] sm:max-h-[85vh] overflow-y-auto sm:overflow-hidden sm:flex"
+        className="bg-concrete-light w-full sm:max-w-3xl lg:max-w-4xl sm:rounded-xl border-t sm:border border-concrete-border shadow-2xl max-h-[100dvh] sm:max-h-[85vh] overflow-y-auto sm:overflow-hidden sm:flex outline-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
@@ -261,6 +329,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={handleBreach}
                     className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
                     aria-label={`Post to ${cfg.name}`}
                     title={`Post to ${cfg.name}`}
@@ -269,13 +338,25 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                   </a>
                 );
               })}
+              {incidentUrl && (
+                <button
+                  onClick={handleCopyLink}
+                  className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
+                  aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
+                  title={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
+                >
+                  {copyLinkState === 'copied'
+                    ? <Check size={12} aria-hidden="true" />
+                    : <Link2 size={12} aria-hidden="true" />}
+                </button>
+              )}
               <button
-                onClick={handleCopy}
+                onClick={handleCopyText}
                 className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
-                aria-label={copyState === 'copied' ? 'Copied to clipboard' : 'Copy to clipboard'}
-                title={copyState === 'copied' ? 'Copied to clipboard' : 'Copy to clipboard'}
+                aria-label={copyTextState === 'copied' ? 'Text copied' : 'Copy text'}
+                title={copyTextState === 'copied' ? 'Text copied' : 'Copy text'}
               >
-                {copyState === 'copied'
+                {copyTextState === 'copied'
                   ? <Check size={12} aria-hidden="true" />
                   : <Copy size={12} aria-hidden="true" />}
               </button>
@@ -306,7 +387,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 {report.severity}
               </span>
               <span className="text-hazard-amber font-mono text-xs font-bold">
-                {formatted.value} {formatted.unit}
+                {liveBreachCount} CONTAINMENT BREACHES
               </span>
               {report.timestamp && (
                 <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest ml-auto">
