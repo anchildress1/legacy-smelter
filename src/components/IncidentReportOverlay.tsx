@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog, Severity, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
-import { X, AlertTriangle, Check, Copy, Link2, Siren, ShieldCheck } from 'lucide-react';
+import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
 import { db, doc, onSnapshot } from '../firebase';
 
@@ -413,7 +413,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 </span>
               )}
             </div>
-            {/* Scores: ordered by point weight (impact, escalations, containment) */}
+            {/* Scores: ordered by point weight (impact, escalations, breaches) */}
             <div className="flex items-center gap-4 mt-3 pt-3 border-t border-concrete-border">
               <div className="text-center">
                 <div className="text-molten-orange font-mono text-lg font-black leading-none">
@@ -423,16 +423,13 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               </div>
               <div className="w-px h-8 bg-concrete-border" />
               <div className="text-center">
-                <div className="flex items-center justify-center gap-1">
-                  <Siren size={12} className="text-hazard-amber" aria-hidden="true" />
-                  <span className="text-hazard-amber font-mono text-lg font-black leading-none">{liveEscalationCount}</span>
-                </div>
+                <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveEscalationCount}</div>
                 <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">ESCALATIONS</div>
               </div>
               <div className="w-px h-8 bg-concrete-border" />
               <div className="text-center">
                 <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveBreachCount}</div>
-                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">CONTAINMENT BREACHES</div>
+                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">BREACHES</div>
               </div>
             </div>
           </div>
