@@ -133,21 +133,12 @@ These terms are allowed because they describe infrastructure, not narrative. "Th
 
 ## Severity classification
 
-The system assigns severity to every artifact. These are the canonical tiers:
-
-| Classification | Meaning | Disposition |
-|---|---|---|
-| Advisory | Minor visual or structural fault. Noted for the record. | Logged. No action required. |
-| Elevated | Multiple failure indicators. Warrants inspection. | Inspection recommended. |
-| Critical | Severe integrity failure. Immediate processing required. | Immediate smelting required. |
-| Terminal | Artifact is beyond classification. System integrity at risk. | Emergency incineration. |
-
-Disposition labels on buttons and badges should use the exact phrasing from this table. AI-generated content should pull from these tiers, not invent new ones.
+Severity is AI-generated per artifact. Single English word. Institutional, clinical, unexpected. No hyphens. Real words only. The system invents a classification specific to each incident — "VAPORIZED," "TERMINAL," "CRITICAL" are examples, not a fixed list. The badge on the result card displays this word.
 
 ## Copy behavior by surface
 
 ### UI copy
-Shortest and clearest. Command-heavy. No throat-clearing. Buttons name the future state: "Process artifact," "Deploy scanner," "Post to X." Empty states describe system status in operational language. Users scan, not read — labels must make sense without surrounding body text (NN/g: titles and buttons should stand alone).
+Shortest and clearest. Command-heavy. No throat-clearing. Buttons name the future state: "Process artifact," "Deploy field scanner," "Post to X." Empty states describe system status in operational language. Users scan, not read — labels must make sense without surrounding body text (NN/g: titles and buttons should stand alone).
 
 ### Result card copy
 Fast, sharp, screenshot-friendly. One strong diagnosis. The summary line should read like the first sentence of a postmortem — what failed and how badly. Section labels are terse diagnostic nouns: "Failure origin," "System diagnosis," "Primary contaminant," "Contributing factor," "Disposition." No label needs more than two words.
@@ -186,7 +177,7 @@ If the answer to #4 is no — if the copy draws attention to the fact that a dra
 
 This persona governs AI-generated content (postmortems, diagnoses, advisories, social text). The AI is not a collaborator — it is the system. It writes as the system, in the system's voice, without editorial commentary.
 
-- AI must select from the canonical severity tiers. No invented classifications.
+- AI generates a unique severity classification per artifact. Single English word. Institutional, clinical, real.
 - AI must vary opening clauses across entries in the incident manifest. Repetition breaks the illusion of a real incident log.
 - AI must not produce copy that requires a human to add the joke. The character rides underneath clear, functional language — if the diagnosis is precise and the subject is absurd, the humor is already there.
 - AI must not use exclamation marks, emoji, or internet slang.
