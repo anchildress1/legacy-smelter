@@ -57,7 +57,8 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isValidIncidentLog(request.resource.data);
       // Only allow updating breach_count, and only incrementing it by 1
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['breach_count']) &&
+      allow update: if request.auth != null &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['breach_count']) &&
                        request.resource.data.breach_count == resource.data.get('breach_count', 0) + 1;
     }
 
