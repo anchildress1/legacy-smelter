@@ -36,11 +36,16 @@ The system analyzes uploaded images using Gemini Vision and files a formal postm
    ```
    npm install
    ```
-2. Create `.env.local` and set your Gemini API key:
+2. Create `.env` from `.env.example` and set your server-side Gemini API key:
    ```
-   VITE_GEMINI_API_KEY=your_key_here
+   cp .env.example .env
+   GEMINI_API_KEY=your_key_here
    ```
-3. Start the dev server:
+3. Start the API server (terminal 1):
+   ```
+   make server
+   ```
+4. Start the Vite dev server (terminal 2):
    ```
    npm run dev
    ```

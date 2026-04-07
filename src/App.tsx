@@ -196,7 +196,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       console.error("Gemini analysis failed", error);
       setIsAnalyzing(false);
       setCurrentImage(null);
-      setAnalysisError('GEMINI ANALYSIS FAILED. CHECK API KEY AND RETRY.');
+      setAnalysisError('GEMINI ANALYSIS FAILED. RETRY IN A MOMENT.');
       return;
     }
 
@@ -258,7 +258,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
         smeltTimerRef.current = null;
         setButtonsDelayed(false);
         setShowReport(true);
-      }, 3000);
+      }, 5000);
 
       (async () => {
         try {
@@ -317,7 +317,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       smeltTimerRef.current = setTimeout(() => {
         smeltTimerRef.current = null;
         setButtonsDelayed(false);
-      }, 3000);
+      }, 5000);
     }
   };
 
