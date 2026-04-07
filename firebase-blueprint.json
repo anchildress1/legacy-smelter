@@ -30,7 +30,9 @@
         "share_quote": { "type": "string", "description": "Prefilled social share text (14 words max)" },
         "anon_handle": { "type": "string", "description": "AI-generated anonymous submitter alias (e.g. ThermalOperator_41)" },
         "timestamp": { "type": "string", "format": "date-time", "description": "Server timestamp of when the incident was logged" },
-        "uid": { "type": "string", "description": "UUID generated client-side via crypto.randomUUID()" }
+        "uid": { "type": "string", "description": "UUID generated client-side via crypto.randomUUID()" },
+        "breach_count": { "type": "number", "description": "Number of containment breaches (shares, copies). Starts at 0, incremented by 1 per share action." },
+        "escalation_count": { "type": "number", "description": "Number of user escalation votes. Starts at 0. One vote per user, toggleable." }
       },
       "required": [
         "pixel_count", "incident_feed_summary",
@@ -41,7 +43,8 @@
         "primary_contamination", "contributing_factor", "failure_origin",
         "disposition", "archive_note",
         "og_headline", "share_quote", "anon_handle",
-        "timestamp", "uid"
+        "timestamp", "uid",
+        "breach_count", "escalation_count"
       ]
     },
     "GlobalStats": {
@@ -58,6 +61,9 @@
     "/incident_logs/{logId}": {
       "schema": "IncidentLog",
       "description": "Collection of all smelting incidents"
+    },
+    "/incident_logs/{logId}/escalations/{uid}": {
+      "description": "Per-user escalation vote tracking. Doc ID = anonymous auth UID. One doc per user per incident."
     },
     "/global_stats/main": {
       "schema": "GlobalStats",
