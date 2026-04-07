@@ -145,7 +145,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   useEffect(() => {
     lastActiveElementRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeButtonRef.current?.focus();
+    panelRef.current?.focus();
 
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -240,7 +240,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       {/* Card — full-screen on mobile, constrained modal on desktop */}
       <div
         ref={panelRef}
-        className="bg-concrete-light w-full sm:max-w-3xl lg:max-w-4xl sm:rounded-xl border-t sm:border border-concrete-border shadow-2xl max-h-[100dvh] sm:max-h-[85vh] overflow-y-auto sm:overflow-hidden sm:flex"
+        className="bg-concrete-light w-full sm:max-w-3xl lg:max-w-4xl sm:rounded-xl border-t sm:border border-concrete-border shadow-2xl max-h-[100dvh] sm:max-h-[85vh] overflow-y-auto sm:overflow-hidden sm:flex outline-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
