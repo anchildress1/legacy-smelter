@@ -69,10 +69,12 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       handleFirestoreError(error, OperationType.GET, 'global_stats/main', setAnalysisError);
     });
 
+    // Fetch a generous window and sort client-side by impact to find the top 3.
+    // Impact = (3×escalations)+(1×breaches) can't be queried server-side.
     const logsQuery = query(
       collection(db, 'incident_logs'),
       orderBy('timestamp', 'desc'),
-      limit(50)
+      limit(200)
     );
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
       const entries = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SmeltLog));
