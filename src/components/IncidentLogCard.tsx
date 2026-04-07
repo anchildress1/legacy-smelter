@@ -99,9 +99,6 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
           <span className="text-hazard-amber font-mono text-xs font-bold">
             {breaches} CONTAINMENT
           </span>
-          <span className="text-hazard-amber font-mono text-xs font-bold">
-            {escalations} ESCALATIONS
-          </span>
           <span className="text-stone-gray font-mono text-xs ml-auto">
             {log.timestamp?.toDate ? formatTimestamp(log.timestamp.toDate()) : '—'}
           </span>
