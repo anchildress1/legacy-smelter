@@ -249,6 +249,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     if (!hasWrittenRef.current) {
       // First completion — reveal report after delay regardless of write outcome,
       // then write to Firestore in the background.
+      const writeRequestId = activeRequestIdRef.current;
       hasWrittenRef.current = true;
       setIsComplete(true);
       setIsWritingData(true);
@@ -293,6 +294,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             uid: crypto.randomUUID(),
             breach_count: 0
           });
+          if (writeRequestId !== activeRequestIdRef.current) return;
           setLoggedIncidentId(logRef.id);
 
           const statsRef = doc(db, 'global_stats', 'main');
@@ -300,8 +302,10 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             total_pixels_melted: increment(completedAnalysis.pixelCount)
           }, { merge: true });
 
+          if (writeRequestId !== activeRequestIdRef.current) return;
           setIsWritingData(false);
         } catch (error) {
+          if (writeRequestId !== activeRequestIdRef.current) return;
           hasWrittenRef.current = false;
           setIsWritingData(false);
           setAnalysisError('ARCHIVE WRITE FAILED. INCIDENT NOT PERSISTED TO MANIFEST.');
