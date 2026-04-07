@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, onSnapshot, query, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, query, orderBy, limit, startAfter, getDocs, doc, getDoc, setDoc, updateDoc, increment, serverTimestamp, type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore';
 
 // Validate environment variables
 const requiredVars = [
@@ -28,16 +28,20 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)');
 
-export { 
-  collection, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  limit, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  increment, 
-  serverTimestamp
+export {
+  collection,
+  onSnapshot,
+  query,
+  orderBy,
+  limit,
+  startAfter,
+  getDocs,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  increment,
+  serverTimestamp,
+  type QueryDocumentSnapshot,
+  type DocumentData,
 };

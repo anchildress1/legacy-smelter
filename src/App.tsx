@@ -238,63 +238,66 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     setButtonsDelayed(true);
 
     if (!hasWrittenRef.current) {
-      // First completion — write to Firestore
+      // First completion — reveal report after delay regardless of write outcome,
+      // then write to Firestore in the background.
       hasWrittenRef.current = true;
+      setIsComplete(true);
       setIsWritingData(true);
-      try {
-        const colors = getFiveDistinctColors(completedAnalysis.dominantColors);
-        const box = completedAnalysis.subjectBox;
-        const logRef = doc(collection(db, 'incident_logs'));
-        await setDoc(logRef, {
-          pixel_count: completedAnalysis.pixelCount,
-          incident_feed_summary: completedAnalysis.incidentFeedSummary,
-          color_1: colors[0],
-          color_2: colors[1],
-          color_3: colors[2],
-          color_4: colors[3],
-          color_5: colors[4],
-          subject_box_ymin: box[0] ?? 100,
-          subject_box_xmin: box[1] ?? 100,
-          subject_box_ymax: box[2] ?? 900,
-          subject_box_xmax: box[3] ?? 900,
-          legacy_infra_class: completedAnalysis.legacyInfraClass,
-          diagnosis: completedAnalysis.diagnosis,
-          chromatic_profile: completedAnalysis.chromaticProfile,
-          system_dx: completedAnalysis.systemDx,
-          severity: completedAnalysis.severity,
-          primary_contamination: completedAnalysis.primaryContamination,
-          contributing_factor: completedAnalysis.contributingFactor,
-          failure_origin: completedAnalysis.failureOrigin,
-          disposition: completedAnalysis.disposition,
-          archive_note: completedAnalysis.archiveNote,
-          og_headline: completedAnalysis.ogHeadline,
-          share_quote: completedAnalysis.shareQuote,
-          anon_handle: completedAnalysis.anonHandle,
-          timestamp: serverTimestamp(),
-          uid: crypto.randomUUID()
-        });
 
-        const statsRef = doc(db, 'global_stats', 'main');
-        await setDoc(statsRef, {
-          total_pixels_melted: increment(completedAnalysis.pixelCount)
-        }, { merge: true });
-
-        setLoggedIncidentId(logRef.id);
-        setIsComplete(true);
-        setIsWritingData(false);
-        smeltTimerRef.current = setTimeout(() => {
-          smeltTimerRef.current = null;
-          setButtonsDelayed(false);
-          setShowReport(true);
-        }, 3000);
-      } catch (error) {
-        hasWrittenRef.current = false;
-        setIsWritingData(false);
+      smeltTimerRef.current = setTimeout(() => {
+        smeltTimerRef.current = null;
         setButtonsDelayed(false);
-        setIsComplete(true); // animation finished — allow replay and in-memory report even though write failed
-        setAnalysisError('ARCHIVE WRITE FAILED. INCIDENT NOT PERSISTED TO MANIFEST.');
-        handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
-      }
+        setShowReport(true);
+      }, 3000);
+
+      (async () => {
+        try {
+          const colors = getFiveDistinctColors(completedAnalysis.dominantColors);
+          const box = completedAnalysis.subjectBox;
+          const logRef = doc(collection(db, 'incident_logs'));
+          await setDoc(logRef, {
+            pixel_count: completedAnalysis.pixelCount,
+            incident_feed_summary: completedAnalysis.incidentFeedSummary,
+            color_1: colors[0],
+            color_2: colors[1],
+            color_3: colors[2],
+            color_4: colors[3],
+            color_5: colors[4],
+            subject_box_ymin: box[0] ?? 100,
+            subject_box_xmin: box[1] ?? 100,
+            subject_box_ymax: box[2] ?? 900,
+            subject_box_xmax: box[3] ?? 900,
+            legacy_infra_class: completedAnalysis.legacyInfraClass,
+            diagnosis: completedAnalysis.diagnosis,
+            chromatic_profile: completedAnalysis.chromaticProfile,
+            system_dx: completedAnalysis.systemDx,
+            severity: completedAnalysis.severity,
+            primary_contamination: completedAnalysis.primaryContamination,
+            contributing_factor: completedAnalysis.contributingFactor,
+            failure_origin: completedAnalysis.failureOrigin,
+            disposition: completedAnalysis.disposition,
+            archive_note: completedAnalysis.archiveNote,
+            og_headline: completedAnalysis.ogHeadline,
+            share_quote: completedAnalysis.shareQuote,
+            anon_handle: completedAnalysis.anonHandle,
+            timestamp: serverTimestamp(),
+            uid: crypto.randomUUID()
+          });
+
+          const statsRef = doc(db, 'global_stats', 'main');
+          await setDoc(statsRef, {
+            total_pixels_melted: increment(completedAnalysis.pixelCount)
+          }, { merge: true });
+
+          setLoggedIncidentId(logRef.id);
+          setIsWritingData(false);
+        } catch (error) {
+          hasWrittenRef.current = false;
+          setIsWritingData(false);
+          setAnalysisError('ARCHIVE WRITE FAILED. INCIDENT NOT PERSISTED TO MANIFEST.');
+          handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
+        }
+      })();
     } else {
       // Replay — no Firestore write, just delay the buttons
       smeltTimerRef.current = setTimeout(() => {
@@ -443,8 +446,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
                 </div>
               )}
 
-              {/* Loading post-mortem overlay */}
-              {isWritingData && !showReport && (
+              {/* Loading post-mortem overlay — visible from smelt-complete through Firestore write + 3s delay */}
+              {(isWritingData || (isComplete && buttonsDelayed && !isPlaying)) && !showReport && (
                 <div role="status" aria-live="polite" className="absolute inset-0 z-40 flex items-center justify-center">
                   <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border flex items-center gap-3">
                     <div className="w-4 h-4 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin shrink-0" />
