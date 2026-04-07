@@ -26,6 +26,14 @@ const PORT = process.env.PORT || 8080;
 const DEFAULT_APP_URL = 'https://hotfix.anchildress1.dev';
 const APP_URL = (process.env.VITE_APP_URL || DEFAULT_APP_URL).replace(/\/$/, '');
 
+function parsePositiveInt(rawValue, fallbackValue) {
+  const parsed = Number.parseInt(rawValue ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackValue;
+}
+
+const API_RATE_LIMIT_WINDOW_MS = parsePositiveInt(process.env.API_RATE_LIMIT_WINDOW_MS, 60_000);
+const API_RATE_LIMIT_MAX_REQUESTS = parsePositiveInt(process.env.API_RATE_LIMIT_MAX_REQUESTS, 12);
+
 const FIREBASE_API_KEY = process.env.VITE_FIREBASE_API_KEY;
 const FIREBASE_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID;
 const FIREBASE_DB_ID = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)';
@@ -194,6 +202,45 @@ function normalizeSeverity(value) {
   return first.slice(0, 32) || 'Unclassified';
 }
 
+const apiRateLimitBuckets = new Map();
+const apiRateLimitSweep = setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of apiRateLimitBuckets.entries()) {
+    if (now - bucket.windowStart >= API_RATE_LIMIT_WINDOW_MS) {
+      apiRateLimitBuckets.delete(key);
+    }
+  }
+}, Math.max(API_RATE_LIMIT_WINDOW_MS, 60_000));
+
+// Prevent the timer from keeping the process alive during shutdown.
+apiRateLimitSweep.unref();
+
+function rateLimitAnalyzeRoute(req, res, next) {
+  const now = Date.now();
+  const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+  const currentBucket = apiRateLimitBuckets.get(clientIp);
+  const withinWindow = currentBucket && (now - currentBucket.windowStart) < API_RATE_LIMIT_WINDOW_MS;
+  const bucket = withinWindow
+    ? { windowStart: currentBucket.windowStart, count: currentBucket.count + 1 }
+    : { windowStart: now, count: 1 };
+
+  apiRateLimitBuckets.set(clientIp, bucket);
+
+  const windowResetMs = bucket.windowStart + API_RATE_LIMIT_WINDOW_MS;
+  const remaining = Math.max(0, API_RATE_LIMIT_MAX_REQUESTS - bucket.count);
+  res.setHeader('X-RateLimit-Limit', String(API_RATE_LIMIT_MAX_REQUESTS));
+  res.setHeader('X-RateLimit-Remaining', String(remaining));
+  res.setHeader('X-RateLimit-Reset', String(Math.ceil(windowResetMs / 1000)));
+
+  if (bucket.count > API_RATE_LIMIT_MAX_REQUESTS) {
+    const retryAfterSec = Math.max(1, Math.ceil((windowResetMs - now) / 1000));
+    res.setHeader('Retry-After', String(retryAfterSec));
+    return res.status(429).json({ error: 'Rate limit exceeded. Retry shortly.' });
+  }
+
+  return next();
+}
+
 async function analyzeImage(base64Image, mimeType) {
   const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
@@ -245,18 +292,30 @@ async function analyzeImage(base64Image, mimeType) {
 
 const app = express();
 
+// Trust one upstream proxy hop (Cloud Run frontend) so req.ip resolves correctly.
+app.set('trust proxy', 1);
+
+// API routes accept JSON only.
+app.use('/api', (req, res, next) => {
+  if (req.method === 'POST' && !req.is('application/json')) {
+    return res.status(415).json({ error: 'Content-Type must be application/json.' });
+  }
+  return next();
+});
+
 // JSON body parsing — 10 MB limit for base64-encoded images
 app.use('/api', express.json({ limit: '10mb' }));
 
 // POST /api/analyze — accepts { image, mimeType } and returns SmeltAnalysis.
 // The Gemini API key stays server-side; the client never sees it.
-app.post('/api/analyze', async (req, res) => {
+app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
   if (!GEMINI_API_KEY) {
     return res.status(500).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
   }
 
-  const { image, mimeType } = req.body;
-  if (!image || !mimeType) {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const { image, mimeType } = body;
+  if (typeof image !== 'string' || typeof mimeType !== 'string' || !image || !mimeType) {
     return res.status(400).json({ error: 'Request must include "image" (base64) and "mimeType".' });
   }
 
@@ -268,6 +327,22 @@ app.post('/api/analyze', async (req, res) => {
     console.error('[server] Gemini analysis failed:', msg);
     return res.status(502).json({ error: msg });
   }
+});
+
+app.use('/api', (_req, res) => {
+  return res.status(404).json({ error: 'API route not found.' });
+});
+
+// Normalize parser/payload errors to JSON for API clients.
+// Placed after all /api routes so it also catches async rejections forwarded by Express 5.
+app.use('/api', (err, _req, res, next) => {
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Malformed JSON body.' });
+  }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Payload too large. Max 10MB.' });
+  }
+  return next(err);
 });
 
 // Incident share URLs: /s/:id
