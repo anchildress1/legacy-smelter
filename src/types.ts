@@ -31,8 +31,14 @@ export interface SmeltLog {
   timestamp: Timestamp | null;
   uid: string;
   breach_count?: number;
+  escalation_count?: number;
 }
 
 export interface GlobalStats {
   total_pixels_melted: number;
+}
+
+/** Impact = (3 × escalations) + (1 × containment breaches) */
+export function computeImpact(escalationCount: number, breachCount: number): number {
+  return (3 * escalationCount) + breachCount;
 }
