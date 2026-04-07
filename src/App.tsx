@@ -524,23 +524,24 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
                   HIGH PRI INCIDENTS
                 </h2>
               </div>
-              <div className="space-y-3">
+              <ul role="list" className="space-y-3">
                 {recentLogs.map((log) => (
-                  <IncidentLogCard
-                    key={log.id}
-                    log={log}
-                    onClick={() => setSelectedRecentLog(log)}
-                  />
+                  <li key={log.id}>
+                    <IncidentLogCard
+                      log={log}
+                      onClick={() => setSelectedRecentLog(log)}
+                    />
+                  </li>
                 ))}
                 {recentLogs.length === 0 && (
-                  <div className="modern-card p-12 text-center">
+                  <li className="modern-card p-12 text-center list-none">
                     <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
                     <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
                       Furnace idle. Awaiting condemned infrastructure.
                     </p>
-                  </div>
+                  </li>
                 )}
-              </div>
+              </ul>
             </div>
           </div>
 

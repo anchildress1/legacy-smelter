@@ -128,36 +128,37 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         </div>
 
         {/* Log entries */}
-        <div className="space-y-3 min-h-[200px]">
+        <ul role="list" className="space-y-3 min-h-[200px]">
           {isLoading && (
-            <div className="flex items-center justify-center py-12">
+            <li className="flex items-center justify-center py-12 list-none">
               <div className="w-6 h-6 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin" />
-            </div>
+            </li>
           )}
 
           {!isLoading && pageLogs.map((log) => (
-            <IncidentLogCard
-              key={log.id}
-              log={log}
-              onClick={() => setSelectedLog(log)}
-            />
+            <li key={log.id}>
+              <IncidentLogCard
+                log={log}
+                onClick={() => setSelectedLog(log)}
+              />
+            </li>
           ))}
 
           {!isLoading && sortedLogs.length === 0 && !error && (
-            <div className="modern-card p-12 text-center">
+            <li className="modern-card p-12 text-center list-none">
               <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
               <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
                 Furnace idle. Awaiting condemned infrastructure.
               </p>
-            </div>
+            </li>
           )}
 
           {error && (
-            <div className="modern-card p-4">
+            <li className="modern-card p-4 list-none">
               <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">{error}</p>
-            </div>
+            </li>
           )}
-        </div>
+        </ul>
 
         {/* Pagination */}
         {totalPages > 1 && (
