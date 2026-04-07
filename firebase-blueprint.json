@@ -68,6 +68,9 @@
     "/global_stats/main": {
       "schema": "GlobalStats",
       "description": "Single document for global statistics"
+    },
+    "/cron_state/audience_favorite": {
+      "description": "Tracks the last_judged_timestamp for the audience favorite cron. Admin SDK only — no client access."
     }
   }
 }
