@@ -27,6 +27,7 @@ const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 
 if (!GEMINI_API_KEY) throw new Error('Missing GEMINI_API_KEY');
 if (!PROJECT_ID) throw new Error('Missing FIREBASE_PROJECT_ID');
+if (!DATABASE_ID) throw new Error('Missing FIREBASE_FIRESTORE_DATABASE_ID');
 
 // ── Firebase Admin init ─────────────────────────────────────────────────
 
