@@ -17,7 +17,7 @@ function getPageFromHash(): Page {
 // Read the incident ID from /s/:id on initial load — deep link to a specific incident.
 function getDeepLinkId(): string | null {
   try {
-    const match = window.location.pathname.match(/^\/s\/([^/?#]+)/);
+    const match = window.location.pathname.match(/\/s\/([^/?#]+)$/);
     return match ? decodeURIComponent(match[1]) : null;
   } catch {
     return null;
@@ -26,12 +26,16 @@ function getDeepLinkId(): string | null {
 
 function Root() {
   const [page, setPage] = useState<Page>(getPageFromHash);
-  // Consume the deep link once: read from URL, store in state, clear the URL.
-  const [deepLinkId] = useState(() => {
-    const id = getDeepLinkId();
-    if (id) history.replaceState(null, '', '/');
-    return id;
-  });
+  // Consume the deep link once: read from URL, store in state.
+  const [deepLinkId] = useState(getDeepLinkId);
+
+  // Clear /s/:id after mount so the overlay only opens once.
+  // Preserve non-root base paths (e.g. /app/s/:id -> /app).
+  useEffect(() => {
+    if (!deepLinkId) return;
+    const cleanedPath = window.location.pathname.replace(/\/s\/[^/?#]+$/, '') || '/';
+    history.replaceState(null, '', `${cleanedPath}${window.location.search}${window.location.hash}`);
+  }, [deepLinkId]);
 
   useEffect(() => {
     const sync = () => setPage(getPageFromHash());
