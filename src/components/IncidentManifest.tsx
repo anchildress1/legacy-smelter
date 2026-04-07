@@ -7,7 +7,6 @@ import {
   orderBy,
   limit,
   startAfter,
-  getDocs,
   doc,
   type QueryDocumentSnapshot,
   type DocumentData,
@@ -49,20 +48,16 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
     const currentPageCursor = pageStartCursorsRef.current[currentPage] ?? null;
+    const logsRef = collection(db, 'incident_logs');
+    const q = currentPageCursor
+      ? query(logsRef, orderBy('timestamp', 'desc'), startAfter(currentPageCursor), limit(PAGE_SIZE + 1))
+      : query(logsRef, orderBy('timestamp', 'desc'), limit(PAGE_SIZE + 1));
 
-    const fetchPage = async () => {
-      setIsLoadingPage(true);
-      setError(null);
-      try {
-        const logsRef = collection(db, 'incident_logs');
-        const q = currentPageCursor
-          ? query(logsRef, orderBy('timestamp', 'desc'), startAfter(currentPageCursor), limit(PAGE_SIZE + 1))
-          : query(logsRef, orderBy('timestamp', 'desc'), limit(PAGE_SIZE + 1));
-        const snap = await getDocs(q);
-        if (cancelled) return;
-
+    setIsLoadingPage(true);
+    setError(null);
+    let gotFirstSnapshot = false;
+    const unsubLogs = onSnapshot(q, (snap) => {
         const pageDocs = snap.docs.slice(0, PAGE_SIZE);
         setLogs(pageDocs.map((d) => ({ id: d.id, ...d.data() } as SmeltLog)));
 
@@ -75,19 +70,22 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           }
           return next;
         });
-      } catch (err) {
-        if (cancelled) return;
+        if (!gotFirstSnapshot) {
+          gotFirstSnapshot = true;
+          setIsLoadingPage(false);
+        }
+      }, (err) => {
         handleFirestoreError(err, OperationType.LIST, 'incident_logs');
         setLogs([]);
         setHasNextPage(false);
         setError('Failed to load incidents.');
-      } finally {
-        if (!cancelled) setIsLoadingPage(false);
-      }
-    };
+        if (!gotFirstSnapshot) gotFirstSnapshot = true;
+        setIsLoadingPage(false);
+      });
 
-    void fetchPage();
-    return () => { cancelled = true; };
+    return () => {
+      unsubLogs();
+    };
   }, [currentPage]);
 
   const goToPreviousPage = () => {
