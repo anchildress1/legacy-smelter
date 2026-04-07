@@ -5,6 +5,7 @@ import {
   onSnapshot,
   query,
   orderBy,
+  limit,
   doc,
 } from '../firebase';
 import { SmeltLog, GlobalStats, computeImpact } from '../types';
@@ -15,6 +16,9 @@ import { IncidentReportOverlay } from './IncidentReportOverlay';
 import { Flame, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 const PAGE_SIZE = 20;
+// Cap the subscription to avoid unbounded reads as the collection grows.
+// Impact sorting happens client-side so we fetch the most recent N docs.
+const MAX_MANIFEST_DOCS = 500;
 
 interface IncidentManifestProps {
   onNavigateHome: () => void;
@@ -38,7 +42,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
   useEffect(() => {
     const logsRef = collection(db, 'incident_logs');
-    const q = query(logsRef, orderBy('timestamp', 'desc'));
+    const q = query(logsRef, orderBy('timestamp', 'desc'), limit(MAX_MANIFEST_DOCS));
 
     setIsLoading(true);
     setError(null);
