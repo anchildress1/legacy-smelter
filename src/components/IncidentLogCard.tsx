@@ -1,6 +1,6 @@
 import React from 'react';
 import { SmeltLog } from '../types';
-import { formatPixels, getFiveDistinctColors, formatTimestamp } from '../lib/utils';
+import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
 
 interface IncidentLogCardProps {
   log: SmeltLog;
@@ -8,7 +8,6 @@ interface IncidentLogCardProps {
 }
 
 export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }) => {
-  const fmt = formatPixels(log.pixel_count);
   const finalColors = getFiveDistinctColors([
     log.color_1, log.color_2, log.color_3, log.color_4, log.color_5,
   ]);
@@ -39,7 +38,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
         </p>
         <div className="mt-2 flex items-end gap-x-5 gap-y-1 flex-wrap">
           <span className="text-hazard-amber font-mono text-xs font-bold">
-            {fmt.value} {fmt.unit}
+            {log.breach_count ?? 0} CONTAINMENT BREACHES
           </span>
           <span className="text-stone-gray font-mono text-xs ml-auto">
             {log.timestamp?.toDate ? formatTimestamp(log.timestamp.toDate()) : '—'}

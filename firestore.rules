@@ -6,10 +6,6 @@ service cloud.firestore {
       return val is string && val.matches('^#[0-9a-fA-F]{6}$');
     }
 
-    function isValidSeverity(val) {
-      return val in ['Advisory', 'Elevated', 'Critical', 'Terminal'];
-    }
-
     function isValidIncidentLog(data) {
       let fields = [
                'pixel_count', 'incident_feed_summary',
@@ -20,7 +16,7 @@ service cloud.firestore {
                'primary_contamination', 'contributing_factor', 'failure_origin',
                'disposition', 'archive_note',
                'og_headline', 'share_quote', 'anon_handle',
-               'timestamp', 'uid'
+               'timestamp', 'uid', 'breach_count'
              ];
       return data.keys().hasAll(fields) &&
              data.keys().hasOnly(fields) &&
@@ -39,7 +35,7 @@ service cloud.firestore {
              data.diagnosis is string && data.diagnosis.size() <= 200 &&
              data.chromatic_profile is string && data.chromatic_profile.size() <= 60 &&
              data.system_dx is string && data.system_dx.size() <= 300 &&
-             isValidSeverity(data.severity) &&
+             data.severity is string && data.severity.size() > 0 && data.severity.size() <= 50 &&
              data.primary_contamination is string && data.primary_contamination.size() <= 80 &&
              data.contributing_factor is string && data.contributing_factor.size() <= 80 &&
              data.failure_origin is string && data.failure_origin.size() <= 400 &&
@@ -49,7 +45,8 @@ service cloud.firestore {
              data.share_quote is string && data.share_quote.size() <= 300 &&
              data.anon_handle is string && data.anon_handle.size() <= 50 &&
              data.timestamp is timestamp &&
-             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 100;
+             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 100 &&
+             data.breach_count is number && data.breach_count == 0;
     }
 
     function isValidGlobalStats(data) {
@@ -59,6 +56,9 @@ service cloud.firestore {
     match /incident_logs/{logId} {
       allow read: if true;
       allow create: if isValidIncidentLog(request.resource.data);
+      // Only allow updating breach_count, and only incrementing it by 1
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['breach_count']) &&
+                       request.resource.data.breach_count == resource.data.get('breach_count', 0) + 1;
     }
 
     match /global_stats/main {
@@ -68,7 +68,7 @@ service cloud.firestore {
                        request.resource.data.total_pixels_melted >= resource.data.total_pixels_melted;
     }
 
-    match /{document=**} {
+match /{document=**} {
       allow read, write: if false;
     }
   }

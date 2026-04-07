@@ -19,10 +19,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, 'dist');
 const PORT = process.env.PORT || 8080;
 const DEFAULT_APP_URL = 'https://hotfix.anchildress1.dev';
-const APP_URL = (process.env.APP_URL || DEFAULT_APP_URL).replace(/\/$/, '');
+const APP_URL = (process.env.VITE_APP_URL || DEFAULT_APP_URL).replace(/\/$/, '');
 
-// Prefer a server-side key if provided; fall back to the client key for local dev.
-const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY;
+const FIREBASE_API_KEY = process.env.VITE_FIREBASE_API_KEY;
 const FIREBASE_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID;
 const FIREBASE_DB_ID = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)';
 

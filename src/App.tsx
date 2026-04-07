@@ -255,6 +255,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
           const colors = getFiveDistinctColors(completedAnalysis.dominantColors);
           const box = completedAnalysis.subjectBox;
           const logRef = doc(collection(db, 'incident_logs'));
+          setLoggedIncidentId(logRef.id);
           await setDoc(logRef, {
             pixel_count: completedAnalysis.pixelCount,
             incident_feed_summary: completedAnalysis.incidentFeedSummary,
@@ -281,7 +282,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             share_quote: completedAnalysis.shareQuote,
             anon_handle: completedAnalysis.anonHandle,
             timestamp: serverTimestamp(),
-            uid: crypto.randomUUID()
+            uid: crypto.randomUUID(),
+            breach_count: 0
           });
 
           const statsRef = doc(db, 'global_stats', 'main');
@@ -289,7 +291,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             total_pixels_melted: increment(completedAnalysis.pixelCount)
           }, { merge: true });
 
-          setLoggedIncidentId(logRef.id);
           setIsWritingData(false);
         } catch (error) {
           hasWrittenRef.current = false;
@@ -538,6 +539,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
           log={selectedRecentLog}
           shareLinks={getLogShareLinks(selectedRecentLog)}
           incidentId={selectedRecentLog.id}
+
           onClose={() => setSelectedRecentLog(null)}
         />
       )}
@@ -547,6 +549,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
           analysis={analysis}
           shareLinks={shareLinks}
           incidentId={loggedIncidentId}
+
           onClose={() => setShowReport(false)}
         />
       )}

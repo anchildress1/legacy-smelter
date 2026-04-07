@@ -1,15 +1,16 @@
 import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog, Severity } from '../types';
-import { formatPixels, formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
+import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
 import { X, AlertTriangle, Check, Copy, Link2 } from 'lucide-react';
+import { recordBreach } from '../services/breachService';
 
 // analysis and log are mutually exclusive — exactly one should be non-null per call site
 interface OverlayProps {
   analysis?: SmeltAnalysis | null;
   log?: SmeltLog | null;
   shareLinks?: { label: string; href: string }[];
-  incidentId?: string | null;  // Firestore doc ID — enables copy-link and share card
+  incidentId?: string | null;
   onClose: () => void;
 }
 
@@ -26,7 +27,7 @@ interface NormalisedReport {
   anonHandle: string;
   chromaticProfile: string;
   dominantColors: string[];
-  pixelCount: number;
+  breachCount: number;
   timestamp: Date | null;
 }
 
@@ -59,7 +60,7 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       anonHandle: a.anonHandle,
       chromaticProfile: a.chromaticProfile,
       dominantColors: a.dominantColors,
-      pixelCount: a.pixelCount,
+      breachCount: 0,
       timestamp: null,
     };
   }
@@ -77,7 +78,7 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       anonHandle: l.anon_handle,
       chromaticProfile: l.chromatic_profile,
       dominantColors: getFiveDistinctColors([l.color_1, l.color_2, l.color_3, l.color_4, l.color_5]),
-      pixelCount: l.pixel_count,
+      breachCount: l.breach_count ?? 0,
       timestamp: l.timestamp?.toDate?.() ?? null,
     };
   }
@@ -195,13 +196,12 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   if (!report) return null;
 
-  const formatted = formatPixels(report.pixelCount);
-
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === overlayRef.current) onClose();
   };
 
   const handleCopyText = async () => {
+    handleBreach();
     try {
       await navigator.clipboard.writeText(`${report.incidentFeedSummary}\n\n${report.archiveNote}`);
       setCopyTextState('copied');
@@ -212,8 +212,13 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     }
   };
 
+  const handleBreach = () => {
+    if (incidentId) recordBreach(incidentId);
+  };
+
   const handleCopyLink = async () => {
     if (!incidentUrl) return;
+    handleBreach();
     try {
       await navigator.clipboard.writeText(incidentUrl);
       setCopyLinkState('copied');
@@ -272,6 +277,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={handleBreach}
                     className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
                     aria-label={`Post to ${cfg.name}`}
                     title={`Post to ${cfg.name}`}
@@ -329,7 +335,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 {report.severity}
               </span>
               <span className="text-hazard-amber font-mono text-xs font-bold">
-                {formatted.value} {formatted.unit}
+                {report.breachCount} CONTAINMENT BREACHES
               </span>
               {report.timestamp && (
                 <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest ml-auto">

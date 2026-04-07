@@ -30,6 +30,7 @@ export interface SmeltLog {
   anon_handle: string;
   timestamp: Timestamp | null;
   uid: string;
+  breach_count?: number;
 }
 
 export interface GlobalStats {

@@ -31,7 +31,9 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
+    "@types/howler": "^2.2.12",
     "@types/node": "^25.5.2",
+    "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.27",
     "tailwindcss": "^4.2.2",
     "tsx": "^4.21.0",
