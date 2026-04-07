@@ -35,7 +35,7 @@ service cloud.firestore {
              data.diagnosis is string && data.diagnosis.size() <= 200 &&
              data.chromatic_profile is string && data.chromatic_profile.size() <= 60 &&
              data.system_dx is string && data.system_dx.size() <= 300 &&
-             data.severity is string && data.severity.size() > 0 && data.severity.size() <= 50 &&
+             data.severity is string && data.severity.matches('^[A-Za-z]{1,32}$') &&
              data.primary_contamination is string && data.primary_contamination.size() <= 80 &&
              data.contributing_factor is string && data.contributing_factor.size() <= 80 &&
              data.failure_origin is string && data.failure_origin.size() <= 400 &&

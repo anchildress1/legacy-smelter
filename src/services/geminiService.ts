@@ -3,8 +3,9 @@ import { getFiveDistinctColors } from "../lib/utils";
 import type { Severity } from "../types";
 
 function normalizeSeverity(value: unknown): Severity {
-  if (typeof value === 'string' && value.trim()) return value.trim();
-  return 'Unclassified';
+  if (typeof value !== 'string') return 'Unclassified';
+  const first = value.trim().split(/\s+/)[0] ?? '';
+  return first.slice(0, 32) || 'Unclassified';
 }
 
 export interface SmeltAnalysis {

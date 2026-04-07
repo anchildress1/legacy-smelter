@@ -7,7 +7,7 @@ const inFlightBreaches = new Set<string>();
 
 /**
  * Increments breach_count on an incident doc.
- * 1-second cooldown prevents accidental double-clicks.
+ * 7-second cooldown prevents accidental double-clicks.
  * Cooldown only applies after a successful write.
  */
 export async function recordBreach(incidentId: string): Promise<void> {
