@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
-import { Siren } from 'lucide-react';
+import { Siren, ShieldCheck } from 'lucide-react';
 import { toggleEscalation, hasEscalated, syncEscalationState } from '../services/escalationService';
 
 interface IncidentLogCardProps {
@@ -77,9 +77,17 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
               {log.legacy_infra_class}
             </p>
           )}
-          <span className="font-mono text-[10px] uppercase tracking-wider font-bold shrink-0 bg-hazard-amber text-zinc-950 px-1.5 py-0.5 rounded">
-            {log.severity}
-          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {log.audience_favorite && (
+              <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider font-bold bg-emerald-700/90 text-emerald-100 px-1.5 py-0.5 rounded">
+                <ShieldCheck size={10} aria-hidden="true" />
+                SANCTIONED
+              </span>
+            )}
+            <span className="font-mono text-[10px] uppercase tracking-wider font-bold bg-hazard-amber text-zinc-950 px-1.5 py-0.5 rounded">
+              {log.severity}
+            </span>
+          </div>
         </div>
         <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-3">
           {log.incident_feed_summary}

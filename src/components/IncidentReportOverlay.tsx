@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog, Severity, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
-import { X, AlertTriangle, Check, Copy, Link2, Siren } from 'lucide-react';
+import { X, AlertTriangle, Check, Copy, Link2, Siren, ShieldCheck } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
 import { db, doc, onSnapshot } from '../firebase';
 
@@ -30,6 +30,8 @@ interface NormalisedReport {
   dominantColors: string[];
   breachCount: number;
   escalationCount: number;
+  audienceFavorite: boolean;
+  audienceFavoriteRationale: string | null;
   timestamp: Date | null;
 }
 
@@ -106,6 +108,8 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       dominantColors: a.dominantColors,
       breachCount: 0,
       escalationCount: 0,
+      audienceFavorite: false,
+      audienceFavoriteRationale: null,
       timestamp: null,
     };
   }
@@ -125,6 +129,8 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       dominantColors: getFiveDistinctColors([l.color_1, l.color_2, l.color_3, l.color_4, l.color_5]),
       breachCount: l.breach_count ?? 0,
       escalationCount: l.escalation_count ?? 0,
+      audienceFavorite: l.audience_favorite ?? false,
+      audienceFavoriteRationale: l.audience_favorite_rationale ?? null,
       timestamp: l.timestamp?.toDate?.() ?? null,
     };
   }
@@ -389,6 +395,12 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               {report.incidentFeedSummary}
             </p>
             <div className="flex items-center gap-3 mt-2.5 flex-wrap">
+              {report.audienceFavorite && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-100 bg-emerald-700/90 px-2.5 py-1 rounded uppercase font-bold">
+                  <ShieldCheck size={11} aria-hidden="true" />
+                  SANCTIONED
+                </span>
+              )}
               <span
                 className="inline-flex items-center gap-1.5 text-xs font-mono text-concrete-light bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold"
               >
@@ -471,6 +483,19 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5">ARCHIVE NOTE</h3>
               <p className="text-ash-white font-mono text-sm leading-relaxed">{report.archiveNote}</p>
             </div>
+
+            {/* Audience Favorite rationale */}
+            {report.audienceFavorite && report.audienceFavoriteRationale && (
+              <div className="border-t border-concrete-border pt-4">
+                <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                  <ShieldCheck size={11} className="text-emerald-500" aria-hidden="true" />
+                  SANCTIONED — RATIONALE
+                </h3>
+                <p className="text-emerald-300/90 font-mono text-sm leading-relaxed italic">
+                  {report.audienceFavoriteRationale}
+                </p>
+              </div>
+            )}
 
             {/* Filed by + Chromatic Profile */}
             <div className="border-t border-concrete-border pt-4 flex justify-between items-start">
