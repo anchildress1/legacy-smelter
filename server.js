@@ -292,8 +292,9 @@ async function analyzeImage(base64Image, mimeType) {
 
 const app = express();
 
-// Trust one upstream proxy hop (Cloud Run frontend) so req.ip resolves correctly.
-app.set('trust proxy', 1);
+// Trust one upstream proxy hop only when running behind Cloud Run's frontend.
+const isCloudRun = Boolean(process.env.K_SERVICE);
+app.set('trust proxy', isCloudRun ? 1 : false);
 
 // API routes accept JSON only.
 app.use('/api', (req, res, next) => {
@@ -325,7 +326,7 @@ app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[server] Gemini analysis failed:', msg);
-    return res.status(502).json({ error: msg });
+    return res.status(502).json({ error: 'Analysis failed. Try again shortly.' });
   }
 });
 
@@ -335,14 +336,21 @@ app.use('/api', (_req, res) => {
 
 // Normalize parser/payload errors to JSON for API clients.
 // Placed after all /api routes so it also catches async rejections forwarded by Express 5.
-app.use('/api', (err, _req, res, next) => {
+app.use('/api', (err, _req, res, _next) => {
   if (err?.type === 'entity.parse.failed') {
     return res.status(400).json({ error: 'Malformed JSON body.' });
   }
   if (err?.type === 'entity.too.large') {
     return res.status(413).json({ error: 'Payload too large. Max 10MB.' });
   }
-  return next(err);
+  const status =
+    typeof err?.status === 'number' && err.status >= 400 && err.status < 600
+      ? err.status
+      : 500;
+  console.error('[server] Unhandled API error:', err instanceof Error ? err.stack || err.message : String(err));
+  return res.status(status).json({
+    error: status >= 500 ? 'Internal server error.' : 'Request failed.',
+  });
 });
 
 // Incident share URLs: /s/:id
