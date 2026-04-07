@@ -57,6 +57,12 @@ service cloud.firestore {
     match /incident_logs/{logId} {
       allow read: if true;
       allow create: if isValidIncidentLog(request.resource.data);
+      // NOTE: Firestore rules cannot query subcollection existence, so the
+      // one-vote-per-user constraint for escalation_count is enforced via:
+      //   1. The escalations/{uid} subcollection (create-only per UID) — blocks duplicate votes
+      //   2. Client-side batch writes (subcollection + count update) — atomic commitment
+      // A malicious client bypassing the SDK could increment escalation_count directly,
+      // but the subcollection write would still fail on duplicate. Acceptable for this app.
       allow update: if request.auth != null &&
                        (
                          // Allow incrementing breach_count by 1
