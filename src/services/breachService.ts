@@ -1,7 +1,7 @@
 import { doc, updateDoc, increment } from 'firebase/firestore';
 import { db, ensureAnonymousAuth } from '../firebase';
 
-const COOLDOWN_MS = 1_000;
+const COOLDOWN_MS = 7_000;
 const lastBreach = new Map<string, number>();
 const inFlightBreaches = new Set<string>();
 

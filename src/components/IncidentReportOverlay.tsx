@@ -171,8 +171,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [shareRateLimited, setShareRateLimited] = useState(false);
-  const shareRateLimitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
 
   // Live-subscribe to breach_count while overlay is open
@@ -192,7 +190,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     return () => {
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
       if (copyLinkTimeoutRef.current !== null) clearTimeout(copyLinkTimeoutRef.current);
-      if (shareRateLimitTimeoutRef.current !== null) clearTimeout(shareRateLimitTimeoutRef.current);
     };
   }, []);
 
@@ -270,16 +267,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     if (incidentId) recordBreach(incidentId);
   };
 
-  const handleShareClick = (e: React.MouseEvent) => {
-    if (shareRateLimited) {
-      e.preventDefault();
-      return;
-    }
-    handleBreach();
-    setShareRateLimited(true);
-    if (shareRateLimitTimeoutRef.current !== null) clearTimeout(shareRateLimitTimeoutRef.current);
-    shareRateLimitTimeoutRef.current = setTimeout(() => setShareRateLimited(false), 7_000);
-  };
 
   const handleCopyLink = async () => {
     if (!incidentUrl) return;
@@ -342,10 +329,8 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={handleShareClick}
-                    aria-disabled={shareRateLimited || undefined}
-                    tabIndex={shareRateLimited ? -1 : undefined}
-                    className={`w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${shareRateLimited ? 'text-stone-gray/40 cursor-not-allowed' : 'text-stone-gray hover:text-ash-white active:scale-95'}`}
+                    onClick={handleBreach}
+                    className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
                     aria-label={`Post to ${cfg.name}`}
                     title={`Post to ${cfg.name}`}
                   >
