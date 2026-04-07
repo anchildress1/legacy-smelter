@@ -1,4 +1,4 @@
-.PHONY: dev server build deploy ai-checks
+.PHONY: dev server build docker-build deploy ai-checks
 
 # Start the Vite dev server (port 3000). Proxies /api/* to localhost:8080.
 # Run `make server` in a separate terminal first.
@@ -13,6 +13,10 @@ server:
 # Vite production build → dist/
 build:
 	npm run build
+
+# Build the Docker image locally for testing.
+docker-build:
+	docker build -t legacy-smelter .
 
 # Build, push, and deploy to Cloud Run.
 # Accepts env overrides: make deploy ENV_FILE=.env.staging

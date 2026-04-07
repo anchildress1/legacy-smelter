@@ -68,8 +68,10 @@ async function fetchIncident(docId) {
   };
 }
 
+let _spaHtmlCache = null;
 function getSpaHtml() {
-  return readFileSync(resolve(DIST, 'index.html'), 'utf-8');
+  if (!_spaHtmlCache) _spaHtmlCache = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
+  return _spaHtmlCache;
 }
 
 function injectIncidentOg(html, incident, canonicalUrl) {
@@ -201,6 +203,7 @@ function normalizeSeverity(value) {
 }
 
 const apiRateLimitBuckets = new Map();
+const API_RATE_LIMIT_MAX_BUCKETS = 10_000;
 const apiRateLimitSweep = setInterval(() => {
   const now = Date.now();
   for (const [key, bucket] of apiRateLimitBuckets.entries()) {
@@ -216,6 +219,13 @@ apiRateLimitSweep.unref();
 function rateLimitAnalyzeRoute(req, res, next) {
   const now = Date.now();
   const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+
+  // Reject when the bucket map is full and this is a new IP — prevents
+  // unbounded memory growth from high-cardinality traffic.
+  if (!apiRateLimitBuckets.has(clientIp) && apiRateLimitBuckets.size >= API_RATE_LIMIT_MAX_BUCKETS) {
+    return res.status(503).json({ error: 'Server busy. Try again shortly.' });
+  }
+
   const currentBucket = apiRateLimitBuckets.get(clientIp);
   const withinWindow = currentBucket && (now - currentBucket.windowStart) < API_RATE_LIMIT_WINDOW_MS;
   const bucket = withinWindow
@@ -230,7 +240,7 @@ function rateLimitAnalyzeRoute(req, res, next) {
   res.setHeader('X-RateLimit-Remaining', String(remaining));
   res.setHeader('X-RateLimit-Reset', String(Math.ceil(windowResetMs / 1000)));
 
-  if (bucket.count >= API_RATE_LIMIT_MAX_REQUESTS) {
+  if (bucket.count > API_RATE_LIMIT_MAX_REQUESTS) {
     const retryAfterSec = Math.max(1, Math.ceil((windowResetMs - now) / 1000));
     res.setHeader('Retry-After', String(retryAfterSec));
     return res.status(429).json({ error: 'Rate limit exceeded. Retry shortly.' });
