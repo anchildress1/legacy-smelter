@@ -27,7 +27,7 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)');
+export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'legacy-smelter');
 const auth = getAuth(app);
 let anonymousAuthPromise: Promise<void> | null = null;
 
