@@ -40,11 +40,12 @@ done
 # Load env file (default: .env in repo root)
 ENV_FILE="${ENV_FILE:-.env}"
 if [[ -f "$ENV_FILE" ]]; then
-  echo "==> Loading env from $ENV_FILE"
-  set -a
-  # shellcheck source=/dev/null
-  source "$ENV_FILE"
-  set +a
+  echo "==> Loading VITE_* vars from $ENV_FILE"
+  while IFS='=' read -r key value; do
+    [[ "$key" =~ ^VITE_ ]] || continue
+    value="${value%\"}" ; value="${value#\"}"
+    export "$key=$value"
+  done < <(grep -E '^VITE_' "$ENV_FILE")
 else
   echo "==> No env file found at $ENV_FILE — expecting vars from environment"
 fi
