@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
-import { SmeltLog, Severity } from '../types';
+import { SmeltLog, Severity, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
-import { X, AlertTriangle, Check, Copy, Link2 } from 'lucide-react';
+import { X, AlertTriangle, Check, Copy, Link2, Siren } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
 import { db, doc, onSnapshot } from '../firebase';
 
@@ -29,6 +29,7 @@ interface NormalisedReport {
   chromaticProfile: string;
   dominantColors: string[];
   breachCount: number;
+  escalationCount: number;
   timestamp: Date | null;
 }
 
@@ -101,6 +102,7 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       chromaticProfile: a.chromaticProfile,
       dominantColors: a.dominantColors,
       breachCount: 0,
+      escalationCount: 0,
       timestamp: null,
     };
   }
@@ -119,6 +121,7 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       chromaticProfile: l.chromatic_profile,
       dominantColors: getFiveDistinctColors([l.color_1, l.color_2, l.color_3, l.color_4, l.color_5]),
       breachCount: l.breach_count ?? 0,
+      escalationCount: l.escalation_count ?? 0,
       timestamp: l.timestamp?.toDate?.() ?? null,
     };
   }
@@ -169,16 +172,19 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
   const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
   const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
+  const [liveEscalationCount, setLiveEscalationCount] = useState<number>(report?.escalationCount ?? 0);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
 
-  // Live-subscribe to breach_count while overlay is open
+  // Live-subscribe to breach_count and escalation_count while overlay is open
   useEffect(() => {
     if (!incidentId) return;
     return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
       if (snap.exists()) {
-        setLiveBreachCount(snap.data().breach_count ?? 0);
+        const data = snap.data();
+        setLiveBreachCount(data.breach_count ?? 0);
+        setLiveEscalationCount(data.escalation_count ?? 0);
       }
     });
   }, [incidentId]);
@@ -386,14 +392,33 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 <AlertTriangle size={10} aria-hidden="true" />
                 {report.severity}
               </span>
-              <span className="text-hazard-amber font-mono text-xs font-bold">
-                {liveBreachCount} CONTAINMENT BREACHES
-              </span>
               {report.timestamp && (
                 <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest ml-auto">
                   {formatTimestamp(report.timestamp)}
                 </span>
               )}
+            </div>
+            {/* Impact / Escalation / Containment scores */}
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-concrete-border">
+              <div className="text-center">
+                <div className="text-molten-orange font-mono text-lg font-black leading-none">
+                  {computeImpact(liveEscalationCount, liveBreachCount)}
+                </div>
+                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">IMPACT</div>
+              </div>
+              <div className="w-px h-8 bg-concrete-border" />
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-1">
+                  <Siren size={12} className="text-hazard-amber" aria-hidden="true" />
+                  <span className="text-hazard-amber font-mono text-lg font-black leading-none">{liveEscalationCount}</span>
+                </div>
+                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">ESCALATIONS</div>
+              </div>
+              <div className="w-px h-8 bg-concrete-border" />
+              <div className="text-center">
+                <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveBreachCount}</div>
+                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">CONTAINMENT</div>
+              </div>
             </div>
           </div>
 
