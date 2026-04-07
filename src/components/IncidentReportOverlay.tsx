@@ -4,6 +4,7 @@ import { SmeltLog, Severity } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
 import { X, AlertTriangle, Check, Copy, Link2 } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
+import { db, doc, onSnapshot } from '../firebase';
 
 // analysis and log are mutually exclusive — exactly one should be non-null per call site
 interface OverlayProps {
@@ -128,9 +129,20 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const lastActiveElementRef = useRef<HTMLElement | null>(null);
   const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
   const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
+  const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
+
+  // Live-subscribe to breach_count while overlay is open
+  useEffect(() => {
+    if (!incidentId) return;
+    return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
+      if (snap.exists()) {
+        setLiveBreachCount(snap.data().breach_count ?? 0);
+      }
+    });
+  }, [incidentId]);
 
   // Derive incident URL from incidentId — used for the copy-link button
   const incidentUrl = incidentId ? buildIncidentUrl(incidentId) : null;
@@ -335,7 +347,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 {report.severity}
               </span>
               <span className="text-hazard-amber font-mono text-xs font-bold">
-                {report.breachCount} CONTAINMENT BREACHES
+                {liveBreachCount} CONTAINMENT BREACHES
               </span>
               {report.timestamp && (
                 <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest ml-auto">
