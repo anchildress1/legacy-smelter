@@ -1,17 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   db,
   collection,
   onSnapshot,
   query,
   orderBy,
-  limit,
-  startAfter,
   doc,
-  type QueryDocumentSnapshot,
-  type DocumentData,
 } from '../firebase';
-import { SmeltLog, GlobalStats } from '../types';
+import { SmeltLog, GlobalStats, computeImpact } from '../types';
 import { formatPixels, getLogShareLinks } from '../lib/utils';
 import { IncidentLogCard } from './IncidentLogCard';
 import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
@@ -25,19 +21,12 @@ interface IncidentManifestProps {
 }
 
 export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHome }) => {
-  const [logs, setLogs] = useState<SmeltLog[]>([]);
+  const [allLogs, setAllLogs] = useState<SmeltLog[]>([]);
   const [globalStats, setGlobalStats] = useState<GlobalStats>({ total_pixels_melted: 0 });
   const [selectedLog, setSelectedLog] = useState<SmeltLog | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
-  const [pageStartCursors, setPageStartCursors] = useState<Array<QueryDocumentSnapshot<DocumentData> | null>>([null]);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [isLoadingPage, setIsLoadingPage] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Ref keeps the latest cursors readable inside the fetch effect without
-  // making pageStartCursors a dep — avoids a spurious re-fetch when the cursor
-  // for the *next* page is stored after the current page's fetch completes.
-  const pageStartCursorsRef = useRef(pageStartCursors);
-  pageStartCursorsRef.current = pageStartCursors;
 
   useEffect(() => {
     const unsubStats = onSnapshot(doc(db, 'global_stats', 'main'), (snap) => {
@@ -48,55 +37,53 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   }, []);
 
   useEffect(() => {
-    const currentPageCursor = pageStartCursorsRef.current[currentPage] ?? null;
     const logsRef = collection(db, 'incident_logs');
-    const q = currentPageCursor
-      ? query(logsRef, orderBy('timestamp', 'desc'), startAfter(currentPageCursor), limit(PAGE_SIZE + 1))
-      : query(logsRef, orderBy('timestamp', 'desc'), limit(PAGE_SIZE + 1));
+    const q = query(logsRef, orderBy('timestamp', 'desc'));
 
-    setIsLoadingPage(true);
+    setIsLoading(true);
     setError(null);
-    let gotFirstSnapshot = false;
+    let gotFirst = false;
     const unsubLogs = onSnapshot(q, (snap) => {
-        const pageDocs = snap.docs.slice(0, PAGE_SIZE);
-        setLogs(pageDocs.map((d) => ({ id: d.id, ...d.data() } as SmeltLog)));
+      const entries = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SmeltLog));
+      setAllLogs(entries);
+      if (!gotFirst) {
+        gotFirst = true;
+        setIsLoading(false);
+      }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'incident_logs');
+      setAllLogs([]);
+      setError('Failed to load incidents.');
+      if (!gotFirst) gotFirst = true;
+      setIsLoading(false);
+    });
 
-        const nextExists = snap.docs.length > PAGE_SIZE;
-        setHasNextPage(nextExists);
-        setPageStartCursors((prev) => {
-          const next = prev.slice(0, currentPage + 1);
-          if (nextExists && pageDocs.length > 0) {
-            next[currentPage + 1] = pageDocs[pageDocs.length - 1];
-          }
-          return next;
-        });
-        if (!gotFirstSnapshot) {
-          gotFirstSnapshot = true;
-          setIsLoadingPage(false);
-        }
-      }, (err) => {
-        handleFirestoreError(err, OperationType.LIST, 'incident_logs');
-        setLogs([]);
-        setHasNextPage(false);
-        setError('Failed to load incidents.');
-        if (!gotFirstSnapshot) gotFirstSnapshot = true;
-        setIsLoadingPage(false);
-      });
+    return () => { unsubLogs(); };
+  }, []);
 
-    return () => {
-      unsubLogs();
-    };
-  }, [currentPage]);
+  const sortedLogs = useMemo(() =>
+    [...allLogs].sort((a, b) => {
+      const impactA = computeImpact(a.escalation_count ?? 0, a.breach_count ?? 0);
+      const impactB = computeImpact(b.escalation_count ?? 0, b.breach_count ?? 0);
+      return impactB - impactA;
+    }),
+    [allLogs]
+  );
+
+  const totalPages = Math.max(1, Math.ceil(sortedLogs.length / PAGE_SIZE));
+  const pageStart = currentPage * PAGE_SIZE;
+  const pageLogs = sortedLogs.slice(pageStart, pageStart + PAGE_SIZE);
+  const hasNextPage = currentPage < totalPages - 1;
 
   const goToPreviousPage = () => {
-    if (currentPage === 0 || isLoadingPage) return;
-    setCurrentPage((page) => page - 1);
+    if (currentPage === 0) return;
+    setCurrentPage((p) => p - 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const goToNextPage = () => {
-    if (!hasNextPage || isLoadingPage) return;
-    setCurrentPage((page) => page + 1);
+    if (!hasNextPage) return;
+    setCurrentPage((p) => p + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -138,13 +125,13 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
         {/* Log entries */}
         <div className="space-y-3 min-h-[200px]">
-          {isLoadingPage && (
+          {isLoading && (
             <div className="flex items-center justify-center py-12">
               <div className="w-6 h-6 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin" />
             </div>
           )}
 
-          {!isLoadingPage && logs.map((log) => (
+          {!isLoading && pageLogs.map((log) => (
             <IncidentLogCard
               key={log.id}
               log={log}
@@ -152,7 +139,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             />
           ))}
 
-          {!isLoadingPage && logs.length === 0 && !error && (
+          {!isLoading && sortedLogs.length === 0 && !error && (
             <div className="modern-card p-12 text-center">
               <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
               <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
@@ -169,11 +156,11 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         </div>
 
         {/* Pagination */}
-        {(currentPage > 0 || hasNextPage) && (
+        {totalPages > 1 && (
           <nav aria-label="Incident manifest pages" className="mt-8 flex items-center justify-center gap-1">
             <button
               onClick={goToPreviousPage}
-              disabled={currentPage === 0 || isLoadingPage}
+              disabled={currentPage === 0}
               className="nav-btn disabled:opacity-30 disabled:cursor-not-allowed px-2"
               aria-label="Previous page"
             >
@@ -181,13 +168,13 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             </button>
 
             <div className="min-w-[110px] h-8 px-3 rounded-md border border-concrete-border flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-wider text-stone-gray">
-              {isLoadingPage && <Loader2 size={12} className="animate-spin text-hazard-amber" aria-hidden="true" />}
+              {isLoading && <Loader2 size={12} className="animate-spin text-hazard-amber" aria-hidden="true" />}
               <span>Page {currentPage + 1}</span>
             </div>
 
             <button
               onClick={goToNextPage}
-              disabled={!hasNextPage || isLoadingPage}
+              disabled={!hasNextPage}
               className="nav-btn disabled:opacity-30 disabled:cursor-not-allowed px-2"
               aria-label="Next page"
             >
@@ -196,9 +183,9 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           </nav>
         )}
 
-        {logs.length > 0 && (
+        {pageLogs.length > 0 && (
           <p className="mt-4 text-center font-mono text-[10px] uppercase tracking-widest text-stone-gray">
-            Showing incidents {currentPage * PAGE_SIZE + 1}–{currentPage * PAGE_SIZE + logs.length}
+            Showing incidents {pageStart + 1}–{pageStart + pageLogs.length} of {sortedLogs.length}
           </p>
         )}
       </main>
