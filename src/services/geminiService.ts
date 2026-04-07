@@ -60,7 +60,7 @@ Short declarative clauses. Sentences under 12 words. Conclusions, not descriptio
 - archive_note: 60 words max. Evidence record. Short clauses. Start technical, then commit past the point of reason. Find one specific absurd detail in the image and assess it with full institutional confidence. End with a deadpan trailing observation.
 - og_headline: 10 words max. Reads like an internal notification that escaped containment.
 - share_quote: 14 words max. An incident summary someone screenshotted.
-- severity: Single real English word. Institutional classification specific to this artifact — serious, technical, unexpected. Each incident gets a unique word. Aim for words that feel discovered, not assigned. Register examples: Calcified. Necrotic. Vestigial. Desiccated. Vitrified. Suppurating. Fossilized. Atrophied.
+- severity: Single real English word derived from the dominant visible failure in the image (material, condition, or failure mode). It must be specific and meaningful for this artifact, not a generic risk label. Do NOT use ladder words like Critical, Severe, Major, Minor, Elevated, Terminal, Advisory, or Urgent. Examples are style only, not a fixed list: Calcified. Necrotic. Vestigial. Desiccated. Vitrified. Suppurating. Fossilized. Atrophied.
 - anon_handle: Format: [Compound]_[Number]. Reads like an internal system account. "ThermalOperator_41," "DeprecatedNode_7," "IncidentClerk_404."
 - dominant_hex_colors: Exactly 5 vivid, saturated hex colors from the image.
 - subject_box: Bounding box [ymin, xmin, ymax, xmax] in 1000x1000 scale covering the primary artifact.
@@ -117,7 +117,7 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
           },
           chromatic_profile: { type: Type.STRING, description: "Diagnostic color palette name. 4 words max. E.g. 'Moldy Blossom', 'Thermal Beige'." },
           system_dx: { type: Type.STRING, description: "Compound clinical syndrome name. Structure: [Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]." },
-          severity: { type: Type.STRING, description: "Single English word. Institutional severity classification specific to this artifact. Serious, clinical, unexpected. No hyphens. Real word only." },
+          severity: { type: Type.STRING, description: "Single specific English word based on visible failure mode in this exact image. Avoid generic ladder words like Critical/Severe/Major/Minor/Elevated/Terminal." },
           primary_contamination: { type: Type.STRING, description: "Dominant visual or structural fault. 5 words max." },
           contributing_factor: { type: Type.STRING, description: "Secondary fault. 5 words max." },
           failure_origin: { type: Type.STRING, description: "What decisions produced this artifact. End with a deadpan detail. 20 words max." },
@@ -146,28 +146,18 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
     }
   };
 
-  const MAX_RETRIES = 3;
-  let lastError: unknown;
-  let result: Record<string, unknown> | null = null;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    if (attempt > 0) {
-      await new Promise(r => setTimeout(r, 1000 * attempt));
-      console.warn(`[geminiService] Retry attempt ${attempt} of ${MAX_RETRIES - 1}`);
+  let result: Record<string, unknown>;
+  try {
+    const response = await ai.models.generateContent(requestConfig);
+    const responseText = response.text;
+    if (!responseText || !responseText.trim()) {
+      throw new Error('Gemini returned an empty response. Image may have been blocked by safety filters.');
     }
-    try {
-      const response = await ai.models.generateContent(requestConfig);
-      const responseText = response.text;
-      if (!responseText || !responseText.trim()) {
-        throw new Error('Gemini returned an empty response. Image may have been blocked by safety filters.');
-      }
-      result = JSON.parse(responseText);
-      break;
-    } catch (err) {
-      lastError = err;
-      console.error(`[geminiService] Attempt ${attempt + 1} failed:`, err);
-    }
+    result = JSON.parse(responseText);
+  } catch (err) {
+    console.error('[geminiService] Analysis failed:', err);
+    throw err;
   }
-  if (!result) throw lastError ?? new Error('Gemini analysis failed after all retries');
 
   const rawColors = Array.isArray(result.dominant_hex_colors) ? result.dominant_hex_colors as string[] : [];
   const dominantColors = getFiveDistinctColors(rawColors);
