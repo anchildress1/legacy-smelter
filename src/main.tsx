@@ -26,7 +26,12 @@ function getDeepLinkId(): string | null {
 
 function Root() {
   const [page, setPage] = useState<Page>(getPageFromHash);
-  const deepLinkId = getDeepLinkId();
+  // Consume the deep link once: read from URL, store in state, clear the URL.
+  const [deepLinkId] = useState(() => {
+    const id = getDeepLinkId();
+    if (id) history.replaceState(null, '', '/');
+    return id;
+  });
 
   useEffect(() => {
     const sync = () => setPage(getPageFromHash());

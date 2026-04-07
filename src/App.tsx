@@ -96,7 +96,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     };
   }, []);
 
-  // Deep link: fetch incident by Firestore doc ID and open its overlay
+  // Deep link: fetch incident by Firestore doc ID and open its overlay.
+  // The URL is already cleared by Root — deepLinkId is a one-shot value.
   useEffect(() => {
     if (!deepLinkId) return;
     let cancelled = false;
