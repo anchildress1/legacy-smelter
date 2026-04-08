@@ -193,9 +193,9 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   useEffect(() => {
     if (!incidentId) return;
     let cancelled = false;
-    syncEscalationState(incidentId).then((state) => {
-      if (!cancelled) setEscalated(state);
-    });
+    syncEscalationState(incidentId)
+      .then((state) => { if (!cancelled) setEscalated(state); })
+      .catch((err) => { console.error('[IncidentReportOverlay] syncEscalationState failed:', err); });
     return () => { cancelled = true; };
   }, [incidentId]);
 
@@ -293,8 +293,10 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     }
   };
 
+  // Fire-and-forget: breach recording is best-effort analytics.
+  // recordBreach handles its own errors internally.
   const handleBreach = () => {
-    if (incidentId) recordBreach(incidentId);
+    if (incidentId) void recordBreach(incidentId);
   };
 
   const handleEscalate = async () => {

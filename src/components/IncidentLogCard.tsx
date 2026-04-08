@@ -15,9 +15,9 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
 
   useEffect(() => {
     let cancelled = false;
-    syncEscalationState(log.id).then((state) => {
-      if (!cancelled) setEscalated(state);
-    });
+    syncEscalationState(log.id)
+      .then((state) => { if (!cancelled) setEscalated(state); })
+      .catch((err) => { console.error('[IncidentLogCard] syncEscalationState failed:', err); });
     return () => { cancelled = true; };
   }, [log.id]);
 

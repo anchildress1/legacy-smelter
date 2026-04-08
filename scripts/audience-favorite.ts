@@ -111,8 +111,8 @@ async function run(): Promise<void> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(responseText);
-  } catch {
-    throw new Error(`Failed to parse Gemini response: ${responseText}`);
+  } catch (parseErr) {
+    throw new Error(`Failed to parse Gemini response (${parseErr instanceof Error ? parseErr.message : parseErr}): ${responseText.slice(0, 200)}`);
   }
 
   const result = parsed as JudgingResult;
