@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { db } from './lib/admin-init';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MIN_BATCH = 5;
 const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 const LOCK_COLLECTION = 'system_locks';

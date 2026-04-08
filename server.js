@@ -23,8 +23,7 @@ import 'dotenv/config';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, 'dist');
 const PORT = process.env.PORT || 8080;
-const DEFAULT_APP_URL = 'https://hotfix.anchildress1.dev';
-const APP_URL = (process.env.VITE_APP_URL || DEFAULT_APP_URL).replace(/\/$/, '');
+const APP_URL = (process.env.VITE_APP_URL ?? '').replace(/\/$/, '');
 
 function parsePositiveInt(rawValue, fallbackValue) {
   const parsed = Number.parseInt(rawValue ?? '', 10);
@@ -36,7 +35,7 @@ const API_RATE_LIMIT_MAX_REQUESTS = parsePositiveInt(process.env.API_RATE_LIMIT_
 
 const FIREBASE_API_KEY = process.env.VITE_FIREBASE_API_KEY;
 const FIREBASE_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID;
-const FIREBASE_DB_ID = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'legacy-smelter';
+const FIREBASE_DB_ID = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
 
 // GitHub banner used as the og:image for all incident shares
 const OG_IMAGE = 'https://repository-images.githubusercontent.com/1201373945/f2802097-2afe-4c31-848f-a94cc13ca0b1';

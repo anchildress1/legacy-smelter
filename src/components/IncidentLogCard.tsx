@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { NormalizedSmeltLog, computeImpact } from '../types';
+import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
 import { Siren, AlertTriangle } from 'lucide-react';
 import { toggleEscalation, hasEscalated, syncEscalationState } from '../services/escalationService';
 
 interface IncidentLogCardProps {
-  log: NormalizedSmeltLog;
+  log: SmeltLog;
   onClick: () => void;
 }
 

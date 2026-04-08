@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
-import { SmeltLog, Severity, computeImpact, withVotingDefaults } from '../types';
+import { SmeltLog, Severity, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
 import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
@@ -123,7 +123,7 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
     };
   }
   if (l) {
-    const n = withVotingDefaults(l);
+    const n = l;
     return {
       legacyInfraClass: n.legacy_infra_class,
       incidentFeedSummary: n.incident_feed_summary,
@@ -214,10 +214,10 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     if (!incidentId) return;
     return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
       if (snap.exists()) {
-        const live = withVotingDefaults({ id: snap.id, ...snap.data() } as SmeltLog);
-        setLiveSanctionCount(live.sanction_count);
-        setLiveBreachCount(live.breach_count);
-        setLiveEscalationCount(live.escalation_count);
+        const data = snap.data();
+        setLiveSanctionCount(data.sanction_count ?? 0);
+        setLiveBreachCount(data.breach_count ?? 0);
+        setLiveEscalationCount(data.escalation_count ?? 0);
       }
     }, (error) => {
       console.error('[IncidentReportOverlay] Live count subscription failed:', error);

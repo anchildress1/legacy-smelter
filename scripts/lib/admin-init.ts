@@ -11,8 +11,8 @@ import { initializeApp, cert, type ServiceAccount } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { readFileSync } from 'node:fs';
 
-const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
-const DATABASE_ID = process.env.FIREBASE_FIRESTORE_DATABASE_ID || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
+const PROJECT_ID = process.env.FIREBASE_PROJECT_ID;
+const DATABASE_ID = process.env.FIREBASE_FIRESTORE_DATABASE_ID;
 
 if (!PROJECT_ID) throw new Error('Missing FIREBASE_PROJECT_ID');
 if (!DATABASE_ID) throw new Error('Missing FIREBASE_FIRESTORE_DATABASE_ID');
