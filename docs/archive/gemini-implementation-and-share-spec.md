@@ -1,6 +1,6 @@
 # Legacy Smelter — Gemini Vision Prompt + JSON Contract
 
-> **Superseded.** This is the original Gemini spec. The current prompt and schema live in `src/services/geminiService.ts` and `docs/ai-prompt.md`.
+> **Superseded.** This is the original Gemini spec. The current prompt and schema live in `src/services/geminiService.ts` and `docs/classification-prompt.md`.
 
 ## Goal
 Analyze a user-uploaded image as if it were doomed legacy infrastructure headed for ceremonial destruction by dragon fire.

@@ -25,7 +25,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
     log.color_1, log.color_2, log.color_3, log.color_4, log.color_5,
   ]);
 
-  const impact = computeImpact(log.escalation_count, log.breach_count);
+  const impact = computeImpact(log.sanction_count, log.escalation_count, log.breach_count);
 
   const handleEscalate = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -73,7 +73,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
           {log.incident_feed_summary}
         </p>
         <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-          {log.audience_favorite && (
+          {log.sanction_count > 0 && (
             <span className="font-mono text-[10px] uppercase tracking-wider font-bold text-hazard-amber">
               SANCTIONED
             </span>
@@ -97,7 +97,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
         aria-label={escalated ? `Remove escalation for ${infraClass}` : `Escalate ${infraClass}`}
         title={escalated ? 'De-escalate' : 'Escalate'}
       >
-        <Siren size={18} className={escalated ? 'animate-pulse' : ''} />
+        <Siren size={18} />
       </button>
     </div>
   );

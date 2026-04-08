@@ -5,7 +5,6 @@ import {
   onSnapshot,
   query,
   orderBy,
-  limit,
   doc,
 } from '../firebase';
 import { SmeltLog, NormalizedSmeltLog, GlobalStats, computeImpact, withVotingDefaults } from '../types';
@@ -16,11 +15,6 @@ import { IncidentReportOverlay } from './IncidentReportOverlay';
 import { Flame, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 const PAGE_SIZE = 20;
-// Cap the subscription to avoid unbounded reads as the collection grows.
-// Impact sorting happens client-side so we fetch the most recent N docs.
-// SCALING: When the collection exceeds ~1K docs, migrate to a precomputed
-// impact_score field with server-side ordering and cursor-based pagination.
-const MAX_MANIFEST_DOCS = 500;
 
 interface IncidentManifestProps {
   onNavigateHome: () => void;
@@ -44,7 +38,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
   useEffect(() => {
     const logsRef = collection(db, 'incident_logs');
-    const q = query(logsRef, orderBy('timestamp', 'desc'), limit(MAX_MANIFEST_DOCS));
+    const q = query(logsRef, orderBy('timestamp', 'desc'));
 
     setIsLoading(true);
     setError(null);
@@ -68,8 +62,8 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
   const sortedLogs = useMemo(() =>
     [...allLogs].sort((a, b) =>
-      computeImpact(b.escalation_count, b.breach_count)
-      - computeImpact(a.escalation_count, a.breach_count)
+      computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
+      - computeImpact(a.sanction_count, a.escalation_count, a.breach_count)
     ),
     [allLogs]
   );

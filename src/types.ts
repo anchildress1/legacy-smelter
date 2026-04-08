@@ -32,9 +32,10 @@ export interface SmeltLog {
   uid: string;
   breach_count?: number;
   escalation_count?: number;
+  sanction_count?: number;
   judged?: boolean;
-  audience_favorite?: boolean;
-  audience_favorite_rationale?: string;
+  sanctioned?: boolean;
+  sanction_rationale?: string | null;
 }
 
 export interface GlobalStats {
@@ -45,23 +46,27 @@ export interface GlobalStats {
 export type NormalizedSmeltLog = SmeltLog & {
   breach_count: number;
   escalation_count: number;
+  sanction_count: number;
   judged: boolean;
-  audience_favorite: boolean;
+  sanctioned: boolean;
+  sanction_rationale: string | null;
 };
 
 /** Defaults for optional voting fields that may be absent on old documents. */
 export function withVotingDefaults(log: SmeltLog): NormalizedSmeltLog {
+  const isSanctioned = log.sanctioned ?? ((log.sanction_count ?? 0) > 0);
   return {
     ...log,
     breach_count: log.breach_count ?? 0,
     escalation_count: log.escalation_count ?? 0,
+    sanction_count: log.sanction_count ?? (isSanctioned ? 1 : 0),
     judged: log.judged ?? false,
-    audience_favorite: log.audience_favorite ?? false,
-    audience_favorite_rationale: log.audience_favorite_rationale,
+    sanctioned: isSanctioned,
+    sanction_rationale: log.sanction_rationale ?? null,
   };
 }
 
-/** Impact = (3 × escalations) + (1 × containment breaches), clamped to 0 */
-export function computeImpact(escalationCount: number, breachCount: number): number {
-  return Math.max(0, (3 * escalationCount) + breachCount);
+/** Impact = (5 × sanctions) + (3 × escalations) + (2 × breaches), clamped to 0 */
+export function computeImpact(sanctionCount: number, escalationCount: number, breachCount: number): number {
+  return Math.max(0, (5 * sanctionCount) + (3 * escalationCount) + (2 * breachCount));
 }

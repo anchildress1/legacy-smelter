@@ -1,4 +1,4 @@
-name: Audience Favorite
+name: Sanction Incidents
 
 on:
   schedule:
@@ -6,8 +6,12 @@ on:
     - cron: '0 */6 * * *'
   workflow_dispatch: {}
 
+concurrency:
+  group: sanction-incidents
+  cancel-in-progress: false
+
 jobs:
-  judge:
+  sanction:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -17,7 +21,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npx tsx scripts/audience-favorite.ts
+      - run: npx tsx scripts/sanction-incidents.ts
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}

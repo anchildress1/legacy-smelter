@@ -29,10 +29,11 @@ interface NormalisedReport {
   anonHandle: string;
   chromaticProfile: string;
   dominantColors: string[];
+  sanctionCount: number;
   breachCount: number;
   escalationCount: number;
-  audienceFavorite: boolean;
-  audienceFavoriteRationale: string | null;
+  sanctioned: boolean;
+  sanctionedRationale: string | null;
   timestamp: Date | null;
 }
 
@@ -50,8 +51,13 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
     .filter((el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
 }
 
-function buildMarkdown(report: NormalisedReport, liveBreachCount: number, liveEscalationCount: number): string {
-  const impact = computeImpact(liveEscalationCount, liveBreachCount);
+function buildMarkdown(
+  report: NormalisedReport,
+  liveBreachCount: number,
+  liveEscalationCount: number,
+  liveSanctionCount: number
+): string {
+  const impact = computeImpact(liveSanctionCount, liveEscalationCount, liveBreachCount);
   const lines: string[] = [
     `# ${report.legacyInfraClass}`,
     '',
@@ -59,6 +65,7 @@ function buildMarkdown(report: NormalisedReport, liveBreachCount: number, liveEs
     '',
     `**Severity:** ${report.severity}`,
     `**Impact:** ${impact}`,
+    `**Sanctions:** ${liveSanctionCount}`,
     `**Escalations:** ${liveEscalationCount}`,
     `**Containment Breaches:** ${liveBreachCount}`,
   ];
@@ -107,10 +114,11 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       anonHandle: a.anonHandle,
       chromaticProfile: a.chromaticProfile,
       dominantColors: a.dominantColors,
+      sanctionCount: 0,
       breachCount: 0,
       escalationCount: 0,
-      audienceFavorite: false,
-      audienceFavoriteRationale: null,
+      sanctioned: false,
+      sanctionedRationale: null,
       timestamp: null,
     };
   }
@@ -129,10 +137,11 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       anonHandle: n.anon_handle,
       chromaticProfile: n.chromatic_profile,
       dominantColors: getFiveDistinctColors([n.color_1, n.color_2, n.color_3, n.color_4, n.color_5]),
+      sanctionCount: n.sanction_count,
       breachCount: n.breach_count,
       escalationCount: n.escalation_count,
-      audienceFavorite: n.audience_favorite,
-      audienceFavoriteRationale: n.audience_favorite_rationale ?? null,
+      sanctioned: n.sanctioned,
+      sanctionedRationale: n.sanction_rationale ?? null,
       timestamp: n.timestamp?.toDate?.() ?? null,
     };
   }
@@ -181,6 +190,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const lastActiveElementRef = useRef<HTMLElement | null>(null);
   const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
   const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
+  const [liveSanctionCount, setLiveSanctionCount] = useState<number>(report?.sanctionCount ?? 0);
   const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
   const [liveEscalationCount, setLiveEscalationCount] = useState<number>(report?.escalationCount ?? 0);
   const [escalated, setEscalated] = useState<boolean>(() => incidentId ? hasEscalated(incidentId) : false);
@@ -199,12 +209,13 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     return () => { cancelled = true; };
   }, [incidentId]);
 
-  // Live-subscribe to breach_count and escalation_count while overlay is open
+  // Live-subscribe to counter fields while overlay is open
   useEffect(() => {
     if (!incidentId) return;
     return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
       if (snap.exists()) {
         const live = withVotingDefaults({ id: snap.id, ...snap.data() } as SmeltLog);
+        setLiveSanctionCount(live.sanction_count);
         setLiveBreachCount(live.breach_count);
         setLiveEscalationCount(live.escalation_count);
       }
@@ -283,7 +294,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   const handleCopyText = async () => {
     try {
-      await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount, liveEscalationCount));
+      await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount, liveEscalationCount, liveSanctionCount));
       handleBreach();
       setCopyTextState('copied');
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
@@ -425,7 +436,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               {report.incidentFeedSummary}
             </p>
             <div className="flex items-center gap-3 mt-2.5 flex-wrap">
-              {report.audienceFavorite && (
+              {liveSanctionCount > 0 && (
                 <span className="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-950 bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold">
                   <ShieldCheck size={11} aria-hidden="true" />
                   SANCTIONED
@@ -443,13 +454,18 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 </span>
               )}
             </div>
-            {/* Scores: ordered by point weight (impact, escalations, breaches) */}
+            {/* Scores: ordered by point weight (impact, sanctions, escalations, breaches) */}
             <div className="flex items-center gap-4 mt-3 pt-3 border-t border-concrete-border">
               <div className="text-center">
                 <div className="text-hazard-amber font-mono text-lg font-black leading-none">
-                  {computeImpact(liveEscalationCount, liveBreachCount)}
+                  {computeImpact(liveSanctionCount, liveEscalationCount, liveBreachCount)}
                 </div>
                 <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">IMPACT</div>
+              </div>
+              <div className="w-px h-8 bg-concrete-border" />
+              <div className="text-center">
+                <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveSanctionCount}</div>
+                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">SANCTIONS</div>
               </div>
               <div className="w-px h-8 bg-concrete-border" />
               <div className="text-center">
@@ -475,7 +491,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     aria-label={escalated ? 'Remove escalation' : 'Escalate'}
                     title={escalated ? 'De-escalate' : 'Escalate'}
                   >
-                    <Siren size={20} className={escalated ? 'animate-pulse' : ''} />
+                    <Siren size={20} />
                     <span className="text-stone-gray font-mono text-[9px] uppercase tracking-widest">ESCALATE</span>
                   </button>
                 </>
@@ -530,15 +546,15 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <p className="text-ash-white font-mono text-sm leading-relaxed">{report.archiveNote}</p>
             </div>
 
-            {/* Audience Favorite rationale */}
-            {report.audienceFavorite && report.audienceFavoriteRationale && (
+            {/* Sanction rationale */}
+            {liveSanctionCount > 0 && report.sanctionedRationale && (
               <div className="border-t border-concrete-border pt-4">
                 <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
                   <ShieldCheck size={11} className="text-hazard-amber" aria-hidden="true" />
                   SANCTIONED — RATIONALE
                 </h3>
                 <p className="text-hazard-amber/90 font-mono text-sm leading-relaxed italic">
-                  {report.audienceFavoriteRationale}
+                  {report.sanctionedRationale}
                 </p>
               </div>
             )}

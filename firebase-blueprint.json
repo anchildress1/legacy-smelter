@@ -33,9 +33,10 @@
         "uid": { "type": "string", "description": "UUID generated client-side via crypto.randomUUID()" },
         "breach_count": { "type": "number", "description": "Number of containment breaches (shares, copies). Starts at 0, incremented by 1 per share action." },
         "escalation_count": { "type": "number", "description": "Number of user escalation votes. Starts at 0. One vote per user, toggleable." },
-        "judged": { "type": "boolean", "description": "Whether this incident has been evaluated by the audience favorite cron. Starts false, set true by Admin SDK." },
-        "audience_favorite": { "type": "boolean", "description": "True if this incident won its audience favorite batch. Set by Admin SDK only." },
-        "audience_favorite_rationale": { "type": "string", "description": "One-sentence rationale from Gemini explaining why this incident won. Set by Admin SDK only." }
+        "sanction_count": { "type": "number", "description": "Number of AI sanctions. Starts at 0. Gemini cron assigns 1 to the sanctioned incident in each judged batch of 5." },
+        "judged": { "type": "boolean", "description": "Whether this incident has been evaluated by the AI sanction cron. Starts false, set true by Admin SDK." },
+        "sanctioned": { "type": "boolean", "description": "True if this incident was sanctioned by the AI in its batch. Set by Admin SDK only." },
+        "sanction_rationale": { "type": "string", "description": "One-sentence rationale from Gemini explaining why this incident was sanctioned. Set by Admin SDK only." }
       },
       "required": [
         "pixel_count", "incident_feed_summary",
@@ -47,7 +48,7 @@
         "disposition", "archive_note",
         "og_headline", "share_quote", "anon_handle",
         "timestamp", "uid",
-        "breach_count", "escalation_count",
+        "breach_count", "escalation_count", "sanction_count", "sanctioned",
         "judged"
       ]
     },

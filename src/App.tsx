@@ -6,7 +6,6 @@ import {
   onSnapshot,
   query,
   orderBy,
-  limit,
   doc,
   getDoc,
   setDoc,
@@ -69,20 +68,17 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       handleFirestoreError(error, OperationType.GET, 'global_stats/main', setAnalysisError);
     });
 
-    // Fetch a generous window and sort client-side by impact to find the top 3.
-    // Impact = (3×escalations)+(1×breaches) can't be queried server-side.
-    // SCALING: At scale, replace with a precomputed impact_score field
-    // maintained by a Cloud Function, then query orderBy('impact_score').limit(3).
+    // Pull the full archive so P0 ranking is truly global.
+    // Impact = (5×sanctions)+(3×escalations)+(2×breaches) can't be queried server-side.
     const logsQuery = query(
       collection(db, 'incident_logs'),
-      orderBy('timestamp', 'desc'),
-      limit(200)
+      orderBy('timestamp', 'desc')
     );
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
       const entries = snapshot.docs.map(d => withVotingDefaults({ id: d.id, ...d.data() } as SmeltLog));
       const sorted = entries.sort((a, b) => {
-        return computeImpact(b.escalation_count, b.breach_count)
-             - computeImpact(a.escalation_count, a.breach_count);
+        return computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
+             - computeImpact(a.sanction_count, a.escalation_count, a.breach_count);
       });
       setRecentLogs(sorted.slice(0, 3));
     }, (error) => {
@@ -302,6 +298,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             uid: crypto.randomUUID(),
             breach_count: 0,
             escalation_count: 0,
+            sanction_count: 0,
+            sanctioned: false,
             judged: false
           });
           if (writeRequestId !== activeRequestIdRef.current) return;
@@ -525,6 +523,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
                 <h2 className="text-hazard-amber font-mono text-xs md:text-sm uppercase tracking-wide md:tracking-widest font-bold">
                   P0 INCIDENTS
                 </h2>
+                <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" />
               </div>
               <ul role="list" className="space-y-3">
                 {recentLogs.map((log) => (

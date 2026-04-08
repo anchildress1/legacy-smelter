@@ -17,7 +17,7 @@ service cloud.firestore {
                'disposition', 'archive_note',
                'og_headline', 'share_quote', 'anon_handle',
                'timestamp', 'uid', 'breach_count', 'escalation_count',
-               'judged'
+               'sanction_count', 'sanctioned', 'judged'
              ];
       return data.keys().hasAll(fields) &&
              data.keys().hasOnly(fields) &&
@@ -49,6 +49,8 @@ service cloud.firestore {
              data.uid is string && data.uid.size() > 0 && data.uid.size() <= 100 &&
              data.breach_count is number && data.breach_count == 0 &&
              data.escalation_count is number && data.escalation_count == 0 &&
+             data.sanction_count is number && data.sanction_count == 0 &&
+             data.sanctioned is bool && data.sanctioned == false &&
              data.judged is bool && data.judged == false;
     }
 

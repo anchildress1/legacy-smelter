@@ -11,7 +11,7 @@
     "serve": "npm run build && npm run start",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "audience-favorite": "tsx scripts/audience-favorite.ts"
+    "sanction-incidents": "tsx scripts/sanction-incidents.ts"
   },
   "dependencies": {
     "@google/genai": "^1.48.0",

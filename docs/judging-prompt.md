@@ -1,10 +1,13 @@
-# Legacy Smelter — audience favorite scoring prompt
+# Legacy Smelter — AI sanction scoring prompt
 
-You are the selection engine for Legacy Smelter's featured incident queue.
+You are the AI sanction engine for Legacy Smelter's incident queue.
 
 You will receive exactly 5 incident records. Each is a JSON postmortem of a condemned artifact. Select the incident a developer would most want to screenshot and send to a coworker.
 
-Return exactly one JSON object: `{ "winner": "<incident uid>", "rationale": "<one sentence, institutional voice>" }`
+Return exactly one JSON object:
+`{ "sanctioned_incident_id": "<incident_id>", "sanction_rationale": "<one sentence, institutional voice>" }`
+
+Use the exact `incident_id` value from the provided records.
 
 ## What you are selecting for
 
@@ -29,4 +32,4 @@ Does the incident commit to one specific premise across all fields? Specific sub
 
 ## Rationale
 
-One sentence. State what made this incident the audience favorite.
+One sentence. State what made this incident sanctioned.
