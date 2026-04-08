@@ -14,7 +14,7 @@ import {
   serverTimestamp
 } from './firebase';
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
-import { GlobalStats as GlobalStatsType, SmeltLog, computeImpact, withVotingDefaults } from './types';
+import { GlobalStats as GlobalStatsType, SmeltLog, NormalizedSmeltLog, computeImpact, withVotingDefaults } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
@@ -34,8 +34,8 @@ interface AppProps {
 
 export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
-  const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
-  const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
+  const [recentLogs, setRecentLogs] = useState<NormalizedSmeltLog[]>([]);
+  const [selectedRecentLog, setSelectedRecentLog] = useState<NormalizedSmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
@@ -118,7 +118,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
           setDeepLinkError('Incident not found — the link may have expired or been removed.');
           return;
         }
-        setSelectedRecentLog({ id: snap.id, ...snap.data() } as SmeltLog);
+        setSelectedRecentLog(withVotingDefaults({ id: snap.id, ...snap.data() } as SmeltLog));
       } catch (err) {
         if (!cancelled) {
           console.error('[App] Deep link fetch failed:', err);
