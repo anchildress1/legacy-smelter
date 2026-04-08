@@ -10,7 +10,8 @@
     "start": "node server.js",
     "serve": "npm run build && npm run start",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "sanction-incidents": "tsx scripts/sanction-incidents.ts"
   },
   "dependencies": {
     "@google/genai": "^1.48.0",
@@ -20,6 +21,7 @@
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
     "firebase": "^12.11.0",
+    "firebase-admin": "^13.7.0",
     "howler": "^2.2.4",
     "lucide-react": "^1.7.0",
     "motion": "^12.38.0",

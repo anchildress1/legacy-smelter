@@ -71,7 +71,7 @@ src/
     ├── utils.ts                     Pixel formatting + color utilities
     └── firestoreErrors.ts           Firestore error handling
 docs/
-├── ai-prompt.md                     AI generation constraints and field spec
+├── classification-prompt.md         AI generation constraints and field spec
 ├── ux-copy.md                       Voice, persona, and copy rules
 ├── design-decisions.md              Deliberate spec deviations
 └── archive/
@@ -81,6 +81,6 @@ docs/
 
 ## Docs
 
-- [`docs/ai-prompt.md`](docs/ai-prompt.md) — AI prompt, severity tiers, field constraints
+- [`docs/classification-prompt.md`](docs/classification-prompt.md) — AI prompt, severity tiers, field constraints
 - [`docs/ux-copy.md`](docs/ux-copy.md) — Voice, persona rules, writing constraints for UI and AI copy
 - [`docs/design-decisions.md`](docs/design-decisions.md) — Deliberate deviations from the original spec and their rationale

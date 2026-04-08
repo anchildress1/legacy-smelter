@@ -31,8 +31,42 @@ export interface SmeltLog {
   timestamp: Timestamp | null;
   uid: string;
   breach_count?: number;
+  escalation_count?: number;
+  sanction_count?: number;
+  judged?: boolean;
+  sanctioned?: boolean;
+  sanction_rationale?: string | null;
 }
 
 export interface GlobalStats {
   total_pixels_melted: number;
+}
+
+/** SmeltLog with all optional voting fields resolved to concrete values. */
+export type NormalizedSmeltLog = SmeltLog & {
+  breach_count: number;
+  escalation_count: number;
+  sanction_count: number;
+  judged: boolean;
+  sanctioned: boolean;
+  sanction_rationale: string | null;
+};
+
+/** Defaults for optional voting fields that may be absent on old documents. */
+export function withVotingDefaults(log: SmeltLog): NormalizedSmeltLog {
+  const isSanctioned = log.sanctioned ?? ((log.sanction_count ?? 0) > 0);
+  return {
+    ...log,
+    breach_count: log.breach_count ?? 0,
+    escalation_count: log.escalation_count ?? 0,
+    sanction_count: log.sanction_count ?? (isSanctioned ? 1 : 0),
+    judged: log.judged ?? false,
+    sanctioned: isSanctioned,
+    sanction_rationale: log.sanction_rationale ?? null,
+  };
+}
+
+/** Impact = (5 × sanctions) + (3 × escalations) + (2 × breaches), clamped to 0 */
+export function computeImpact(sanctionCount: number, escalationCount: number, breachCount: number): number {
+  return Math.max(0, (5 * sanctionCount) + (3 * escalationCount) + (2 * breachCount));
 }

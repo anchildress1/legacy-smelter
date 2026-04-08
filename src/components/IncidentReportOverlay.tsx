@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
-import { SmeltLog, Severity } from '../types';
+import { SmeltLog, Severity, computeImpact, withVotingDefaults } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
-import { X, AlertTriangle, Check, Copy, Link2 } from 'lucide-react';
+import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
+import { toggleEscalation, hasEscalated, syncEscalationState } from '../services/escalationService';
 import { db, doc, onSnapshot } from '../firebase';
 
 // analysis and log are mutually exclusive — exactly one should be non-null per call site
@@ -28,7 +29,11 @@ interface NormalisedReport {
   anonHandle: string;
   chromaticProfile: string;
   dominantColors: string[];
+  sanctionCount: number;
   breachCount: number;
+  escalationCount: number;
+  sanctioned: boolean;
+  sanctionRationale: string | null;
   timestamp: Date | null;
 }
 
@@ -46,13 +51,22 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
     .filter((el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
 }
 
-function buildMarkdown(report: NormalisedReport, liveBreachCount: number): string {
+function buildMarkdown(
+  report: NormalisedReport,
+  liveBreachCount: number,
+  liveEscalationCount: number,
+  liveSanctionCount: number
+): string {
+  const impact = computeImpact(liveSanctionCount, liveEscalationCount, liveBreachCount);
   const lines: string[] = [
     `# ${report.legacyInfraClass}`,
     '',
     report.incidentFeedSummary,
     '',
     `**Severity:** ${report.severity}`,
+    `**Impact:** ${impact}`,
+    `**Sanctions:** ${liveSanctionCount}`,
+    `**Escalations:** ${liveEscalationCount}`,
     `**Containment Breaches:** ${liveBreachCount}`,
   ];
 
@@ -100,26 +114,35 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       anonHandle: a.anonHandle,
       chromaticProfile: a.chromaticProfile,
       dominantColors: a.dominantColors,
+      sanctionCount: 0,
       breachCount: 0,
+      escalationCount: 0,
+      sanctioned: false,
+      sanctionRationale: null,
       timestamp: null,
     };
   }
   if (l) {
+    const n = withVotingDefaults(l);
     return {
-      legacyInfraClass: l.legacy_infra_class,
-      incidentFeedSummary: l.incident_feed_summary,
-      severity: l.severity,
-      failureOrigin: l.failure_origin,
-      primaryContamination: l.primary_contamination,
-      contributingFactor: l.contributing_factor,
-      systemDx: l.system_dx,
-      disposition: l.disposition,
-      archiveNote: l.archive_note,
-      anonHandle: l.anon_handle,
-      chromaticProfile: l.chromatic_profile,
-      dominantColors: getFiveDistinctColors([l.color_1, l.color_2, l.color_3, l.color_4, l.color_5]),
-      breachCount: l.breach_count ?? 0,
-      timestamp: l.timestamp?.toDate?.() ?? null,
+      legacyInfraClass: n.legacy_infra_class,
+      incidentFeedSummary: n.incident_feed_summary,
+      severity: n.severity,
+      failureOrigin: n.failure_origin,
+      primaryContamination: n.primary_contamination,
+      contributingFactor: n.contributing_factor,
+      systemDx: n.system_dx,
+      disposition: n.disposition,
+      archiveNote: n.archive_note,
+      anonHandle: n.anon_handle,
+      chromaticProfile: n.chromatic_profile,
+      dominantColors: getFiveDistinctColors([n.color_1, n.color_2, n.color_3, n.color_4, n.color_5]),
+      sanctionCount: n.sanction_count,
+      breachCount: n.breach_count,
+      escalationCount: n.escalation_count,
+      sanctioned: n.sanctioned,
+      sanctionRationale: n.sanction_rationale ?? null,
+      timestamp: n.timestamp?.toDate?.() ?? null,
     };
   }
   return null;
@@ -164,22 +187,40 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const report = normalise(analysis, log);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const lastActiveElementRef = useRef<HTMLElement | null>(null);
   const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
   const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
+  const [liveSanctionCount, setLiveSanctionCount] = useState<number>(report?.sanctionCount ?? 0);
   const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
+  const [liveEscalationCount, setLiveEscalationCount] = useState<number>(report?.escalationCount ?? 0);
+  const [escalated, setEscalated] = useState<boolean>(() => incidentId ? hasEscalated(incidentId) : false);
+  const [isTogglingEscalation, setIsTogglingEscalation] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
 
-  // Live-subscribe to breach_count while overlay is open
+  // Sync escalation state with Firestore on mount
+  useEffect(() => {
+    if (!incidentId) return;
+    let cancelled = false;
+    syncEscalationState(incidentId)
+      .then((state) => { if (!cancelled) setEscalated(state); })
+      .catch((err) => { console.error('[IncidentReportOverlay] syncEscalationState failed:', err); });
+    return () => { cancelled = true; };
+  }, [incidentId]);
+
+  // Live-subscribe to counter fields while overlay is open
   useEffect(() => {
     if (!incidentId) return;
     return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
       if (snap.exists()) {
-        setLiveBreachCount(snap.data().breach_count ?? 0);
+        const live = withVotingDefaults({ id: snap.id, ...snap.data() } as SmeltLog);
+        setLiveSanctionCount(live.sanction_count);
+        setLiveBreachCount(live.breach_count);
+        setLiveEscalationCount(live.escalation_count);
       }
+    }, (error) => {
+      console.error('[IncidentReportOverlay] Live count subscription failed:', error);
     });
   }, [incidentId]);
 
@@ -253,7 +294,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   const handleCopyText = async () => {
     try {
-      await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount));
+      await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount, liveEscalationCount, liveSanctionCount));
       handleBreach();
       setCopyTextState('copied');
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
@@ -263,10 +304,26 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     }
   };
 
+  // Fire-and-forget: breach recording is best-effort analytics.
+  // recordBreach handles its own errors internally.
   const handleBreach = () => {
-    if (incidentId) recordBreach(incidentId);
+    if (incidentId) void recordBreach(incidentId);
   };
 
+  const handleEscalate = async () => {
+    if (!incidentId || isTogglingEscalation) return;
+    setIsTogglingEscalation(true);
+    try {
+      const wasEscalated = escalated;
+      setEscalated(!wasEscalated);
+      const newState = await toggleEscalation(incidentId);
+      if (newState === wasEscalated) setEscalated(wasEscalated);
+    } catch (err) {
+      console.error('[IncidentReportOverlay] Escalation failed:', err);
+    } finally {
+      setIsTogglingEscalation(false);
+    }
+  };
 
   const handleCopyLink = async () => {
     if (!incidentUrl) return;
@@ -361,7 +418,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                   : <Copy size={12} aria-hidden="true" />}
               </button>
               <button
-                ref={closeButtonRef}
                 onClick={onClose}
                 className="w-7 h-7 flex items-center justify-center rounded-full bg-concrete-mid/80 text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
                 aria-label="Close report"
@@ -380,14 +436,17 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               {report.incidentFeedSummary}
             </p>
             <div className="flex items-center gap-3 mt-2.5 flex-wrap">
+              {liveSanctionCount > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-950 bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold">
+                  <ShieldCheck size={11} aria-hidden="true" />
+                  SANCTIONED
+                </span>
+              )}
               <span
                 className="inline-flex items-center gap-1.5 text-xs font-mono text-concrete-light bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold"
               >
                 <AlertTriangle size={10} aria-hidden="true" />
                 {report.severity}
-              </span>
-              <span className="text-hazard-amber font-mono text-xs font-bold">
-                {liveBreachCount} CONTAINMENT BREACHES
               </span>
               {report.timestamp && (
                 <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest ml-auto">
@@ -395,10 +454,53 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 </span>
               )}
             </div>
+            {/* Scores: ordered by point weight (impact, sanctions, escalations, breaches) */}
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-concrete-border">
+              <div className="text-center">
+                <div className="text-hazard-amber font-mono text-lg font-black leading-none">
+                  {computeImpact(liveSanctionCount, liveEscalationCount, liveBreachCount)}
+                </div>
+                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">IMPACT</div>
+              </div>
+              <div className="w-px h-8 bg-concrete-border" />
+              <div className="text-center">
+                <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveSanctionCount}</div>
+                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">SANCTIONS</div>
+              </div>
+              <div className="w-px h-8 bg-concrete-border" />
+              <div className="text-center">
+                <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveEscalationCount}</div>
+                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">ESCALATIONS</div>
+              </div>
+              <div className="w-px h-8 bg-concrete-border" />
+              <div className="text-center">
+                <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveBreachCount}</div>
+                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">BREACHES</div>
+              </div>
+              {incidentId && (
+                <>
+                  <div className="w-px h-8 bg-concrete-border ml-auto" />
+                  <button
+                    onClick={handleEscalate}
+                    disabled={isTogglingEscalation}
+                    className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                      escalated
+                        ? 'text-hazard-amber bg-hazard-amber/15'
+                        : 'text-dead-gray hover:text-stone-gray hover:bg-concrete-mid/50'
+                    } ${isTogglingEscalation ? 'opacity-50' : ''}`}
+                    aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+                    title={escalated ? 'De-escalate' : 'Escalate'}
+                  >
+                    <Siren size={20} />
+                    <span className="text-stone-gray font-mono text-[9px] uppercase tracking-widest">ESCALATE</span>
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* ── SCROLLABLE TELEMETRY ZONE ── */}
-          <div className="sm:flex-1 sm:overflow-y-auto border-t border-concrete-border px-5 sm:px-6 pb-6 space-y-4">
+          <div className="sm:flex-1 sm:overflow-y-auto border-t border-concrete-border px-5 sm:px-6 pb-6 space-y-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset" tabIndex={0} role="region" aria-label="Incident details">
 
             {/* Telemetry fields */}
             {(report.failureOrigin || report.primaryContamination || report.contributingFactor || report.systemDx) && (
@@ -443,6 +545,19 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5">ARCHIVE NOTE</h3>
               <p className="text-ash-white font-mono text-sm leading-relaxed">{report.archiveNote}</p>
             </div>
+
+            {/* Sanction rationale */}
+            {liveSanctionCount > 0 && report.sanctionRationale && (
+              <div className="border-t border-concrete-border pt-4">
+                <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                  <ShieldCheck size={11} className="text-hazard-amber" aria-hidden="true" />
+                  SANCTIONED — RATIONALE
+                </h3>
+                <p className="text-hazard-amber/90 font-mono text-sm leading-relaxed italic">
+                  {report.sanctionRationale}
+                </p>
+              </div>
+            )}
 
             {/* Filed by + Chromatic Profile */}
             <div className="border-t border-concrete-border pt-4 flex justify-between items-start">

@@ -6,7 +6,6 @@ import {
   onSnapshot,
   query,
   orderBy,
-  limit,
   doc,
   getDoc,
   setDoc,
@@ -14,7 +13,7 @@ import {
   serverTimestamp
 } from './firebase';
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
-import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
+import { GlobalStats as GlobalStatsType, SmeltLog, NormalizedSmeltLog, computeImpact, withVotingDefaults } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
@@ -34,8 +33,8 @@ interface AppProps {
 
 export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
-  const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
-  const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
+  const [recentLogs, setRecentLogs] = useState<NormalizedSmeltLog[]>([]);
+  const [selectedRecentLog, setSelectedRecentLog] = useState<NormalizedSmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
@@ -69,14 +68,22 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       handleFirestoreError(error, OperationType.GET, 'global_stats/main', setAnalysisError);
     });
 
+    // Pull the full archive so P0 ranking is truly global.
+    // Impact = (5×sanctions)+(3×escalations)+(2×breaches) can't be queried server-side.
+    // SCALING: subscribes to the full collection for truly global P0 ranking.
+    // At scale, replace with a precomputed impact_score field maintained by a
+    // Cloud Function, then query orderBy('impact_score').limit(3).
     const logsQuery = query(
       collection(db, 'incident_logs'),
-      orderBy('timestamp', 'desc'),
-      limit(3)
+      orderBy('timestamp', 'desc')
     );
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
-      const entries = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SmeltLog));
-      setRecentLogs(entries);
+      const entries = snapshot.docs.map(d => withVotingDefaults({ id: d.id, ...d.data() } as SmeltLog));
+      const sorted = entries.sort((a, b) => {
+        return computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
+             - computeImpact(a.sanction_count, a.escalation_count, a.breach_count);
+      });
+      setRecentLogs(sorted.slice(0, 3));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'incident_logs', setAnalysisError);
     });
@@ -110,7 +117,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
           setDeepLinkError('Incident not found — the link may have expired or been removed.');
           return;
         }
-        setSelectedRecentLog({ id: snap.id, ...snap.data() } as SmeltLog);
+        setSelectedRecentLog(withVotingDefaults({ id: snap.id, ...snap.data() } as SmeltLog));
       } catch (err) {
         if (!cancelled) {
           console.error('[App] Deep link fetch failed:', err);
@@ -292,7 +299,11 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             anon_handle: completedAnalysis.anonHandle,
             timestamp: serverTimestamp(),
             uid: crypto.randomUUID(),
-            breach_count: 0
+            breach_count: 0,
+            escalation_count: 0,
+            sanction_count: 0,
+            sanctioned: false,
+            judged: false
           });
           if (writeRequestId !== activeRequestIdRef.current) return;
           setLoggedIncidentId(logRef.id);
@@ -513,26 +524,28 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             <div>
               <div className="mb-3">
                 <h2 className="text-hazard-amber font-mono text-xs md:text-sm uppercase tracking-wide md:tracking-widest font-bold">
-                  RECENT INCIDENTS
+                  P0 INCIDENTS
                 </h2>
+                <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" />
               </div>
-              <div className="space-y-3">
+              <ul role="list" className="space-y-3">
                 {recentLogs.map((log) => (
-                  <IncidentLogCard
-                    key={log.id}
-                    log={log}
-                    onClick={() => setSelectedRecentLog(log)}
-                  />
+                  <li key={log.id}>
+                    <IncidentLogCard
+                      log={log}
+                      onClick={() => setSelectedRecentLog(log)}
+                    />
+                  </li>
                 ))}
                 {recentLogs.length === 0 && (
-                  <div className="modern-card p-12 text-center">
+                  <li className="modern-card p-12 text-center list-none">
                     <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
                     <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
                       Furnace idle. Awaiting condemned infrastructure.
                     </p>
-                  </div>
+                  </li>
                 )}
-              </div>
+              </ul>
             </div>
           </div>
 

@@ -19,7 +19,7 @@ This document records intentional changes made during development that diverge f
 |------|---------|--------|
 | Gemini 1.5 Flash Vision API | `gemini-3.1-flash-lite-preview` | Lighter model — stable production. |
 | Gemini extracts 5 dominant hex colors | Gemini returns `dominant_hex_colors`; app sanitizes, deduplicates, and pads to 5 via `getFiveDistinctColors` | Canvas-based programmatic extraction was removed. Color data stays in the single Gemini response to avoid a second pass over image data. |
-| Simple damage report + bounding box | Enriched 16-field structured response | Fields: legacy_infra_class, diagnosis, dominant_hex_colors, chromatic_profile, system_dx, severity, primary_contamination, contributing_factor, failure_origin, disposition, incident_feed_summary, archive_note, og_headline, share_quote, anon_handle, subject_box. Current prompt and schema in `src/services/geminiService.ts` and `docs/ai-prompt.md`. |
+| Simple damage report + bounding box | Enriched 16-field structured response | Fields: legacy_infra_class, diagnosis, dominant_hex_colors, chromatic_profile, system_dx, severity, primary_contamination, contributing_factor, failure_origin, disposition, incident_feed_summary, archive_note, og_headline, share_quote, anon_handle, subject_box. Current prompt and schema in `src/services/geminiService.ts` and `docs/classification-prompt.md`. |
 
 ---
 
