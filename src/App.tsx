@@ -70,6 +70,9 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
 
     // Pull the full archive so P0 ranking is truly global.
     // Impact = (5×sanctions)+(3×escalations)+(2×breaches) can't be queried server-side.
+    // SCALING: subscribes to the full collection for truly global P0 ranking.
+    // At scale, replace with a precomputed impact_score field maintained by a
+    // Cloud Function, then query orderBy('impact_score').limit(3).
     const logsQuery = query(
       collection(db, 'incident_logs'),
       orderBy('timestamp', 'desc')

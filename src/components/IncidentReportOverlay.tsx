@@ -33,7 +33,7 @@ interface NormalisedReport {
   breachCount: number;
   escalationCount: number;
   sanctioned: boolean;
-  sanctionedRationale: string | null;
+  sanctionRationale: string | null;
   timestamp: Date | null;
 }
 
@@ -118,7 +118,7 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       breachCount: 0,
       escalationCount: 0,
       sanctioned: false,
-      sanctionedRationale: null,
+      sanctionRationale: null,
       timestamp: null,
     };
   }
@@ -141,7 +141,7 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       breachCount: n.breach_count,
       escalationCount: n.escalation_count,
       sanctioned: n.sanctioned,
-      sanctionedRationale: n.sanction_rationale ?? null,
+      sanctionRationale: n.sanction_rationale ?? null,
       timestamp: n.timestamp?.toDate?.() ?? null,
     };
   }
@@ -547,14 +547,14 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </div>
 
             {/* Sanction rationale */}
-            {liveSanctionCount > 0 && report.sanctionedRationale && (
+            {liveSanctionCount > 0 && report.sanctionRationale && (
               <div className="border-t border-concrete-border pt-4">
                 <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
                   <ShieldCheck size={11} className="text-hazard-amber" aria-hidden="true" />
                   SANCTIONED — RATIONALE
                 </h3>
                 <p className="text-hazard-amber/90 font-mono text-sm leading-relaxed italic">
-                  {report.sanctionedRationale}
+                  {report.sanctionRationale}
                 </p>
               </div>
             )}

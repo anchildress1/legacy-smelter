@@ -36,6 +36,8 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     return () => { unsubStats(); };
   }, []);
 
+  // SCALING: subscribes to the full collection for client-side impact sorting.
+  // At scale, replace with a precomputed impact_score field and cursor-based pagination.
   useEffect(() => {
     const logsRef = collection(db, 'incident_logs');
     const q = query(logsRef, orderBy('timestamp', 'desc'));
