@@ -11,31 +11,16 @@
  */
 
 import 'dotenv/config';
-import { initializeApp, cert, type ServiceAccount } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { db } from './lib/admin-init';
 
-const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
-const DATABASE_ID = process.env.FIREBASE_FIRESTORE_DATABASE_ID || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
-
-if (!PROJECT_ID) throw new Error('Missing FIREBASE_PROJECT_ID');
-if (!DATABASE_ID) throw new Error('Missing FIREBASE_FIRESTORE_DATABASE_ID');
-
-function getServiceAccountCredential(): ServiceAccount | undefined {
-  const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (json) return JSON.parse(json) as ServiceAccount;
-  return undefined;
-}
-
-const credential = getServiceAccountCredential();
-initializeApp(credential ? { credential: cert(credential), projectId: PROJECT_ID } : { projectId: PROJECT_ID });
-
-const db = getFirestore(DATABASE_ID);
+const BATCH_LIMIT = 500;
 
 async function run(): Promise<void> {
   const allDocs = await db.collection('incident_logs').get();
   let backfilled = 0;
+  let batch = db.batch();
+  let batchSize = 0;
 
-  const batch = db.batch();
   for (const doc of allDocs.docs) {
     const data = doc.data();
     const updates: Record<string, unknown> = {};
@@ -46,11 +31,22 @@ async function run(): Promise<void> {
     if (Object.keys(updates).length > 0) {
       batch.update(doc.ref, updates);
       backfilled++;
+      batchSize++;
+
+      if (batchSize >= BATCH_LIMIT) {
+        await batch.commit();
+        console.log(`[backfill-judged] Committed batch of ${batchSize}`);
+        batch = db.batch();
+        batchSize = 0;
+      }
     }
   }
 
-  if (backfilled > 0) {
+  if (batchSize > 0) {
     await batch.commit();
+  }
+
+  if (backfilled > 0) {
     console.log(`[backfill-judged] Backfilled ${backfilled} document(s).`);
   } else {
     console.log('[backfill-judged] All documents already have judged + escalation_count. No changes.');

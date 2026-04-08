@@ -11,41 +11,20 @@
  */
 
 import 'dotenv/config';
-import { initializeApp, cert, type ServiceAccount } from 'firebase-admin/app';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import { GoogleGenAI } from '@google/genai';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { db } from './lib/admin-init';
 
 // ── Config ──────────────────────────────────────────────────────────────
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
-const DATABASE_ID = process.env.FIREBASE_FIRESTORE_DATABASE_ID || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
 const MIN_BATCH = 5;
 const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 
 if (!GEMINI_API_KEY) throw new Error('Missing GEMINI_API_KEY');
-if (!PROJECT_ID) throw new Error('Missing FIREBASE_PROJECT_ID');
-if (!DATABASE_ID) throw new Error('Missing FIREBASE_FIRESTORE_DATABASE_ID');
-
-// ── Firebase Admin init ─────────────────────────────────────────────────
-
-function getServiceAccountCredential(): ServiceAccount | undefined {
-  const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (json) return JSON.parse(json) as ServiceAccount;
-
-  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (credPath) return JSON.parse(readFileSync(credPath, 'utf-8')) as ServiceAccount;
-
-  return undefined;
-}
-
-const credential = getServiceAccountCredential();
-initializeApp(credential ? { credential: cert(credential), projectId: PROJECT_ID } : { projectId: PROJECT_ID });
-
-const db = getFirestore(DATABASE_ID);
 
 // ── Load judging prompt from docs ───────────────────────────────────────
 
