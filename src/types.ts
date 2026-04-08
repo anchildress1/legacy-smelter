@@ -41,7 +41,7 @@ export interface GlobalStats {
   total_pixels_melted: number;
 }
 
-/** Impact = (3 × escalations) + (1 × containment breaches) */
+/** Impact = (3 × escalations) + (1 × containment breaches), clamped to 0 */
 export function computeImpact(escalationCount: number, breachCount: number): number {
-  return (3 * escalationCount) + breachCount;
+  return Math.max(0, (3 * escalationCount) + breachCount);
 }
