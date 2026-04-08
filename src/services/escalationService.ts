@@ -1,4 +1,4 @@
-import { doc, writeBatch, increment, getDoc } from '../firebase';
+import { doc, runTransaction, increment, getDoc } from '../firebase';
 import { db, ensureAnonymousAuth } from '../firebase';
 import { getAuth } from 'firebase/auth';
 
@@ -9,7 +9,8 @@ function getEscalatedSet(): Set<string> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch {
+  } catch (err) {
+    console.warn('[escalationService] Failed to parse localStorage escalations:', err);
     return new Set();
   }
 }
@@ -24,11 +25,10 @@ export function hasEscalated(incidentId: string): boolean {
 
 /**
  * Toggles the current user's escalation on an incident.
- * Uses a batch write to atomically update the subcollection doc
- * and the parent doc's escalation_count.
- *
- * If the batch fails (e.g. localStorage drifted from Firestore),
- * re-syncs with Firestore and returns the corrected state.
+ * Uses a Firestore transaction to read the escalation subcollection doc
+ * before deciding whether to create or delete — this eliminates drift
+ * between localStorage and Firestore that caused silent batch failures
+ * when batch.set hit a missing `update` rule on an existing doc.
  *
  * Returns the new escalation state (true = escalated, false = de-escalated).
  */
@@ -43,33 +43,32 @@ export async function toggleEscalation(incidentId: string): Promise<boolean> {
 
     const incidentRef = doc(db, 'incident_logs', incidentId);
     const escalationRef = doc(db, 'incident_logs', incidentId, 'escalations', uid);
-    const alreadyEscalated = hasEscalated(incidentId);
 
-    const batch = writeBatch(db);
+    const newState = await runTransaction(db, async (tx) => {
+      const escalationSnap = await tx.get(escalationRef);
 
-    if (alreadyEscalated) {
-      batch.delete(escalationRef);
-      batch.update(incidentRef, { escalation_count: increment(-1) });
-    } else {
-      batch.set(escalationRef, { uid, timestamp: new Date() });
-      batch.update(incidentRef, { escalation_count: increment(1) });
-    }
-
-    await batch.commit();
+      if (escalationSnap.exists()) {
+        tx.delete(escalationRef);
+        tx.update(incidentRef, { escalation_count: increment(-1) });
+        return false;
+      } else {
+        tx.set(escalationRef, { uid, timestamp: new Date() });
+        tx.update(incidentRef, { escalation_count: increment(1) });
+        return true;
+      }
+    });
 
     const set = getEscalatedSet();
-    if (alreadyEscalated) {
-      set.delete(incidentId);
-    } else {
+    if (newState) {
       set.add(incidentId);
+    } else {
+      set.delete(incidentId);
     }
     persistEscalatedSet(set);
 
-    return !alreadyEscalated;
+    return newState;
   } catch (err) {
     console.error('[escalationService] Toggle failed, re-syncing:', err);
-    // Batch failed — localStorage likely drifted from Firestore.
-    // Re-sync to get the authoritative state.
     return syncEscalationState(incidentId);
   } finally {
     inFlightEscalations.delete(incidentId);
@@ -98,7 +97,8 @@ export async function syncEscalationState(incidentId: string): Promise<boolean> 
     }
     persistEscalatedSet(set);
     return exists;
-  } catch {
+  } catch (err) {
+    console.error('[escalationService] syncEscalationState failed for', incidentId, err);
     return hasEscalated(incidentId);
   }
 }
