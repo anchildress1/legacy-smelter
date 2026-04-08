@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, onSnapshot, query, orderBy, limit, startAfter, getDocs, doc, getDoc, setDoc, updateDoc, deleteDoc, increment, serverTimestamp, writeBatch, type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, query, orderBy, limit, startAfter, getDocs, doc, getDoc, setDoc, updateDoc, deleteDoc, increment, serverTimestamp, writeBatch, runTransaction, type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 
 // Validate environment variables
@@ -59,6 +59,7 @@ export {
   increment,
   serverTimestamp,
   writeBatch,
+  runTransaction,
   type QueryDocumentSnapshot,
   type DocumentData,
 };
