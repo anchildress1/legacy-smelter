@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog, Severity, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
-import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
+import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren, Quote } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
 import { toggleEscalation, hasEscalated, syncEscalationState } from '../services/escalationService';
 import { db, doc, onSnapshot } from '../firebase';
@@ -20,12 +20,14 @@ interface NormalisedReport {
   legacyInfraClass: string;
   incidentFeedSummary: string;
   severity: Severity;
+  diagnosis: string;
   failureOrigin: string;
   primaryContamination: string;
   contributingFactor: string;
   systemDx: string;
   disposition: string;
   archiveNote: string;
+  shareQuote: string;
   anonHandle: string;
   chromaticProfile: string;
   dominantColors: string[];
@@ -63,12 +65,21 @@ function buildMarkdown(
     '',
     report.incidentFeedSummary,
     '',
+    `**Diagnosis:** ${report.diagnosis}`,
+  ];
+
+  if (report.shareQuote) {
+    lines.push('', `> ${report.shareQuote}`);
+  }
+
+  lines.push(
+    '',
     `**Severity:** ${report.severity}`,
     `**Impact:** ${impact}`,
     `**Sanctions:** ${liveSanctionCount}`,
     `**Escalations:** ${liveEscalationCount}`,
     `**Containment Breaches:** ${liveBreachCount}`,
-  ];
+  );
 
   if (report.timestamp) {
     lines.push(`**Filed:** ${formatTimestamp(report.timestamp)}`);
@@ -105,12 +116,14 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       legacyInfraClass: a.legacyInfraClass,
       incidentFeedSummary: a.incidentFeedSummary,
       severity: a.severity,
+      diagnosis: a.diagnosis,
       failureOrigin: a.failureOrigin,
       primaryContamination: a.primaryContamination,
       contributingFactor: a.contributingFactor,
       systemDx: a.systemDx,
       disposition: a.disposition,
       archiveNote: a.archiveNote,
+      shareQuote: a.shareQuote,
       anonHandle: a.anonHandle,
       chromaticProfile: a.chromaticProfile,
       dominantColors: a.dominantColors,
@@ -128,12 +141,14 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       legacyInfraClass: n.legacy_infra_class,
       incidentFeedSummary: n.incident_feed_summary,
       severity: n.severity,
+      diagnosis: n.diagnosis,
       failureOrigin: n.failure_origin,
       primaryContamination: n.primary_contamination,
       contributingFactor: n.contributing_factor,
       systemDx: n.system_dx,
       disposition: n.disposition,
       archiveNote: n.archive_note,
+      shareQuote: n.share_quote,
       anonHandle: n.anon_handle,
       chromaticProfile: n.chromatic_profile,
       dominantColors: getFiveDistinctColors([n.color_1, n.color_2, n.color_3, n.color_4, n.color_5]),
@@ -349,7 +364,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       {/* Card — full-screen on mobile, constrained modal on desktop */}
       <div
         ref={panelRef}
-        className="bg-concrete-light w-full sm:max-w-3xl lg:max-w-4xl sm:rounded-xl border-t sm:border border-concrete-border shadow-2xl max-h-[100dvh] sm:max-h-[85vh] overflow-y-auto sm:overflow-hidden sm:flex outline-none"
+        className="bg-concrete-light w-full sm:max-w-3xl lg:max-w-4xl sm:rounded-xl border-t sm:border border-concrete-border shadow-2xl h-[100dvh] sm:max-h-[85vh] overflow-hidden flex sm:flex-row flex-col outline-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
@@ -367,17 +382,23 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
           ))}
         </div>
 
-        {/* Content — fixed header zone + scrollable details on desktop */}
-        <div className="sm:flex-1 sm:min-w-0 sm:flex sm:flex-col sm:overflow-hidden">
+        {/* Content column — sticky top bar + scrollable body */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
           {/* Hazard stripe */}
           <div className="hazard-stripe h-1.5 w-full shrink-0" />
 
           {/* ── TOP ACTION BAR: label + share icons + close ── */}
-          <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-concrete-border">
-            <h2 id={headingId} className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
-              INCIDENT POSTMORTEM
-            </h2>
-            <div className="flex items-center gap-1.5">
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-3 py-3 border-b border-concrete-border">
+            <div className="flex items-center gap-2.5">
+              <h2 id={headingId} className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
+                INCIDENT POSTMORTEM
+              </h2>
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold">
+                <AlertTriangle size={9} aria-hidden="true" />
+                {report.severity}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
               {platforms.map(({ label, href }) => {
                 const cfg = SHARE_PLATFORMS[label];
                 return (
@@ -398,7 +419,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               {incidentUrl && (
                 <button
                   onClick={handleCopyLink}
-                  className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
+                  className="w-8 h-8 inline-flex items-center justify-center rounded-md border border-concrete-border bg-concrete-mid text-stone-gray transition-colors hover:text-ash-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
                   aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
                   title={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
                 >
@@ -409,9 +430,9 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               )}
               <button
                 onClick={handleCopyText}
-                className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
-                aria-label={copyTextState === 'copied' ? 'Text copied' : 'Copy text'}
-                title={copyTextState === 'copied' ? 'Text copied' : 'Copy text'}
+                className="w-8 h-8 inline-flex items-center justify-center rounded-md border border-concrete-border bg-concrete-mid text-stone-gray transition-colors hover:text-ash-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
+                aria-label={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
+                title={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
               >
                 {copyTextState === 'copied'
                   ? <Check size={12} aria-hidden="true" />
@@ -427,84 +448,108 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </div>
           </div>
 
-          {/* ── NON-SCROLLING HEADER ZONE ── */}
-          <div className="shrink-0 p-5 sm:p-6">
-            <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-bold leading-tight">
-              {report.legacyInfraClass}
-            </p>
-            <p className="text-ash-white font-mono text-sm sm:text-base leading-snug mt-1.5">
-              {report.incidentFeedSummary}
-            </p>
-            <div className="flex items-center gap-3 mt-2.5 flex-wrap">
-              {liveSanctionCount > 0 && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-950 bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold">
-                  <ShieldCheck size={11} aria-hidden="true" />
-                  SANCTIONED
-                </span>
-              )}
-              <span
-                className="inline-flex items-center gap-1.5 text-xs font-mono text-concrete-light bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold"
-              >
-                <AlertTriangle size={10} aria-hidden="true" />
-                {report.severity}
-              </span>
-              {report.timestamp && (
-                <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest ml-auto">
-                  {formatTimestamp(report.timestamp)}
-                </span>
-              )}
-            </div>
-            {/* Scores: ordered by point weight (impact, sanctions, escalations, breaches) */}
-            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-concrete-border">
-              <div className="text-center">
-                <div className="text-hazard-amber font-mono text-lg font-black leading-none">
-                  {computeImpact(liveSanctionCount, liveEscalationCount, liveBreachCount)}
+          {/* ── SCROLLABLE CONTENT ── */}
+          <div className="flex-1 overflow-y-auto p-5 sm:p-6">
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
+              <div className="space-y-3">
+                <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-bold leading-tight">
+                  {report.legacyInfraClass}
+                </p>
+                <p className="text-ash-white font-mono text-sm sm:text-base leading-snug">
+                  {report.incidentFeedSummary}
+                </p>
+                {report.shareQuote && (
+                  <div className="flex items-start gap-3 border-l-2 border-hazard-amber/70 pl-4">
+                    <Quote size={16} className="mt-0.5 shrink-0 text-hazard-amber" aria-hidden="true" />
+                    <p className="text-base font-mono italic leading-snug text-hazard-amber">
+                      "{report.shareQuote}"
+                    </p>
+                  </div>
+                )}
+                {liveSanctionCount > 0 && (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-950 bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold">
+                    <ShieldCheck size={11} aria-hidden="true" />
+                    Sanctioned
+                  </span>
+                )}
+              </div>
+
+              {/* Right column: scores + escalate */}
+              <div className="border-t border-concrete-border pt-4 lg:border-t-0 lg:border-l lg:pl-5 lg:pt-0">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-hazard-amber font-mono text-2xl font-black leading-none">
+                      {computeImpact(liveSanctionCount, liveEscalationCount, liveBreachCount)}
+                    </div>
+                    <div className="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-stone-gray">Impact</div>
+                  </div>
+                  <div>
+                    <div className="text-hazard-amber font-mono text-2xl font-black leading-none">{liveSanctionCount}</div>
+                    <div className="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-stone-gray">Sanctions</div>
+                  </div>
+                  <div>
+                    <div className="text-hazard-amber font-mono text-2xl font-black leading-none">{liveEscalationCount}</div>
+                    <div className="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-stone-gray">Escalations</div>
+                  </div>
+                  <div>
+                    <div className="text-hazard-amber font-mono text-2xl font-black leading-none">{liveBreachCount}</div>
+                    <div className="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-stone-gray">Breaches</div>
+                  </div>
                 </div>
-                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">IMPACT</div>
-              </div>
-              <div className="w-px h-8 bg-concrete-border" />
-              <div className="text-center">
-                <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveSanctionCount}</div>
-                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">SANCTIONS</div>
-              </div>
-              <div className="w-px h-8 bg-concrete-border" />
-              <div className="text-center">
-                <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveEscalationCount}</div>
-                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">ESCALATIONS</div>
-              </div>
-              <div className="w-px h-8 bg-concrete-border" />
-              <div className="text-center">
-                <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveBreachCount}</div>
-                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">BREACHES</div>
-              </div>
-              {incidentId && (
-                <>
-                  <div className="w-px h-8 bg-concrete-border ml-auto" />
+
+                {incidentId && (
                   <button
                     onClick={handleEscalate}
                     disabled={isTogglingEscalation}
-                    className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                    className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
                       escalated
-                        ? 'text-hazard-amber bg-hazard-amber/15'
-                        : 'text-dead-gray hover:text-stone-gray hover:bg-concrete-mid/50'
+                        ? 'border-hazard-amber/35 bg-hazard-amber/15 text-hazard-amber'
+                        : 'border-concrete-border bg-concrete text-stone-gray hover:text-ash-white'
                     } ${isTogglingEscalation ? 'opacity-50' : ''}`}
                     aria-label={escalated ? 'Remove escalation' : 'Escalate'}
                     title={escalated ? 'De-escalate' : 'Escalate'}
                   >
-                    <Siren size={20} />
-                    <span className="text-stone-gray font-mono text-[9px] uppercase tracking-widest">ESCALATE</span>
+                    <Siren size={18} aria-hidden="true" />
+                    {escalated ? 'Escalation Armed' : 'Escalate Incident'}
                   </button>
-                </>
-              )}
+                )}
+              </div>
             </div>
-          </div>
 
-          {/* ── SCROLLABLE TELEMETRY ZONE ── */}
-          <div className="sm:flex-1 sm:overflow-y-auto border-t border-concrete-border px-5 sm:px-6 pb-6 space-y-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset" tabIndex={0} role="region" aria-label="Incident details">
+          {/* ── TELEMETRY ── */}
+          <div className="border-t border-concrete-border mt-6 pt-4 space-y-4">
+            <div className="pt-4 grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(220px,0.65fr)]">
+              <section>
+                <p className="text-stone-gray uppercase text-xs tracking-widest font-mono">Recommended Action</p>
+                <p className="mt-2 text-ash-white text-base font-mono leading-relaxed">
+                  {report.disposition}
+                </p>
+              </section>
+
+              <section className="border-t border-concrete-border pt-4 lg:border-t-0 lg:border-l lg:pl-5 lg:pt-0">
+                <p className="text-stone-gray uppercase text-xs tracking-widest font-mono">Case Notes</p>
+                <dl className="mt-3 space-y-3 font-mono">
+                  <div>
+                    <dt className="text-[10px] uppercase tracking-[0.18em] text-stone-gray">Filed By</dt>
+                    <dd className="mt-1 text-hazard-amber text-base">{report.anonHandle}</dd>
+                  </div>
+                  {report.timestamp && (
+                    <div>
+                      <dt className="text-[10px] uppercase tracking-[0.18em] text-stone-gray">Filed</dt>
+                      <dd className="mt-1 text-ash-white text-sm">{formatTimestamp(report.timestamp)}</dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt className="text-[10px] uppercase tracking-[0.18em] text-stone-gray">Chromatic Profile</dt>
+                    <dd className="mt-1 text-ash-white text-sm">{report.chromaticProfile}</dd>
+                  </div>
+                </dl>
+              </section>
+            </div>
 
             {/* Telemetry fields */}
             {(report.failureOrigin || report.primaryContamination || report.contributingFactor || report.systemDx) && (
-              <div className="pt-4">
+              <div>
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 font-mono">
                   {report.failureOrigin && (
                     <div>
@@ -534,15 +579,9 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               </div>
             )}
 
-            {/* Disposition */}
-            <div className="border-t border-concrete-border pt-4">
-              <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5">DISPOSITION</h3>
-              <p className="text-ash-white font-mono text-sm">{report.disposition}</p>
-            </div>
-
             {/* Archive Note */}
             <div className="border-t border-concrete-border pt-4">
-              <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5">ARCHIVE NOTE</h3>
+              <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5">Archive Note</h3>
               <p className="text-ash-white font-mono text-sm leading-relaxed">{report.archiveNote}</p>
             </div>
 
@@ -558,19 +597,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 </p>
               </div>
             )}
-
-            {/* Filed by + Chromatic Profile */}
-            <div className="border-t border-concrete-border pt-4 flex justify-between items-start">
-              <div>
-                <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">INCIDENT FILED BY</span>
-                <p className="text-hazard-amber font-mono text-sm font-bold mt-0.5">{report.anonHandle}</p>
-              </div>
-              <div className="text-right">
-                <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">CHROMATIC PROFILE</span>
-                <p className="text-stone-gray font-mono text-xs mt-0.5">{report.chromaticProfile}</p>
-              </div>
-            </div>
-
+          </div>
           </div>
         </div>
       </div>

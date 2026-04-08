@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
-import { Siren, AlertTriangle } from 'lucide-react';
+import { Siren, AlertTriangle, Quote } from 'lucide-react';
 import { toggleEscalation, hasEscalated, syncEscalationState } from '../services/escalationService';
 
 interface IncidentLogCardProps {
@@ -69,19 +69,23 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
             {log.severity}
           </span>
         </div>
-        <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-3">
+        <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-2">
           {log.incident_feed_summary}
         </p>
-        <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+        {log.share_quote && (
+          <div className="mt-2 flex items-start gap-2 border-l-2 border-hazard-amber/40 pl-2.5">
+            <Quote size={12} className="mt-0.5 shrink-0 text-hazard-amber/70" aria-hidden="true" />
+            <p className="text-xs font-mono italic leading-snug text-hazard-amber/90 line-clamp-2">
+              "{log.share_quote}"
+            </p>
+          </div>
+        )}
+        <div className="mt-2 flex items-center gap-x-3 gap-y-1 flex-wrap font-mono text-[10px] uppercase tracking-wider">
           {log.sanction_count > 0 && (
-            <span className="font-mono text-[10px] uppercase tracking-wider font-bold text-hazard-amber">
-              SANCTIONED
-            </span>
+            <span className="font-bold text-hazard-amber">Sanctioned</span>
           )}
-          <span className="font-mono text-[10px] uppercase tracking-wider font-bold text-hazard-amber">
-            IMPACT {impact}
-          </span>
-          <span className="text-stone-gray font-mono text-xs ml-auto">
+          <span className="text-stone-gray">Impact {impact}</span>
+          <span className="text-stone-gray text-xs ml-auto">
             {log.timestamp?.toDate ? formatTimestamp(log.timestamp.toDate()) : '—'}
           </span>
         </div>

@@ -393,7 +393,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
               <div className="hazard-stripe w-2 h-10 rounded-sm shrink-0" aria-hidden="true" />
             </div>
             <button onClick={onNavigateManifest} className="nav-btn">
-              INCIDENT MANIFEST
+              ALL INCIDENTS
               <ArrowRight size={14} />
             </button>
           </div>
@@ -409,22 +409,32 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
 
           {/* Left Column: Smelter Area */}
-          <div className="md:col-span-7 space-y-4">
+          <div className="md:col-span-5 space-y-4">
             {/* Controls */}
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="modern-button flex-1 flex items-center justify-center gap-2"
+                className="modern-button flex-1 flex items-center justify-center gap-3 px-5 py-4"
               >
                 <Upload size={18} />
-                PROCESS ARTIFACT
+                <span className="text-left">
+                  <span className="block text-sm font-black uppercase tracking-[0.16em]">Upload Image</span>
+                  <span className="block text-[10px] font-mono uppercase tracking-[0.18em] text-zinc-900/70">
+                    Process artifact
+                  </span>
+                </span>
               </button>
               <button
                 onClick={startCamera}
-                className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-concrete-border hover:brightness-110"
+                className="modern-button flex-1 flex items-center justify-center gap-3 bg-concrete-mid px-5 py-4 text-ash-white border border-concrete-border hover:brightness-110"
               >
                 <Camera size={18} />
-                DEPLOY SCANNER
+                <span className="text-left">
+                  <span className="block text-sm font-black uppercase tracking-[0.16em]">Open Camera</span>
+                  <span className="block text-[10px] font-mono uppercase tracking-[0.18em] text-stone-gray">
+                    Deploy scanner
+                  </span>
+                </span>
               </button>
             </div>
 
@@ -519,8 +529,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             )}
           </div>
 
-          {/* Right Column: Recent Incidents */}
-          <div className="md:col-span-5">
+          {/* Right Column: Incident Queue */}
+          <div className="md:col-span-7">
             <div>
               <div className="mb-3">
                 <h2 className="text-hazard-amber font-mono text-xs md:text-sm uppercase tracking-wide md:tracking-widest font-bold">

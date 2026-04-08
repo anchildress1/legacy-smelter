@@ -15,6 +15,8 @@ import { IncidentReportOverlay } from './IncidentReportOverlay';
 import { Flame, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 const PAGE_SIZE = 20;
+type ManifestFilter = 'all' | 'needs_ruling' | 'escalated' | 'sanctioned';
+type ManifestSort = 'impact' | 'newest' | 'breaches' | 'escalations';
 
 interface IncidentManifestProps {
   onNavigateHome: () => void;
@@ -25,6 +27,8 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   const [globalStats, setGlobalStats] = useState<GlobalStats>({ total_pixels_melted: 0 });
   const [selectedLog, setSelectedLog] = useState<SmeltLog | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
+  const [filterMode, setFilterMode] = useState<ManifestFilter>('all');
+  const [sortMode, setSortMode] = useState<ManifestSort>('impact');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,13 +66,48 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     return () => { unsubLogs(); };
   }, []);
 
-  const sortedLogs = useMemo(() =>
-    [...allLogs].sort((a, b) =>
-      computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
-      - computeImpact(a.sanction_count, a.escalation_count, a.breach_count)
-    ),
-    [allLogs]
-  );
+  const manifestCounts = useMemo(() => ({
+    all: allLogs.length,
+    needs_ruling: allLogs.filter((log) => !log.judged).length,
+    escalated: allLogs.filter((log) => log.escalation_count > 0).length,
+    sanctioned: allLogs.filter((log) => log.sanctioned || log.sanction_count > 0).length,
+  }), [allLogs]);
+
+  const sortedLogs = useMemo(() => {
+    const filtered = allLogs.filter((log) => {
+      switch (filterMode) {
+        case 'needs_ruling':
+          return !log.judged;
+        case 'escalated':
+          return log.escalation_count > 0;
+        case 'sanctioned':
+          return log.sanctioned || log.sanction_count > 0;
+        default:
+          return true;
+      }
+    });
+
+    return filtered.sort((a, b) => {
+      switch (sortMode) {
+        case 'newest':
+          return (b.timestamp?.toMillis?.() ?? 0) - (a.timestamp?.toMillis?.() ?? 0);
+        case 'breaches':
+          return b.breach_count - a.breach_count || computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
+            - computeImpact(a.sanction_count, a.escalation_count, a.breach_count);
+        case 'escalations':
+          return b.escalation_count - a.escalation_count || computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
+            - computeImpact(a.sanction_count, a.escalation_count, a.breach_count);
+        case 'impact':
+        default:
+          return computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
+            - computeImpact(a.sanction_count, a.escalation_count, a.breach_count);
+      }
+    });
+  }, [allLogs, filterMode, sortMode]);
+
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [filterMode, sortMode]);
 
   const totalPages = Math.max(1, Math.ceil(sortedLogs.length / PAGE_SIZE));
   // Clamp page if the dataset shrinks (e.g. docs deleted) while user is on a later page
@@ -124,6 +163,56 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           </h1>
           <div className="hazard-stripe h-1 w-full mt-4 rounded-sm" />
         </div>
+
+        <div className="mb-6 grid gap-4 rounded-xl border border-concrete-border bg-concrete-light/70 p-4 md:grid-cols-[minmax(0,1fr)_220px]">
+          <div>
+            <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.2em]">Filter</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {([
+                ['all', 'All Incidents'],
+                ['needs_ruling', 'Needs Ruling'],
+                ['escalated', 'Escalated'],
+                ['sanctioned', 'Sanctioned'],
+              ] as [ManifestFilter, string][]).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setFilterMode(value)}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
+                    filterMode === value
+                      ? 'border-hazard-amber/40 bg-hazard-amber/10 text-hazard-amber'
+                      : 'border-concrete-border bg-concrete-mid text-stone-gray hover:text-ash-white'
+                  }`}
+                >
+                  <span>{label}</span>
+                  <span className="text-[9px] text-stone-gray">{manifestCounts[value]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="block">
+            <span className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.2em]">Sort</span>
+            <select
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as ManifestSort)}
+              className="mt-2 w-full rounded-lg border border-concrete-border bg-concrete-mid px-3 py-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ash-white focus:border-hazard-amber focus:outline-none"
+            >
+              <option value="impact">Highest Impact</option>
+              <option value="newest">Newest First</option>
+              <option value="breaches">Most Breaches</option>
+              <option value="escalations">Most Escalations</option>
+            </select>
+          </label>
+        </div>
+
+        {!isLoading && !error && (
+          <p className="mb-4 text-[10px] font-mono uppercase tracking-[0.2em] text-stone-gray">
+            Displaying {sortedLogs.length} incident{sortedLogs.length === 1 ? '' : 's'} under{' '}
+            {filterMode === 'all' ? 'all incidents' : filterMode.replace('_', ' ')} sorted by{' '}
+            {sortMode === 'impact' ? 'highest impact' : sortMode.replace('_', ' ')}.
+          </p>
+        )}
 
         {/* Log entries */}
         <ul role="list" className="space-y-3 min-h-[200px]">
