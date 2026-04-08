@@ -63,10 +63,12 @@ service cloud.firestore {
       allow create: if isValidIncidentLog(request.resource.data);
       // NOTE: Firestore rules cannot query subcollection existence, so the
       // one-vote-per-user constraint for escalation_count is enforced via:
-      //   1. The escalations/{uid} subcollection (create-only per UID) — blocks duplicate votes
-      //   2. Client-side batch writes (subcollection + count update) — atomic commitment
-      // A malicious client bypassing the SDK could increment escalation_count directly,
-      // but the subcollection write would still fail on duplicate. Acceptable for this app.
+      //   1. The escalations/{uid} subcollection (create/delete only for that UID) — tracks one vote per user
+      //   2. A client-side Firestore transaction that creates/deletes the subcollection doc
+      //      and increments/decrements escalation_count atomically
+      // A malicious client bypassing that transaction could still attempt to update
+      // escalation_count directly, so integrity relies on clients following this protocol.
+      // Acceptable for this app.
       allow update: if request.auth != null &&
                        (
                          // Allow incrementing breach_count by 1
@@ -85,8 +87,11 @@ service cloud.firestore {
 
       // Per-user escalation tracking: one doc per user per incident
       match /escalations/{escId} {
-        allow read: if true;
-        allow create: if request.auth != null && escId == request.auth.uid;
+        allow read: if request.auth != null && escId == request.auth.uid;
+        allow create: if request.auth != null && escId == request.auth.uid &&
+                         request.resource.data.keys().hasOnly(['uid', 'timestamp']) &&
+                         request.resource.data.uid is string &&
+                         request.resource.data.timestamp is timestamp;
         allow delete: if request.auth != null && escId == request.auth.uid;
       }
     }

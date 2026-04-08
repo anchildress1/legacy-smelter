@@ -1,5 +1,4 @@
-import { doc, updateDoc, increment } from '../firebase';
-import { db, ensureAnonymousAuth } from '../firebase';
+import { db, ensureAnonymousAuth, doc, updateDoc, increment } from '../firebase';
 
 const COOLDOWN_MS = 7_000;
 const STORAGE_KEY = 'breach_cooldowns';
