@@ -1,4 +1,4 @@
-import { doc, runTransaction, increment, getDoc } from '../firebase';
+import { doc, runTransaction, increment, getDoc, serverTimestamp } from '../firebase';
 import { db, ensureAnonymousAuth } from '../firebase';
 import { getAuth } from 'firebase/auth';
 
@@ -52,7 +52,7 @@ export async function toggleEscalation(incidentId: string): Promise<boolean> {
         tx.update(incidentRef, { escalation_count: increment(-1) });
         return false;
       } else {
-        tx.set(escalationRef, { uid, timestamp: new Date() });
+        tx.set(escalationRef, { uid, timestamp: serverTimestamp() });
         tx.update(incidentRef, { escalation_count: increment(1) });
         return true;
       }
