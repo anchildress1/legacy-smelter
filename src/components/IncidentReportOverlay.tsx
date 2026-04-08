@@ -359,245 +359,207 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     <div
       ref={overlayRef}
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6"
+      className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
     >
-      {/* Card — full-screen on mobile, constrained modal on desktop */}
       <div
         ref={panelRef}
-        className="bg-concrete-light w-full sm:max-w-3xl lg:max-w-4xl sm:rounded-xl border-t sm:border border-concrete-border shadow-2xl h-[100dvh] sm:max-h-[85vh] overflow-hidden flex sm:flex-row flex-col outline-none"
+        className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-col outline-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
         tabIndex={-1}
       >
-        {/* Color palette strip — left on desktop, top on mobile */}
-        <div className="hidden sm:flex w-2 shrink-0 flex-col rounded-l-xl overflow-hidden" aria-hidden="true">
-          {report.dominantColors.map((color, i) => (
-            <div key={i} className="flex-1" style={{ backgroundColor: color }} />
-          ))}
-        </div>
-        <div className="flex sm:hidden h-1.5 w-full shrink-0" aria-hidden="true">
+        {/* Color strip — top */}
+        <div className="flex h-1 w-full shrink-0" aria-hidden="true">
           {report.dominantColors.map((color, i) => (
             <div key={i} className="flex-1" style={{ backgroundColor: color }} />
           ))}
         </div>
 
-        {/* Content column — sticky top bar + scrollable body */}
-        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          {/* Hazard stripe */}
-          <div className="hazard-stripe h-1.5 w-full shrink-0" />
-
-          {/* ── TOP ACTION BAR: label + share icons + close ── */}
-          <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-3 py-3 border-b border-concrete-border">
-            <div className="flex items-center gap-2.5">
-              <h2 id={headingId} className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
-                INCIDENT POSTMORTEM
-              </h2>
-              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold">
-                <AlertTriangle size={9} aria-hidden="true" />
-                {report.severity}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-1.5">
-              {platforms.map(({ label, href }) => {
-                const cfg = SHARE_PLATFORMS[label];
-                return (
-                  <a
-                    key={label}
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={handleBreach}
-                    className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
-                    aria-label={`Post to ${cfg.name}`}
-                    title={`Post to ${cfg.name}`}
-                  >
-                    {cfg.icon}
-                  </a>
-                );
-              })}
-              {incidentUrl && (
-                <button
-                  onClick={handleCopyLink}
-                  className="w-8 h-8 inline-flex items-center justify-center rounded-md border border-concrete-border bg-concrete-mid text-stone-gray transition-colors hover:text-ash-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
-                  aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
-                  title={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
-                >
-                  {copyLinkState === 'copied'
-                    ? <Check size={12} aria-hidden="true" />
-                    : <Link2 size={12} aria-hidden="true" />}
-                </button>
-              )}
-              <button
-                onClick={handleCopyText}
-                className="w-8 h-8 inline-flex items-center justify-center rounded-md border border-concrete-border bg-concrete-mid text-stone-gray transition-colors hover:text-ash-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
-                aria-label={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
-                title={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
-              >
-                {copyTextState === 'copied'
-                  ? <Check size={12} aria-hidden="true" />
-                  : <Copy size={12} aria-hidden="true" />}
-              </button>
-              <button
-                onClick={onClose}
-                className="w-7 h-7 flex items-center justify-center rounded-full bg-concrete-mid/80 text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
-                aria-label="Close report"
-              >
-                <X size={15} aria-hidden="true" />
-              </button>
-            </div>
+        {/* ── HEADER BAR ── */}
+        <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-2.5 border-b border-[#2a2a2a]">
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
+              Postmortem
+            </h2>
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold shrink-0">
+              <AlertTriangle size={8} aria-hidden="true" />
+              {report.severity}
+            </span>
           </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {platforms.map(({ label, href }) => {
+              const cfg = SHARE_PLATFORMS[label];
+              return (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={handleBreach}
+                  className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                  aria-label={`Post to ${cfg.name}`}
+                  title={cfg.name}
+                >
+                  {cfg.icon}
+                </a>
+              );
+            })}
+            {incidentUrl && (
+              <button
+                onClick={handleCopyLink}
+                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
+                title={copyLinkState === 'copied' ? 'Copied!' : 'Copy link'}
+              >
+                {copyLinkState === 'copied' ? <Check size={12} /> : <Link2 size={12} />}
+              </button>
+            )}
+            <button
+              onClick={handleCopyText}
+              className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+              aria-label={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
+              title={copyTextState === 'copied' ? 'Copied!' : 'Copy brief'}
+            >
+              {copyTextState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+            <div className="w-px h-4 bg-[#333] mx-0.5" aria-hidden="true" />
+            <button
+              onClick={onClose}
+              className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+              aria-label="Close report"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
 
-          {/* ── SCROLLABLE CONTENT ── */}
-          <div className="flex-1 overflow-y-auto p-5 sm:p-6">
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
-              <div className="space-y-3">
-                <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-bold leading-tight">
-                  {report.legacyInfraClass}
+        {/* ── SCROLLABLE BODY ── */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-5 sm:px-8 py-5 sm:py-6 space-y-5">
+
+            {/* Title */}
+            <div>
+              <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
+                {report.legacyInfraClass}
+              </p>
+              {liveSanctionCount > 0 && (
+                <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold">
+                  <ShieldCheck size={9} aria-hidden="true" />
+                  Sanctioned
+                </span>
+              )}
+            </div>
+
+            {/* Summary */}
+            <p className="text-ash-white font-mono text-sm leading-relaxed">
+              {report.incidentFeedSummary}
+            </p>
+
+            {/* Quote — the star */}
+            {report.shareQuote && (
+              <div className="border-l-2 border-hazard-amber pl-4 py-1">
+                <p className="text-hazard-amber font-mono text-base sm:text-lg italic leading-snug">
+                  "{report.shareQuote}"
                 </p>
-                <p className="text-ash-white font-mono text-sm sm:text-base leading-snug">
-                  {report.incidentFeedSummary}
-                </p>
-                {report.shareQuote && (
-                  <div className="flex items-start gap-3 border-l-2 border-hazard-amber/70 pl-4">
-                    <Quote size={16} className="mt-0.5 shrink-0 text-hazard-amber" aria-hidden="true" />
-                    <p className="text-base font-mono italic leading-snug text-hazard-amber">
-                      "{report.shareQuote}"
-                    </p>
-                  </div>
-                )}
-                {liveSanctionCount > 0 && (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-950 bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold">
-                    <ShieldCheck size={11} aria-hidden="true" />
-                    Sanctioned
-                  </span>
-                )}
               </div>
+            )}
 
-              {/* Right column: scores + escalate */}
-              <div className="border-t border-concrete-border pt-4 lg:border-t-0 lg:border-l lg:pl-5 lg:pt-0">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="text-hazard-amber font-mono text-2xl font-black leading-none">
-                      {computeImpact(liveSanctionCount, liveEscalationCount, liveBreachCount)}
-                    </div>
-                    <div className="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-stone-gray">Impact</div>
-                  </div>
-                  <div>
-                    <div className="text-hazard-amber font-mono text-2xl font-black leading-none">{liveSanctionCount}</div>
-                    <div className="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-stone-gray">Sanctions</div>
-                  </div>
-                  <div>
-                    <div className="text-hazard-amber font-mono text-2xl font-black leading-none">{liveEscalationCount}</div>
-                    <div className="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-stone-gray">Escalations</div>
-                  </div>
-                  <div>
-                    <div className="text-hazard-amber font-mono text-2xl font-black leading-none">{liveBreachCount}</div>
-                    <div className="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-stone-gray">Breaches</div>
-                  </div>
+            {/* Stats row */}
+            <div className="flex items-baseline justify-between py-3 border-y border-[#2a2a2a]">
+              {[
+                { value: computeImpact(liveSanctionCount, liveEscalationCount, liveBreachCount), label: 'Impact' },
+                { value: liveSanctionCount, label: 'Sanctions' },
+                { value: liveEscalationCount, label: 'Escalations' },
+                { value: liveBreachCount, label: 'Breaches' },
+              ].map(({ value, label }) => (
+                <div key={label} className="text-center">
+                  <div className="text-hazard-amber font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
+                  <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-stone-gray">{label}</div>
                 </div>
-
-                {incidentId && (
-                  <button
-                    onClick={handleEscalate}
-                    disabled={isTogglingEscalation}
-                    className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
-                      escalated
-                        ? 'border-hazard-amber/35 bg-hazard-amber/15 text-hazard-amber'
-                        : 'border-concrete-border bg-concrete text-stone-gray hover:text-ash-white'
-                    } ${isTogglingEscalation ? 'opacity-50' : ''}`}
-                    aria-label={escalated ? 'Remove escalation' : 'Escalate'}
-                    title={escalated ? 'De-escalate' : 'Escalate'}
-                  >
-                    <Siren size={18} aria-hidden="true" />
-                    {escalated ? 'Escalation Armed' : 'Escalate Incident'}
-                  </button>
-                )}
-              </div>
+              ))}
             </div>
 
-          {/* ── TELEMETRY ── */}
-          <div className="border-t border-concrete-border mt-6 pt-4 space-y-4">
-            <div className="pt-4 grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(220px,0.65fr)]">
-              <section>
-                <p className="text-stone-gray uppercase text-xs tracking-widest font-mono">Recommended Action</p>
-                <p className="mt-2 text-ash-white text-base font-mono leading-relaxed">
-                  {report.disposition}
-                </p>
-              </section>
+            {/* Escalate */}
+            {incidentId && (
+              <button
+                onClick={handleEscalate}
+                disabled={isTogglingEscalation}
+                className={`w-full flex items-center justify-center gap-2 rounded-md border py-2 font-mono text-[11px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                  escalated
+                    ? 'border-hazard-amber/30 bg-hazard-amber/10 text-hazard-amber'
+                    : 'border-[#333] text-stone-gray hover:text-ash-white hover:border-[#444]'
+                } ${isTogglingEscalation ? 'opacity-50' : ''}`}
+                aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+              >
+                <Siren size={16} aria-hidden="true" />
+                {escalated ? 'Escalation Armed' : 'Escalate Incident'}
+              </button>
+            )}
 
-              <section className="border-t border-concrete-border pt-4 lg:border-t-0 lg:border-l lg:pl-5 lg:pt-0">
-                <p className="text-stone-gray uppercase text-xs tracking-widest font-mono">Case Notes</p>
-                <dl className="mt-3 space-y-3 font-mono">
-                  <div>
-                    <dt className="text-[10px] uppercase tracking-[0.18em] text-stone-gray">Filed By</dt>
-                    <dd className="mt-1 text-hazard-amber text-base">{report.anonHandle}</dd>
-                  </div>
-                  {report.timestamp && (
-                    <div>
-                      <dt className="text-[10px] uppercase tracking-[0.18em] text-stone-gray">Filed</dt>
-                      <dd className="mt-1 text-ash-white text-sm">{formatTimestamp(report.timestamp)}</dd>
-                    </div>
-                  )}
-                  <div>
-                    <dt className="text-[10px] uppercase tracking-[0.18em] text-stone-gray">Chromatic Profile</dt>
-                    <dd className="mt-1 text-ash-white text-sm">{report.chromaticProfile}</dd>
-                  </div>
-                </dl>
-              </section>
-            </div>
+            {/* Disposition */}
+            <section>
+              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em]">Recommended Action</p>
+              <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">{report.disposition}</p>
+            </section>
 
-            {/* Telemetry fields */}
+            {/* Telemetry */}
             {(report.failureOrigin || report.primaryContamination || report.contributingFactor || report.systemDx) && (
-              <div>
-                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 font-mono">
+              <section className="border-t border-[#2a2a2a] pt-4">
+                <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em] mb-3">Telemetry</p>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 font-mono">
                   {report.failureOrigin && (
                     <div>
-                      <dt className="text-stone-gray uppercase text-xs tracking-widest">FAILURE ORIGIN</dt>
+                      <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Failure Origin</dt>
                       <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
                     </div>
                   )}
                   {report.systemDx && (
                     <div>
-                      <dt className="text-stone-gray uppercase text-xs tracking-widest">SYSTEM DIAGNOSIS</dt>
+                      <dt className="text-[9px] uppercase tracking-wider text-stone-gray">System Diagnosis</dt>
                       <dd className="text-ash-white text-sm mt-0.5">{report.systemDx}</dd>
                     </div>
                   )}
                   {report.primaryContamination && (
                     <div>
-                      <dt className="text-stone-gray uppercase text-xs tracking-widest">PRIMARY CONTAMINANT</dt>
+                      <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Primary Contaminant</dt>
                       <dd className="text-ash-white text-sm mt-0.5">{report.primaryContamination}</dd>
                     </div>
                   )}
                   {report.contributingFactor && (
                     <div>
-                      <dt className="text-stone-gray uppercase text-xs tracking-widest">CONTRIBUTING FACTOR</dt>
+                      <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Contributing Factor</dt>
                       <dd className="text-ash-white text-sm mt-0.5">{report.contributingFactor}</dd>
                     </div>
                   )}
                 </dl>
-              </div>
+              </section>
             )}
 
             {/* Archive Note */}
-            <div className="border-t border-concrete-border pt-4">
-              <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5">Archive Note</h3>
-              <p className="text-ash-white font-mono text-sm leading-relaxed">{report.archiveNote}</p>
+            <section className="border-t border-[#2a2a2a] pt-4">
+              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em]">Archive Note</p>
+              <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">{report.archiveNote}</p>
+            </section>
+
+            {/* Sanction Rationale */}
+            {liveSanctionCount > 0 && report.sanctionRationale && (
+              <section className="border-t border-hazard-amber/20 pt-4">
+                <p className="text-hazard-amber font-mono text-[10px] uppercase tracking-[0.15em] flex items-center gap-1.5">
+                  <ShieldCheck size={10} aria-hidden="true" />
+                  Sanction Rationale
+                </p>
+                <p className="mt-1.5 text-hazard-amber/80 font-mono text-sm leading-relaxed italic">{report.sanctionRationale}</p>
+              </section>
+            )}
+
+            {/* Case footer */}
+            <div className="border-t border-[#2a2a2a] pt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-xs text-stone-gray">
+              <span>Filed by <span className="text-hazard-amber font-bold">{report.anonHandle}</span></span>
+              {report.timestamp && <span>{formatTimestamp(report.timestamp)}</span>}
+              <span>{report.chromaticProfile}</span>
             </div>
 
-            {/* Sanction rationale */}
-            {liveSanctionCount > 0 && report.sanctionRationale && (
-              <div className="border-t border-concrete-border pt-4">
-                <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                  <ShieldCheck size={11} className="text-hazard-amber" aria-hidden="true" />
-                  SANCTIONED — RATIONALE
-                </h3>
-                <p className="text-hazard-amber/90 font-mono text-sm leading-relaxed italic">
-                  {report.sanctionRationale}
-                </p>
-              </div>
-            )}
-          </div>
           </div>
         </div>
       </div>

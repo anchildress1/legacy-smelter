@@ -206,11 +206,9 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           </label>
         </div>
 
-        {!isLoading && !error && (
+        {!isLoading && !error && sortedLogs.length > 0 && (
           <p className="mb-4 text-[10px] font-mono uppercase tracking-[0.2em] text-stone-gray">
-            Displaying {sortedLogs.length} incident{sortedLogs.length === 1 ? '' : 's'} under{' '}
-            {filterMode === 'all' ? 'all incidents' : filterMode.replace('_', ' ')} sorted by{' '}
-            {sortMode === 'impact' ? 'highest impact' : sortMode.replace('_', ' ')}.
+            {sortedLogs.length} incident{sortedLogs.length === 1 ? '' : 's'}
           </p>
         )}
 
@@ -235,7 +233,10 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             <li className="modern-card p-12 text-center list-none">
               <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
               <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
-                Furnace idle. Awaiting condemned infrastructure.
+                {filterMode === 'all' && 'Furnace idle. Awaiting condemned infrastructure.'}
+                {filterMode === 'needs_ruling' && 'All incidents have been ruled on.'}
+                {filterMode === 'escalated' && 'No escalated incidents on record.'}
+                {filterMode === 'sanctioned' && 'No sanctions issued yet.'}
               </p>
             </li>
           )}
