@@ -65,9 +65,10 @@ async function run(): Promise<void> {
     .collection('incident_logs')
     .where('judged', '==', false)
     .orderBy('timestamp', 'asc')
+    .limit(MIN_BATCH)
     .get();
 
-  console.log(`[audience-favorite] ${unjudgedSnap.size} unjudged incident(s)`);
+  console.log(`[audience-favorite] ${unjudgedSnap.size} unjudged incident(s) (limit ${MIN_BATCH})`);
 
   if (unjudgedSnap.size < MIN_BATCH) {
     console.log(`[audience-favorite] < ${MIN_BATCH} unjudged — skipping, will retry next run.`);
@@ -75,7 +76,7 @@ async function run(): Promise<void> {
   }
 
   // 2. Take oldest 5 (FIFO — no incident gets starved)
-  const batch = unjudgedSnap.docs.slice(0, MIN_BATCH);
+  const batch = unjudgedSnap.docs;
   const candidates = batch.map((d) => {
     const data = d.data() as IncidentDoc;
     return {
