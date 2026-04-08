@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog, Severity, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
-import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck } from 'lucide-react';
+import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
+import { toggleEscalation, hasEscalated, syncEscalationState } from '../services/escalationService';
 import { db, doc, onSnapshot } from '../firebase';
 
 // analysis and log are mutually exclusive — exactly one should be non-null per call site
@@ -182,9 +183,21 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
   const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
   const [liveEscalationCount, setLiveEscalationCount] = useState<number>(report?.escalationCount ?? 0);
+  const [escalated, setEscalated] = useState<boolean>(() => incidentId ? hasEscalated(incidentId) : false);
+  const [isTogglingEscalation, setIsTogglingEscalation] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
+
+  // Sync escalation state with Firestore on mount
+  useEffect(() => {
+    if (!incidentId) return;
+    let cancelled = false;
+    syncEscalationState(incidentId).then((state) => {
+      if (!cancelled) setEscalated(state);
+    });
+    return () => { cancelled = true; };
+  }, [incidentId]);
 
   // Live-subscribe to breach_count and escalation_count while overlay is open
   useEffect(() => {
@@ -195,6 +208,8 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         setLiveBreachCount(data.breach_count ?? 0);
         setLiveEscalationCount(data.escalation_count ?? 0);
       }
+    }, (error) => {
+      console.error('[IncidentReportOverlay] Live count subscription failed:', error);
     });
   }, [incidentId]);
 
@@ -282,6 +297,15 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     if (incidentId) recordBreach(incidentId);
   };
 
+  const handleEscalate = async () => {
+    if (!incidentId || isTogglingEscalation) return;
+    setIsTogglingEscalation(true);
+    const wasEscalated = escalated;
+    setEscalated(!wasEscalated);
+    const newState = await toggleEscalation(incidentId);
+    if (newState === wasEscalated) setEscalated(wasEscalated);
+    setIsTogglingEscalation(false);
+  };
 
   const handleCopyLink = async () => {
     if (!incidentUrl) return;
@@ -396,7 +420,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </p>
             <div className="flex items-center gap-3 mt-2.5 flex-wrap">
               {report.audienceFavorite && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-950 bg-molten-orange px-2.5 py-1 rounded uppercase font-bold">
+                <span className="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-950 bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold">
                   <ShieldCheck size={11} aria-hidden="true" />
                   SANCTIONED
                 </span>
@@ -416,7 +440,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             {/* Scores: ordered by point weight (impact, escalations, breaches) */}
             <div className="flex items-center gap-4 mt-3 pt-3 border-t border-concrete-border">
               <div className="text-center">
-                <div className="text-molten-orange font-mono text-lg font-black leading-none">
+                <div className="text-hazard-amber font-mono text-lg font-black leading-none">
                   {computeImpact(liveEscalationCount, liveBreachCount)}
                 </div>
                 <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">IMPACT</div>
@@ -431,11 +455,30 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveBreachCount}</div>
                 <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">BREACHES</div>
               </div>
+              {incidentId && (
+                <>
+                  <div className="w-px h-8 bg-concrete-border ml-auto" />
+                  <button
+                    onClick={handleEscalate}
+                    disabled={isTogglingEscalation}
+                    className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                      escalated
+                        ? 'text-hazard-amber bg-hazard-amber/15'
+                        : 'text-dead-gray hover:text-stone-gray hover:bg-concrete-mid/50'
+                    } ${isTogglingEscalation ? 'opacity-50' : ''}`}
+                    aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+                    title={escalated ? 'De-escalate' : 'Escalate'}
+                  >
+                    <Siren size={20} className={escalated ? 'animate-pulse' : ''} />
+                    <span className="text-stone-gray font-mono text-[9px] uppercase tracking-widest">ESCALATE</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
           {/* ── SCROLLABLE TELEMETRY ZONE ── */}
-          <div className="sm:flex-1 sm:overflow-y-auto border-t border-concrete-border px-5 sm:px-6 pb-6 space-y-4">
+          <div className="sm:flex-1 sm:overflow-y-auto border-t border-concrete-border px-5 sm:px-6 pb-6 space-y-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset" tabIndex={0} role="region" aria-label="Incident details">
 
             {/* Telemetry fields */}
             {(report.failureOrigin || report.primaryContamination || report.contributingFactor || report.systemDx) && (
@@ -485,10 +528,10 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             {report.audienceFavorite && report.audienceFavoriteRationale && (
               <div className="border-t border-concrete-border pt-4">
                 <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                  <ShieldCheck size={11} className="text-molten-orange" aria-hidden="true" />
+                  <ShieldCheck size={11} className="text-hazard-amber" aria-hidden="true" />
                   SANCTIONED — RATIONALE
                 </h3>
-                <p className="text-molten-orange/90 font-mono text-sm leading-relaxed italic">
+                <p className="text-hazard-amber/90 font-mono text-sm leading-relaxed italic">
                   {report.audienceFavoriteRationale}
                 </p>
               </div>
