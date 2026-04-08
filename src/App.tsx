@@ -14,7 +14,7 @@ import {
   serverTimestamp
 } from './firebase';
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
-import { GlobalStats as GlobalStatsType, SmeltLog, computeImpact } from './types';
+import { GlobalStats as GlobalStatsType, SmeltLog, computeImpact, withVotingDefaults } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
@@ -79,11 +79,10 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       limit(200)
     );
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
-      const entries = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SmeltLog));
+      const entries = snapshot.docs.map(d => withVotingDefaults({ id: d.id, ...d.data() } as SmeltLog));
       const sorted = entries.sort((a, b) => {
-        const impactA = computeImpact(a.escalation_count ?? 0, a.breach_count ?? 0);
-        const impactB = computeImpact(b.escalation_count ?? 0, b.breach_count ?? 0);
-        return impactB - impactA;
+        return computeImpact(b.escalation_count, b.breach_count)
+             - computeImpact(a.escalation_count, a.breach_count);
       });
       setRecentLogs(sorted.slice(0, 3));
     }, (error) => {

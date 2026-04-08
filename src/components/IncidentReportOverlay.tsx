@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
-import { SmeltLog, Severity, computeImpact } from '../types';
+import { SmeltLog, Severity, computeImpact, withVotingDefaults } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
 import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
@@ -115,24 +115,25 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
     };
   }
   if (l) {
+    const n = withVotingDefaults(l);
     return {
-      legacyInfraClass: l.legacy_infra_class,
-      incidentFeedSummary: l.incident_feed_summary,
-      severity: l.severity,
-      failureOrigin: l.failure_origin,
-      primaryContamination: l.primary_contamination,
-      contributingFactor: l.contributing_factor,
-      systemDx: l.system_dx,
-      disposition: l.disposition,
-      archiveNote: l.archive_note,
-      anonHandle: l.anon_handle,
-      chromaticProfile: l.chromatic_profile,
-      dominantColors: getFiveDistinctColors([l.color_1, l.color_2, l.color_3, l.color_4, l.color_5]),
-      breachCount: l.breach_count ?? 0,
-      escalationCount: l.escalation_count ?? 0,
-      audienceFavorite: l.audience_favorite ?? false,
-      audienceFavoriteRationale: l.audience_favorite_rationale ?? null,
-      timestamp: l.timestamp?.toDate?.() ?? null,
+      legacyInfraClass: n.legacy_infra_class,
+      incidentFeedSummary: n.incident_feed_summary,
+      severity: n.severity,
+      failureOrigin: n.failure_origin,
+      primaryContamination: n.primary_contamination,
+      contributingFactor: n.contributing_factor,
+      systemDx: n.system_dx,
+      disposition: n.disposition,
+      archiveNote: n.archive_note,
+      anonHandle: n.anon_handle,
+      chromaticProfile: n.chromatic_profile,
+      dominantColors: getFiveDistinctColors([n.color_1, n.color_2, n.color_3, n.color_4, n.color_5]),
+      breachCount: n.breach_count,
+      escalationCount: n.escalation_count,
+      audienceFavorite: n.audience_favorite,
+      audienceFavoriteRationale: n.audience_favorite_rationale ?? null,
+      timestamp: n.timestamp?.toDate?.() ?? null,
     };
   }
   return null;
@@ -204,9 +205,9 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     if (!incidentId) return;
     return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
       if (snap.exists()) {
-        const data = snap.data();
-        setLiveBreachCount(data.breach_count ?? 0);
-        setLiveEscalationCount(data.escalation_count ?? 0);
+        const live = withVotingDefaults({ id: snap.id, ...snap.data() } as SmeltLog);
+        setLiveBreachCount(live.breach_count);
+        setLiveEscalationCount(live.escalation_count);
       }
     }, (error) => {
       console.error('[IncidentReportOverlay] Live count subscription failed:', error);

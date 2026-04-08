@@ -8,7 +8,7 @@ import {
   limit,
   doc,
 } from '../firebase';
-import { SmeltLog, GlobalStats, computeImpact } from '../types';
+import { SmeltLog, NormalizedSmeltLog, GlobalStats, computeImpact, withVotingDefaults } from '../types';
 import { formatPixels, getLogShareLinks } from '../lib/utils';
 import { IncidentLogCard } from './IncidentLogCard';
 import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
@@ -27,7 +27,7 @@ interface IncidentManifestProps {
 }
 
 export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHome }) => {
-  const [allLogs, setAllLogs] = useState<SmeltLog[]>([]);
+  const [allLogs, setAllLogs] = useState<NormalizedSmeltLog[]>([]);
   const [globalStats, setGlobalStats] = useState<GlobalStats>({ total_pixels_melted: 0 });
   const [selectedLog, setSelectedLog] = useState<SmeltLog | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
@@ -50,7 +50,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     setError(null);
     let gotFirst = false;
     const unsubLogs = onSnapshot(q, (snap) => {
-      const entries = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SmeltLog));
+      const entries = snap.docs.map((d) => withVotingDefaults({ id: d.id, ...d.data() } as SmeltLog));
       setAllLogs(entries);
       if (!gotFirst) {
         gotFirst = true;
@@ -68,11 +68,10 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   }, []);
 
   const sortedLogs = useMemo(() =>
-    [...allLogs].sort((a, b) => {
-      const impactA = computeImpact(a.escalation_count ?? 0, a.breach_count ?? 0);
-      const impactB = computeImpact(b.escalation_count ?? 0, b.breach_count ?? 0);
-      return impactB - impactA;
-    }),
+    [...allLogs].sort((a, b) =>
+      computeImpact(b.escalation_count, b.breach_count)
+      - computeImpact(a.escalation_count, a.breach_count)
+    ),
     [allLogs]
   );
 

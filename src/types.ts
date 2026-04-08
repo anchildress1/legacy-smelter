@@ -41,6 +41,26 @@ export interface GlobalStats {
   total_pixels_melted: number;
 }
 
+/** SmeltLog with all optional voting fields resolved to concrete values. */
+export type NormalizedSmeltLog = SmeltLog & {
+  breach_count: number;
+  escalation_count: number;
+  judged: boolean;
+  audience_favorite: boolean;
+};
+
+/** Defaults for optional voting fields that may be absent on old documents. */
+export function withVotingDefaults(log: SmeltLog): NormalizedSmeltLog {
+  return {
+    ...log,
+    breach_count: log.breach_count ?? 0,
+    escalation_count: log.escalation_count ?? 0,
+    judged: log.judged ?? false,
+    audience_favorite: log.audience_favorite ?? false,
+    audience_favorite_rationale: log.audience_favorite_rationale,
+  };
+}
+
 /** Impact = (3 × escalations) + (1 × containment breaches), clamped to 0 */
 export function computeImpact(escalationCount: number, breachCount: number): number {
   return Math.max(0, (3 * escalationCount) + breachCount);

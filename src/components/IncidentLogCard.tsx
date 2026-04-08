@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SmeltLog, computeImpact } from '../types';
+import { SmeltLog, computeImpact, withVotingDefaults } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
 import { Siren, AlertTriangle } from 'lucide-react';
 import { toggleEscalation, hasEscalated, syncEscalationState } from '../services/escalationService';
@@ -25,9 +25,8 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
     log.color_1, log.color_2, log.color_3, log.color_4, log.color_5,
   ]);
 
-  const breaches = log.breach_count ?? 0;
-  const escalations = log.escalation_count ?? 0;
-  const impact = computeImpact(escalations, breaches);
+  const normalized = withVotingDefaults(log);
+  const impact = computeImpact(normalized.escalation_count, normalized.breach_count);
 
   const handleEscalate = async (e: React.MouseEvent) => {
     e.stopPropagation();
