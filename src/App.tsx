@@ -71,6 +71,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
 
     // Fetch a generous window and sort client-side by impact to find the top 3.
     // Impact = (3×escalations)+(1×breaches) can't be queried server-side.
+    // SCALING: At scale, replace with a precomputed impact_score field
+    // maintained by a Cloud Function, then query orderBy('impact_score').limit(3).
     const logsQuery = query(
       collection(db, 'incident_logs'),
       orderBy('timestamp', 'desc'),
@@ -522,7 +524,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             <div>
               <div className="mb-3">
                 <h2 className="text-hazard-amber font-mono text-xs md:text-sm uppercase tracking-wide md:tracking-widest font-bold">
-                  HIGH PRI INCIDENTS
+                  P0 INCIDENTS
                 </h2>
               </div>
               <ul role="list" className="space-y-3">

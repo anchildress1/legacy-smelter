@@ -18,6 +18,8 @@ import { Flame, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from 'lucide-rea
 const PAGE_SIZE = 20;
 // Cap the subscription to avoid unbounded reads as the collection grows.
 // Impact sorting happens client-side so we fetch the most recent N docs.
+// SCALING: When the collection exceeds ~1K docs, migrate to a precomputed
+// impact_score field with server-side ordering and cursor-based pagination.
 const MAX_MANIFEST_DOCS = 500;
 
 interface IncidentManifestProps {
@@ -75,19 +77,21 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   );
 
   const totalPages = Math.max(1, Math.ceil(sortedLogs.length / PAGE_SIZE));
-  const pageStart = currentPage * PAGE_SIZE;
+  // Clamp page if the dataset shrinks (e.g. docs deleted) while user is on a later page
+  const safePage = Math.min(currentPage, totalPages - 1);
+  const pageStart = safePage * PAGE_SIZE;
   const pageLogs = sortedLogs.slice(pageStart, pageStart + PAGE_SIZE);
-  const hasNextPage = currentPage < totalPages - 1;
+  const hasNextPage = safePage < totalPages - 1;
 
   const goToPreviousPage = () => {
-    if (currentPage === 0) return;
-    setCurrentPage((p) => p - 1);
+    if (safePage === 0) return;
+    setCurrentPage(safePage - 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const goToNextPage = () => {
     if (!hasNextPage) return;
-    setCurrentPage((p) => p + 1);
+    setCurrentPage(safePage + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -165,7 +169,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           <nav aria-label="Incident manifest pages" className="mt-8 flex items-center justify-center gap-1">
             <button
               onClick={goToPreviousPage}
-              disabled={currentPage === 0}
+              disabled={safePage === 0}
               className="nav-btn disabled:opacity-30 disabled:cursor-not-allowed px-2"
               aria-label="Previous page"
             >
@@ -174,7 +178,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
             <div className="min-w-[110px] h-8 px-3 rounded-md border border-concrete-border flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-wider text-stone-gray">
               {isLoading && <Loader2 size={12} className="animate-spin text-hazard-amber" aria-hidden="true" />}
-              <span>Page {currentPage + 1}</span>
+              <span>Page {safePage + 1}</span>
             </div>
 
             <button

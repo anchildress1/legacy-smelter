@@ -54,6 +54,10 @@ const JUDGING_PROMPT = readFileSync(resolve(__dirname, '../docs/judging-prompt.m
 
 // ── Types ───────────────────────────────────────────────────────────────
 
+// Intentionally a standalone subset of SmeltLog (src/types.ts) rather than
+// a Pick<SmeltLog,...>. The client SDK's Timestamp type is incompatible with
+// the Admin SDK's Timestamp, so sharing the interface would introduce a
+// transitive client-SDK dependency into this server-side script.
 interface IncidentDoc {
   uid: string;
   legacy_infra_class: string;
