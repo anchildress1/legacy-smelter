@@ -37,7 +37,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   useEffect(() => {
     const unsubStats = onSnapshot(doc(db, 'global_stats', 'main'), (snap) => {
       if (snap.exists()) setGlobalStats(snap.data() as GlobalStats);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'global_stats/main'));
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'global_stats/main', setError));
 
     return () => { unsubStats(); };
   }, []);
