@@ -178,7 +178,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const report = normalise(analysis, log);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const lastActiveElementRef = useRef<HTMLElement | null>(null);
   const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
   const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
@@ -406,7 +405,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                   : <Copy size={12} aria-hidden="true" />}
               </button>
               <button
-                ref={closeButtonRef}
                 onClick={onClose}
                 className="w-7 h-7 flex items-center justify-center rounded-full bg-concrete-mid/80 text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
                 aria-label="Close report"

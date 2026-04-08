@@ -60,7 +60,6 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
       handleFirestoreError(err, OperationType.LIST, 'incident_logs');
       setAllLogs([]);
       setError('Failed to load incidents.');
-      if (!gotFirst) gotFirst = true;
       setIsLoading(false);
     });
 

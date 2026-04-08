@@ -1,5 +1,4 @@
-import { doc, runTransaction, increment, getDoc, serverTimestamp } from '../firebase';
-import { db, ensureAnonymousAuth } from '../firebase';
+import { db, ensureAnonymousAuth, doc, runTransaction, increment, getDoc, serverTimestamp } from '../firebase';
 import { getAuth } from 'firebase/auth';
 
 const STORAGE_KEY = 'escalated_incidents';

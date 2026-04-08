@@ -1,4 +1,4 @@
-import { doc, updateDoc, increment } from 'firebase/firestore';
+import { doc, updateDoc, increment } from '../firebase';
 import { db, ensureAnonymousAuth } from '../firebase';
 
 const COOLDOWN_MS = 7_000;
