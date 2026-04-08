@@ -124,16 +124,22 @@ async function run(): Promise<void> {
   const responseText = response.text?.trim();
   if (!responseText) throw new Error('Gemini returned empty response');
 
-  let result: JudgingResult;
+  let parsed: unknown;
   try {
-    result = JSON.parse(responseText) as JudgingResult;
+    parsed = JSON.parse(responseText);
   } catch {
     throw new Error(`Failed to parse Gemini response: ${responseText}`);
   }
 
-  if (!result.winner || !result.rationale) {
-    throw new Error(`Invalid judging result: ${JSON.stringify(result)}`);
+  const result = parsed as JudgingResult;
+  if (typeof result.winner !== 'string' || typeof result.rationale !== 'string' ||
+      result.winner.length === 0 || result.rationale.length === 0) {
+    throw new Error(`Invalid judging result (expected {winner: string, rationale: string}): ${JSON.stringify(result)}`);
   }
+
+  // Trim whitespace from LLM output and bound rationale length
+  result.winner = result.winner.trim();
+  result.rationale = result.rationale.trim().slice(0, 500);
 
   console.log(`[audience-favorite] Winner: ${result.winner}`);
   console.log(`[audience-favorite] Rationale: ${result.rationale}`);
