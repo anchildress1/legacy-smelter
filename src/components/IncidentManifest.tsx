@@ -13,10 +13,12 @@ import { IncidentLogCard } from './IncidentLogCard';
 import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
 import { IncidentReportOverlay } from './IncidentReportOverlay';
 import { Flame, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { parseSmeltLog } from '../lib/smeltLogSchema';
 
 const PAGE_SIZE = 20;
 type ManifestFilter = 'all' | 'needs_ruling' | 'escalated' | 'sanctioned';
 type ManifestSort = 'impact' | 'newest' | 'breaches' | 'escalations';
+const MANIFEST_SCHEMA_ERROR = 'Incident data schema violation. Fix malformed incident_logs documents.';
 
 interface IncidentManifestProps {
   onNavigateHome: () => void;
@@ -50,8 +52,18 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     setError(null);
     let gotFirst = false;
     const unsubLogs = onSnapshot(q, (snap) => {
-      const entries = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SmeltLog));
+      let entries: SmeltLog[];
+      try {
+        entries = snap.docs.map((d) => parseSmeltLog(d.id, d.data()));
+      } catch (parseErr) {
+        console.error('[IncidentManifest] incident_logs schema violation:', parseErr);
+        setAllLogs([]);
+        setError(MANIFEST_SCHEMA_ERROR);
+        setIsLoading(false);
+        return;
+      }
       setAllLogs(entries);
+      setError((prev) => (prev === MANIFEST_SCHEMA_ERROR ? null : prev));
       if (!gotFirst) {
         gotFirst = true;
         setIsLoading(false);
@@ -155,62 +167,48 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         </div>
       </header>
 
-      <main className="flex-1 p-6 max-w-5xl mx-auto w-full">
+      <main className="flex-1 p-4 sm:p-6 max-w-5xl mx-auto w-full">
         {/* Page title */}
-        <div className="mb-8">
-          <h1 className="text-hazard-amber font-mono text-2xl uppercase tracking-widest font-black">
-            GLOBAL INCIDENT MANIFEST
+        <div className="mb-5">
+          <h1 className="text-hazard-amber font-mono text-lg sm:text-2xl uppercase tracking-widest font-black">
+            Incident Manifest
           </h1>
-          <div className="hazard-stripe h-1 w-full mt-4 rounded-sm" />
+          <div className="hazard-stripe h-1 w-full mt-3 rounded-sm" />
         </div>
 
-        <div className="mb-6 grid gap-4 rounded-xl border border-concrete-border bg-concrete-light/70 p-4 md:grid-cols-[minmax(0,1fr)_220px]">
-          <div>
-            <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.2em]">Filter</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {([
-                ['all', 'All Incidents'],
-                ['needs_ruling', 'Needs Ruling'],
-                ['escalated', 'Escalated'],
-                ['sanctioned', 'Sanctioned'],
-              ] as [ManifestFilter, string][]).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setFilterMode(value)}
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.18em] transition-colors ${
-                    filterMode === value
-                      ? 'border-hazard-amber/40 bg-hazard-amber/10 text-hazard-amber'
-                      : 'border-concrete-border bg-concrete-mid text-stone-gray hover:text-ash-white'
-                  }`}
-                >
-                  <span>{label}</span>
-                  <span className="text-[9px] text-stone-gray">{manifestCounts[value]}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <label className="block">
-            <span className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.2em]">Sort</span>
-            <select
-              value={sortMode}
-              onChange={(e) => setSortMode(e.target.value as ManifestSort)}
-              className="mt-2 w-full rounded-lg border border-concrete-border bg-concrete-mid px-3 py-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ash-white focus:border-hazard-amber focus:outline-none"
+        {/* Filter + sort — flat, no container */}
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          {([
+            ['all', 'All'],
+            ['needs_ruling', 'Needs Ruling'],
+            ['escalated', 'Escalated'],
+            ['sanctioned', 'Sanctioned'],
+          ] as [ManifestFilter, string][]).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilterMode(value)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+                filterMode === value
+                  ? 'border-hazard-amber/40 bg-hazard-amber/10 text-hazard-amber'
+                  : 'border-[#333] text-stone-gray hover:text-ash-white'
+              }`}
             >
-              <option value="impact">Highest Impact</option>
-              <option value="newest">Newest First</option>
-              <option value="breaches">Most Breaches</option>
-              <option value="escalations">Most Escalations</option>
-            </select>
-          </label>
+              {label}
+              <span className="text-[9px] opacity-60">{manifestCounts[value]}</span>
+            </button>
+          ))}
+          <select
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as ManifestSort)}
+            className="ml-auto rounded-md border border-[#333] bg-transparent px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-widest text-stone-gray focus:border-hazard-amber focus:outline-none"
+          >
+            <option value="impact">Highest Impact</option>
+            <option value="newest">Newest First</option>
+            <option value="breaches">Most Breaches</option>
+            <option value="escalations">Most Escalations</option>
+          </select>
         </div>
-
-        {!isLoading && !error && sortedLogs.length > 0 && (
-          <p className="mb-4 text-[10px] font-mono uppercase tracking-[0.2em] text-stone-gray">
-            {sortedLogs.length} incident{sortedLogs.length === 1 ? '' : 's'}
-          </p>
-        )}
 
         {/* Log entries */}
         <ul role="list" className="space-y-3 min-h-[200px]">
@@ -230,8 +228,8 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           ))}
 
           {!isLoading && sortedLogs.length === 0 && !error && (
-            <li className="modern-card p-12 text-center list-none">
-              <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
+            <li className="py-12 text-center list-none">
+              <Flame size={28} className="text-hazard-amber mx-auto mb-2" />
               <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
                 {filterMode === 'all' && 'Furnace idle. Awaiting condemned infrastructure.'}
                 {filterMode === 'needs_ruling' && 'All incidents have been ruled on.'}
@@ -242,15 +240,15 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           )}
 
           {error && (
-            <li className="modern-card p-4 list-none">
+            <li className="py-4 list-none">
               <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">{error}</p>
             </li>
           )}
         </ul>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <nav aria-label="Incident manifest pages" className="mt-8 flex items-center justify-center gap-1">
+        {/* Pagination + count */}
+        <nav aria-label="Incident manifest pages" className="mt-6 flex items-center justify-center gap-1">
+          {totalPages > 1 && (
             <button
               onClick={goToPreviousPage}
               disabled={safePage === 0}
@@ -259,12 +257,15 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             >
               <ChevronLeft size={14} />
             </button>
+          )}
 
-            <div className="min-w-[110px] h-8 px-3 rounded-md border border-concrete-border flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-wider text-stone-gray">
-              {isLoading && <Loader2 size={12} className="animate-spin text-hazard-amber" aria-hidden="true" />}
-              <span>Page {safePage + 1}</span>
-            </div>
+          <div className="min-w-[90px] h-8 px-3 flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-wider text-stone-gray">
+            {isLoading && <Loader2 size={12} className="animate-spin text-hazard-amber" aria-hidden="true" />}
+            {totalPages > 1 && <span>{safePage + 1} / {totalPages}</span>}
+            {!isLoading && <span className={totalPages > 1 ? 'opacity-50' : ''}>{sortedLogs.length} {sortedLogs.length === 1 ? 'incident' : 'incidents'}</span>}
+          </div>
 
+          {totalPages > 1 && (
             <button
               onClick={goToNextPage}
               disabled={!hasNextPage}
@@ -273,14 +274,8 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             >
               <ChevronRight size={14} />
             </button>
-          </nav>
-        )}
-
-        {pageLogs.length > 0 && (
-          <p className="mt-4 text-center font-mono text-[10px] uppercase tracking-widest text-stone-gray">
-            Showing incidents {pageStart + 1}–{pageStart + pageLogs.length} of {sortedLogs.length}
-          </p>
-        )}
+          )}
+        </nav>
       </main>
 
       {/* Footer */}

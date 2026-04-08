@@ -63,6 +63,15 @@ interface SanctionSelection {
   sanction_rationale: string;
 }
 
+const REQUIRED_INCIDENT_SCHEMA = [
+  ['judged', 'boolean'],
+  ['breach_count', 'number'],
+  ['escalation_count', 'number'],
+  ['sanction_count', 'number'],
+  ['sanctioned', 'boolean'],
+  ['sanction_rationale', 'nullable_string'],
+] as const;
+
 function getLockRef() {
   return db.collection(LOCK_COLLECTION).doc(LOCK_DOC_ID);
 }
@@ -126,6 +135,82 @@ function sanitizeRationale(value: unknown): string {
   return value.trim().slice(0, 500);
 }
 
+function getMissingSchemaFields(data: Record<string, unknown>): string[] {
+  const missing: string[] = [];
+  for (const [field, fieldType] of REQUIRED_INCIDENT_SCHEMA) {
+    const value = data[field];
+    if (fieldType === 'number') {
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        missing.push(field);
+      }
+      continue;
+    }
+    if (fieldType === 'nullable_string') {
+      if (!(value === null || typeof value === 'string')) {
+        missing.push(field);
+      }
+      continue;
+    }
+    if (fieldType === 'boolean' && typeof value !== 'boolean') {
+      missing.push(field);
+    }
+  }
+  return missing;
+}
+
+async function assertIncidentSchemaConformance(): Promise<void> {
+  const schemaProbe = await db
+    .collection('incident_logs')
+    .select(...REQUIRED_INCIDENT_SCHEMA.map(([field]) => field))
+    .get();
+
+  let invalidCount = 0;
+  const sampleViolations: string[] = [];
+
+  for (const incidentDoc of schemaProbe.docs) {
+    const missingFields = getMissingSchemaFields(incidentDoc.data() as Record<string, unknown>);
+    if (missingFields.length === 0) continue;
+    invalidCount += 1;
+    if (sampleViolations.length < 10) {
+      sampleViolations.push(`${incidentDoc.id} [${missingFields.join(', ')}]`);
+    }
+  }
+
+  if (invalidCount > 0) {
+    throw new Error(
+      `[sanction-incidents] Refusing to run: ${invalidCount} incident_logs document(s) violate required schema (no backward compatibility). ` +
+      `Sample: ${sampleViolations.join('; ')}`
+    );
+  }
+}
+
+function expectIncidentField(data: Record<string, unknown>, key: keyof IncidentDoc, incidentId: string): string {
+  const value = data[key];
+  if (typeof value !== 'string') {
+    throw new Error(`[sanction-incidents] incident_logs/${incidentId} has invalid "${key}" (expected string)`);
+  }
+  return value;
+}
+
+function parseIncidentDoc(raw: unknown, incidentId: string): IncidentDoc {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error(`[sanction-incidents] incident_logs/${incidentId} has invalid payload (expected object)`);
+  }
+  const data = raw as Record<string, unknown>;
+  return {
+    uid: expectIncidentField(data, 'uid', incidentId),
+    legacy_infra_class: expectIncidentField(data, 'legacy_infra_class', incidentId),
+    diagnosis: expectIncidentField(data, 'diagnosis', incidentId),
+    severity: expectIncidentField(data, 'severity', incidentId),
+    archive_note: expectIncidentField(data, 'archive_note', incidentId),
+    failure_origin: expectIncidentField(data, 'failure_origin', incidentId),
+    chromatic_profile: expectIncidentField(data, 'chromatic_profile', incidentId),
+    system_dx: expectIncidentField(data, 'system_dx', incidentId),
+    incident_feed_summary: expectIncidentField(data, 'incident_feed_summary', incidentId),
+    share_quote: expectIncidentField(data, 'share_quote', incidentId),
+  };
+}
+
 function normalizeSelection(raw: unknown, candidates: Candidate[]): SanctionSelection {
   const candidateIds = new Set(candidates.map((c) => c.incident_id));
   const uidToIncidentId = new Map(candidates.map((c) => [c.uid, c.incident_id]));
@@ -173,6 +258,9 @@ async function run(): Promise<void> {
   let processedBatches = 0;
 
   try {
+    console.log('[sanction-incidents] Validating incident_logs schema conformance...');
+    await assertIncidentSchemaConformance();
+
     // Keep processing full groups of 5 so sanctions do not lag during bursts.
     while (true) {
       await refreshRunLock();
@@ -197,7 +285,7 @@ async function run(): Promise<void> {
 
       const batch = unjudgedSnap.docs;
       const candidates: Candidate[] = batch.map((d) => {
-        const data = d.data() as IncidentDoc;
+        const data = parseIncidentDoc(d.data(), d.id);
         return {
           incident_id: d.id,
           uid: data.uid,
@@ -245,7 +333,7 @@ async function run(): Promise<void> {
           judged: true,
           sanctioned: isSanctioned,
           sanction_count: isSanctioned ? 1 : 0,
-          sanction_rationale: isSanctioned ? selection.sanction_rationale : FieldValue.delete(),
+          sanction_rationale: isSanctioned ? selection.sanction_rationale : null,
         });
       }
 

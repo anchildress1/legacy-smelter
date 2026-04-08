@@ -20,11 +20,13 @@ import { IncidentLogCard } from './components/IncidentLogCard';
 import { formatPixels, getFiveDistinctColors, getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
 import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
+import { parseSmeltLog } from './lib/smeltLogSchema';
 
 // Audio
 const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false, volume: 0.5 });
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
+const INCIDENT_SCHEMA_ERROR = 'INCIDENT DATA SCHEMA VIOLATION. FIX MALFORMED INCIDENT_LOGS DOCUMENTS.';
 
 interface AppProps {
   onNavigateManifest: () => void;
@@ -78,12 +80,21 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       orderBy('timestamp', 'desc')
     );
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
-      const entries = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SmeltLog));
+      let entries: SmeltLog[];
+      try {
+        entries = snapshot.docs.map((d) => parseSmeltLog(d.id, d.data()));
+      } catch (error) {
+        console.error('[App] incident_logs schema violation:', error);
+        setRecentLogs([]);
+        setAnalysisError(INCIDENT_SCHEMA_ERROR);
+        return;
+      }
       const sorted = entries.sort((a, b) => {
         return computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
              - computeImpact(a.sanction_count, a.escalation_count, a.breach_count);
       });
       setRecentLogs(sorted.slice(0, 3));
+      setAnalysisError((prev) => (prev === INCIDENT_SCHEMA_ERROR ? null : prev));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'incident_logs', setAnalysisError);
     });
@@ -117,11 +128,13 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
           setDeepLinkError('Incident not found — the link may have expired or been removed.');
           return;
         }
-        setSelectedRecentLog(({ id: snap.id, ...snap.data() } as SmeltLog));
+        const parsedLog = parseSmeltLog(snap.id, snap.data());
+        setSelectedRecentLog(parsedLog);
+        setDeepLinkError(null);
       } catch (err) {
         if (!cancelled) {
-          console.error('[App] Deep link fetch failed:', err);
-          setDeepLinkError('Could not load incident — check your connection and try the link again.');
+          console.error('[App] Deep link fetch/parsing failed:', err);
+          setDeepLinkError('Could not load incident — data schema violation or network failure.');
         }
       }
     })();
@@ -259,11 +272,14 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       const writeRequestId = activeRequestIdRef.current;
       hasWrittenRef.current = true;
       setIsComplete(true);
-      setIsWritingData(true);
+
+      // Let the dragon return to rest before showing the spinner
+      setTimeout(() => setIsWritingData(true), 1200);
 
       smeltTimerRef.current = setTimeout(() => {
         smeltTimerRef.current = null;
         setButtonsDelayed(false);
+        setIsWritingData(false);
         setShowReport(true);
       }, 5000);
 
@@ -303,7 +319,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             escalation_count: 0,
             sanction_count: 0,
             sanctioned: false,
-            judged: false
+            judged: false,
+            sanction_rationale: null
           });
           if (writeRequestId !== activeRequestIdRef.current) return;
           setLoggedIncidentId(logRef.id);
@@ -313,8 +330,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             total_pixels_melted: increment(completedAnalysis.pixelCount)
           }, { merge: true });
 
-          if (writeRequestId !== activeRequestIdRef.current) return;
-          setIsWritingData(false);
         } catch (error) {
           if (writeRequestId !== activeRequestIdRef.current) return;
           hasWrittenRef.current = false;
@@ -406,10 +421,10 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">{deepLinkError}</p>
           </div>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
           {/* Left Column: Smelter Area */}
-          <div className="md:col-span-7 space-y-4">
+          <div className="lg:col-span-7 space-y-4">
             {/* Controls */}
             <div className="flex flex-col gap-3 sm:flex-row">
               <button
@@ -417,14 +432,14 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
                 className="modern-button flex-1 flex items-center justify-center gap-3 px-5 py-3"
               >
                 <Upload size={18} />
-                <span className="text-sm font-black uppercase tracking-[0.16em]">Upload Image</span>
+                <span className="text-sm font-black uppercase tracking-[0.16em]">Process Artifact</span>
               </button>
               <button
                 onClick={startCamera}
                 className="modern-button flex-1 flex items-center justify-center gap-3 bg-concrete-mid px-5 py-3 text-ash-white border border-concrete-border hover:brightness-110"
               >
                 <Camera size={18} />
-                <span className="text-sm font-black uppercase tracking-[0.16em]">Open Camera</span>
+                <span className="text-sm font-black uppercase tracking-[0.16em]">Deploy Scanner</span>
               </button>
             </div>
 
@@ -476,8 +491,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
                 </div>
               )}
 
-              {/* Loading post-mortem overlay — visible from smelt-complete through Firestore write + 3s delay */}
-              {(isWritingData || (isComplete && buttonsDelayed && !isPlaying)) && !showReport && (
+              {/* Loading post-mortem overlay — delayed 1.2s after smelt, stays until report reveals */}
+              {isWritingData && !showReport && (
                 <div role="status" aria-live="polite" className="absolute inset-0 z-40 flex items-center justify-center">
                   <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border flex items-center gap-3">
                     <div className="w-4 h-4 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin shrink-0" />
@@ -520,10 +535,10 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
           </div>
 
           {/* Right Column: Incident Queue */}
-          <div className="md:col-span-5">
+          <div className="lg:col-span-5">
             <div>
               <div className="mb-3">
-                <h2 className="text-hazard-amber font-mono text-xs md:text-sm uppercase tracking-wide md:tracking-widest font-bold">
+                <h2 className="text-hazard-amber font-mono text-xs lg:text-sm uppercase tracking-wide lg:tracking-widest font-bold">
                   P0 INCIDENTS
                 </h2>
                 <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" />
@@ -554,7 +569,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
 
       {/* Footer */}
       <footer className="p-6 bg-concrete-mid border-t border-concrete-border mt-auto">
-        <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="max-w-7xl mx-auto w-full flex flex-col lg:flex-row justify-between items-center gap-4">
           <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
             &copy; 2026 Ashley Childress
           </p>
