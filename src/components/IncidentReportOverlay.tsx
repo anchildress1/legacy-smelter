@@ -300,11 +300,16 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const handleEscalate = async () => {
     if (!incidentId || isTogglingEscalation) return;
     setIsTogglingEscalation(true);
-    const wasEscalated = escalated;
-    setEscalated(!wasEscalated);
-    const newState = await toggleEscalation(incidentId);
-    if (newState === wasEscalated) setEscalated(wasEscalated);
-    setIsTogglingEscalation(false);
+    try {
+      const wasEscalated = escalated;
+      setEscalated(!wasEscalated);
+      const newState = await toggleEscalation(incidentId);
+      if (newState === wasEscalated) setEscalated(wasEscalated);
+    } catch (err) {
+      console.error('[IncidentReportOverlay] Escalation failed:', err);
+    } finally {
+      setIsTogglingEscalation(false);
+    }
   };
 
   const handleCopyLink = async () => {

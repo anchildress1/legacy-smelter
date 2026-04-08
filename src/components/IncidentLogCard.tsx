@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
-import { Siren } from 'lucide-react';
+import { Siren, AlertTriangle } from 'lucide-react';
 import { toggleEscalation, hasEscalated, syncEscalationState } from '../services/escalationService';
 
 interface IncidentLogCardProps {
@@ -12,9 +12,6 @@ interface IncidentLogCardProps {
 export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }) => {
   const [escalated, setEscalated] = useState(() => hasEscalated(log.id));
   const [isToggling, setIsToggling] = useState(false);
-  // Optimistic offset applied immediately on toggle, cleared when Firestore snapshot updates the prop
-  const [escalationOffset, setEscalationOffset] = useState(0);
-  const prevEscalationCount = React.useRef(log.escalation_count ?? 0);
 
   useEffect(() => {
     let cancelled = false;
@@ -24,38 +21,30 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
     return () => { cancelled = true; };
   }, [log.id]);
 
-  // Clear optimistic offset when the Firestore snapshot delivers a new escalation_count
-  useEffect(() => {
-    const current = log.escalation_count ?? 0;
-    if (current !== prevEscalationCount.current) {
-      prevEscalationCount.current = current;
-      setEscalationOffset(0);
-    }
-  }, [log.escalation_count]);
-
   const finalColors = getFiveDistinctColors([
     log.color_1, log.color_2, log.color_3, log.color_4, log.color_5,
   ]);
 
   const breaches = log.breach_count ?? 0;
-  const escalations = Math.max(0, (log.escalation_count ?? 0) + escalationOffset);
+  const escalations = log.escalation_count ?? 0;
   const impact = computeImpact(escalations, breaches);
 
   const handleEscalate = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isToggling) return;
     setIsToggling(true);
-    const wasEscalated = escalated;
-    // Optimistic UI update
-    setEscalated(!wasEscalated);
-    setEscalationOffset((prev) => prev + (wasEscalated ? -1 : 1));
-    const newState = await toggleEscalation(log.id);
-    // If the server disagreed, revert
-    if (newState === wasEscalated) {
-      setEscalated(wasEscalated);
-      setEscalationOffset((prev) => prev + (wasEscalated ? 1 : -1));
+    try {
+      const wasEscalated = escalated;
+      setEscalated(!wasEscalated);
+      const newState = await toggleEscalation(log.id);
+      if (newState === wasEscalated) {
+        setEscalated(wasEscalated);
+      }
+    } catch (err) {
+      console.error('[IncidentLogCard] Escalation failed:', err);
+    } finally {
+      setIsToggling(false);
     }
-    setIsToggling(false);
   };
 
   const infraClass = log.legacy_infra_class || 'Incident';
@@ -77,7 +66,8 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
               {log.legacy_infra_class}
             </p>
           )}
-          <span className="font-mono text-[10px] uppercase tracking-wider font-bold shrink-0 bg-hazard-amber text-zinc-950 px-1.5 py-0.5 rounded">
+          <span className="font-mono text-[10px] uppercase tracking-wider font-bold shrink-0 bg-hazard-amber text-zinc-950 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+            <AlertTriangle size={10} aria-hidden="true" />
             {log.severity}
           </span>
         </div>
@@ -86,11 +76,11 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
         </p>
         <div className="mt-2 flex items-center gap-1.5 flex-wrap">
           {log.audience_favorite && (
-            <span className="font-mono text-[10px] uppercase tracking-wider font-bold bg-molten-orange text-zinc-950 px-1.5 py-0.5 rounded">
+            <span className="font-mono text-[10px] uppercase tracking-wider font-bold text-hazard-amber">
               SANCTIONED
             </span>
           )}
-          <span className="font-mono text-[10px] uppercase tracking-wider font-bold bg-hazard-amber text-zinc-950 px-1.5 py-0.5 rounded">
+          <span className="font-mono text-[10px] uppercase tracking-wider font-bold text-hazard-amber">
             IMPACT {impact}
           </span>
           <span className="text-stone-gray font-mono text-xs ml-auto">
@@ -103,14 +93,13 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
         disabled={isToggling}
         className={`shrink-0 w-12 flex flex-col items-center justify-center gap-1 border-l border-concrete-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset ${
           escalated
-            ? 'bg-molten-orange/15 text-molten-orange'
+            ? 'bg-hazard-amber/15 text-hazard-amber'
             : 'text-dead-gray hover:text-stone-gray hover:bg-concrete-mid/50'
         } ${isToggling ? 'opacity-50' : ''}`}
         aria-label={escalated ? `Remove escalation for ${infraClass}` : `Escalate ${infraClass}`}
         title={escalated ? 'De-escalate' : 'Escalate'}
       >
         <Siren size={18} className={escalated ? 'animate-pulse' : ''} />
-        <span className="font-mono text-[10px] font-bold">{escalations}</span>
       </button>
     </div>
   );
