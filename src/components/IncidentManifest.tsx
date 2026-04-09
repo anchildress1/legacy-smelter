@@ -154,7 +154,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       {/* Header */}
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto w-full flex flex-col gap-3 px-4 py-4 sm:flex-row sm:justify-between sm:items-center sm:px-6">
+        <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-4 sm:px-6">
           <button onClick={onNavigateHome} className="nav-btn">
             <ArrowLeft size={14} />
             RETURN TO SMELTER
