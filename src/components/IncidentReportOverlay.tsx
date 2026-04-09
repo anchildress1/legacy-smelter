@@ -4,7 +4,7 @@ import { SmeltLog, Severity, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
 import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren, Quote } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
-import { toggleEscalation, hasEscalated, syncEscalationState } from '../services/escalationService';
+import { useEscalation } from '../hooks/useEscalation';
 import { db, doc, onSnapshot } from '../firebase';
 
 // analysis and log are mutually exclusive — exactly one should be non-null per call site
@@ -136,28 +136,27 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
     };
   }
   if (l) {
-    const n = l;
     return {
-      legacyInfraClass: n.legacy_infra_class,
-      incidentFeedSummary: n.incident_feed_summary,
-      severity: n.severity,
-      diagnosis: n.diagnosis,
-      failureOrigin: n.failure_origin,
-      primaryContamination: n.primary_contamination,
-      contributingFactor: n.contributing_factor,
-      systemDx: n.system_dx,
-      disposition: n.disposition,
-      archiveNote: n.archive_note,
-      shareQuote: n.share_quote,
-      anonHandle: n.anon_handle,
-      chromaticProfile: n.chromatic_profile,
-      dominantColors: getFiveDistinctColors([n.color_1, n.color_2, n.color_3, n.color_4, n.color_5]),
-      sanctionCount: n.sanction_count,
-      breachCount: n.breach_count,
-      escalationCount: n.escalation_count,
-      sanctioned: n.sanctioned,
-      sanctionRationale: n.sanction_rationale ?? null,
-      timestamp: n.timestamp?.toDate?.() ?? null,
+      legacyInfraClass: l.legacy_infra_class,
+      incidentFeedSummary: l.incident_feed_summary,
+      severity: l.severity,
+      diagnosis: l.diagnosis,
+      failureOrigin: l.failure_origin,
+      primaryContamination: l.primary_contamination,
+      contributingFactor: l.contributing_factor,
+      systemDx: l.system_dx,
+      disposition: l.disposition,
+      archiveNote: l.archive_note,
+      shareQuote: l.share_quote,
+      anonHandle: l.anon_handle,
+      chromaticProfile: l.chromatic_profile,
+      dominantColors: getFiveDistinctColors([l.color_1, l.color_2, l.color_3, l.color_4, l.color_5]),
+      sanctionCount: l.sanction_count,
+      breachCount: l.breach_count,
+      escalationCount: l.escalation_count,
+      sanctioned: l.sanctioned,
+      sanctionRationale: l.sanction_rationale,
+      timestamp: l.timestamp?.toDate?.() ?? null,
     };
   }
   return null;
@@ -208,21 +207,10 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const [liveSanctionCount, setLiveSanctionCount] = useState<number>(report?.sanctionCount ?? 0);
   const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
   const [liveEscalationCount, setLiveEscalationCount] = useState<number>(report?.escalationCount ?? 0);
-  const [escalated, setEscalated] = useState<boolean>(() => incidentId ? hasEscalated(incidentId) : false);
-  const [isTogglingEscalation, setIsTogglingEscalation] = useState(false);
+  const { escalated, isToggling: isTogglingEscalation, toggle: toggleEscalate } = useEscalation(incidentId ?? null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
-
-  // Sync escalation state with Firestore on mount
-  useEffect(() => {
-    if (!incidentId) return;
-    let cancelled = false;
-    syncEscalationState(incidentId)
-      .then((state) => { if (!cancelled) setEscalated(state); })
-      .catch((err) => { console.error('[IncidentReportOverlay] syncEscalationState failed:', err); });
-    return () => { cancelled = true; };
-  }, [incidentId]);
 
   // Live-subscribe to counter fields while overlay is open
   useEffect(() => {
@@ -230,9 +218,16 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        setLiveSanctionCount(data.sanction_count ?? 0);
-        setLiveBreachCount(data.breach_count ?? 0);
-        setLiveEscalationCount(data.escalation_count ?? 0);
+        const sc = data.sanction_count;
+        const bc = data.breach_count;
+        const ec = data.escalation_count;
+        if (typeof sc !== 'number' || typeof bc !== 'number' || typeof ec !== 'number') {
+          console.error(`[IncidentReportOverlay] incident_logs/${incidentId} has non-numeric counter fields`);
+          return;
+        }
+        setLiveSanctionCount(sc);
+        setLiveBreachCount(bc);
+        setLiveEscalationCount(ec);
       }
     }, (error) => {
       console.error('[IncidentReportOverlay] Live count subscription failed:', error);
@@ -325,20 +320,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     if (incidentId) void recordBreach(incidentId);
   };
 
-  const handleEscalate = async () => {
-    if (!incidentId || isTogglingEscalation) return;
-    setIsTogglingEscalation(true);
-    try {
-      const wasEscalated = escalated;
-      setEscalated(!wasEscalated);
-      const newState = await toggleEscalation(incidentId);
-      if (newState === wasEscalated) setEscalated(wasEscalated);
-    } catch (err) {
-      console.error('[IncidentReportOverlay] Escalation failed:', err);
-    } finally {
-      setIsTogglingEscalation(false);
-    }
-  };
+  const handleEscalate = () => void toggleEscalate();
 
   const handleCopyLink = async () => {
     if (!incidentUrl) return;
@@ -363,30 +345,27 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     >
       <div
         ref={panelRef}
-        className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-col outline-none"
+        className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
         tabIndex={-1}
       >
-        {/* Color strip — top */}
-        <div className="flex h-1 w-full shrink-0" aria-hidden="true">
+        {/* Color strip — always left */}
+        <div className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden" aria-hidden="true">
           {report.dominantColors.map((color, i) => (
             <div key={i} className="flex-1" style={{ backgroundColor: color }} />
           ))}
         </div>
 
+        {/* Main content column */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+
         {/* ── HEADER BAR ── */}
-        <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-2.5 border-b border-[#2a2a2a]">
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
-              Postmortem
-            </h2>
-            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold shrink-0">
-              <AlertTriangle size={8} aria-hidden="true" />
-              {report.severity}
-            </span>
-          </div>
+        <div className="shrink-0 flex items-center justify-between gap-2 px-5 sm:px-8 py-2.5">
+          <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
+            Postmortem
+          </h2>
           <div className="flex items-center gap-1 shrink-0">
             {platforms.map(({ label, href }) => {
               const cfg = SHARE_PLATFORMS[label];
@@ -434,15 +413,24 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
           </div>
         </div>
 
+        {/* Hazard stripe — under header, consistent with manifest */}
+        <div className="hazard-stripe h-1 w-full shrink-0" />
+
         {/* ── SCROLLABLE BODY ── */}
         <div className="flex-1 overflow-y-auto">
           <div className="px-5 sm:px-8 py-5 sm:py-6 space-y-5">
 
-            {/* Title */}
+            {/* Title + severity */}
             <div>
-              <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
-                {report.legacyInfraClass}
-              </p>
+              <div className="flex justify-between items-start gap-3">
+                <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
+                  {report.legacyInfraClass}
+                </p>
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold shrink-0">
+                  <AlertTriangle size={8} aria-hidden="true" />
+                  {report.severity}
+                </span>
+              </div>
               {liveSanctionCount > 0 && (
                 <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold">
                   <ShieldCheck size={9} aria-hidden="true" />
@@ -561,6 +549,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </div>
 
           </div>
+        </div>
         </div>
       </div>
     </div>

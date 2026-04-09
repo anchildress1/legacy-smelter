@@ -35,11 +35,10 @@ export function formatPixels(pixels: number): { value: string, unit: string } {
 
 export const FALLBACK_COLORS = ["#ffff00", "#00c3f5", "#4db542", "#fb0094", "#fc9103"];
 
-// Builds a shareable incident URL. Uses VITE_APP_URL when provided.
-// Falls back to the canonical production URL so links stay stable across hostnames.
+// Builds a shareable incident URL from VITE_APP_URL (validated at startup).
 // /s/:id is the canonical share path — handled by server.js for OG pre-rendering.
 export function buildIncidentUrl(docId: string): string {
-  const base = (import.meta.env.VITE_APP_URL ?? '').replace(/\/$/, '');
+  const base = import.meta.env.VITE_APP_URL.replace(/\/$/, '');
   return `${base}/s/${encodeURIComponent(docId)}`;
 }
 
@@ -54,17 +53,13 @@ export function buildShareLinks(shareText: string, headline: string, pageUrl: st
 
 export function getLogShareLinks(log: SmeltLog): { label: string; href: string }[] {
   const incidentUrl = buildIncidentUrl(log.id);
-  const shareText = log.share_quote
-    ? `${log.share_quote}\n\n${log.incident_feed_summary}`
-    : log.incident_feed_summary;
-  const headline = log.og_headline || 'Legacy Smelter Incident Report';
-  return buildShareLinks(shareText, headline, incidentUrl);
+  const shareText = `${log.share_quote}\n\n${log.incident_feed_summary}`;
+  return buildShareLinks(shareText, log.og_headline, incidentUrl);
 }
 
 export function getFiveDistinctColors(colors: string[]): string[] {
   const hexRegex = /^#([0-9a-f]{6})$/i;
-  const validColors = (colors || [])
-    .filter(c => typeof c === 'string')
+  const validColors = colors
     .map(c => c.toLowerCase().trim())
     .filter(c => hexRegex.test(c));
 

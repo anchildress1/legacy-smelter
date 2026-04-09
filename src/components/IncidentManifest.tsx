@@ -8,10 +8,12 @@ import {
   doc,
 } from '../firebase';
 import { SmeltLog, GlobalStats, computeImpact } from '../types';
-import { formatPixels, getLogShareLinks } from '../lib/utils';
+import { getLogShareLinks } from '../lib/utils';
 import { IncidentLogCard } from './IncidentLogCard';
 import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
 import { IncidentReportOverlay } from './IncidentReportOverlay';
+import { DecommissionIndex } from './DecommissionIndex';
+import { SiteFooter } from './SiteFooter';
 import { Flame, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { parseSmeltLog } from '../lib/smeltLogSchema';
 
@@ -36,7 +38,12 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
   useEffect(() => {
     const unsubStats = onSnapshot(doc(db, 'global_stats', 'main'), (snap) => {
-      if (snap.exists()) setGlobalStats(snap.data() as GlobalStats);
+      if (snap.exists()) {
+        const data = snap.data();
+        if (typeof data.total_pixels_melted === 'number') {
+          setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
+        }
+      }
     }, (err) => handleFirestoreError(err, OperationType.GET, 'global_stats/main', setError));
 
     return () => { unsubStats(); };
@@ -52,11 +59,17 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     setError(null);
     let gotFirst = false;
     const unsubLogs = onSnapshot(q, (snap) => {
-      let entries: SmeltLog[];
-      try {
-        entries = snap.docs.map((d) => parseSmeltLog(d.id, d.data()));
-      } catch (parseErr) {
-        console.error('[IncidentManifest] incident_logs schema violation:', parseErr);
+      const entries: SmeltLog[] = [];
+      let schemaErrors = 0;
+      for (const d of snap.docs) {
+        try {
+          entries.push(parseSmeltLog(d.id, d.data()));
+        } catch (parseErr) {
+          schemaErrors++;
+          if (schemaErrors <= 3) console.error('[IncidentManifest] Skipping malformed doc:', parseErr);
+        }
+      }
+      if (schemaErrors > 0 && entries.length === 0) {
         setAllLogs([]);
         setError(MANIFEST_SCHEMA_ERROR);
         setIsLoading(false);
@@ -140,8 +153,6 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const formatted = formatPixels(globalStats.total_pixels_melted);
-
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       {/* Header */}
@@ -154,15 +165,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             </button>
           </div>
           <div className="flex items-center justify-between gap-3 w-full sm:w-auto sm:justify-end">
-            <div className="text-right">
-              <div className="font-mono font-extrabold text-hazard-amber text-lg leading-none tracking-tight">
-                {formatted.value} <span className="text-xs text-stone-gray font-bold">{formatted.unit}</span>
-              </div>
-              <div className="text-[11px] md:text-[10px] font-mono text-stone-gray uppercase tracking-wide md:tracking-widest mt-0.5">
-                DECOMMISSION INDEX
-              </div>
-            </div>
-            <div className="hazard-stripe w-2 h-10 rounded-sm shrink-0" aria-hidden="true" />
+            <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
           </div>
         </div>
       </header>
@@ -278,17 +281,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         </nav>
       </main>
 
-      {/* Footer */}
-      <footer className="p-6 bg-concrete-mid border-t border-concrete-border mt-auto">
-        <div className="max-w-5xl mx-auto w-full flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
-            &copy; 2026 Ashley Childress
-          </p>
-          <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
-            Powered by Gemini
-          </p>
-        </div>
-      </footer>
+      <SiteFooter maxWidth="max-w-5xl" />
 
       {/* Detail overlay */}
       {selectedLog && (

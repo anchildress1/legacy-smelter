@@ -17,9 +17,11 @@ import { GlobalStats as GlobalStatsType, SmeltLog, computeImpact } from './types
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
-import { formatPixels, getFiveDistinctColors, getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
+import { getFiveDistinctColors, getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
 import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
+import { DecommissionIndex } from './components/DecommissionIndex';
+import { SiteFooter } from './components/SiteFooter';
 import { parseSmeltLog } from './lib/smeltLogSchema';
 
 // Audio
@@ -64,15 +66,17 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     const statsDoc = doc(db, 'global_stats', 'main');
     const unsubStats = onSnapshot(statsDoc, (snapshot) => {
       if (snapshot.exists()) {
-        setGlobalStats(snapshot.data() as GlobalStatsType);
+        const data = snapshot.data();
+        if (typeof data.total_pixels_melted === 'number') {
+          setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
+        }
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'global_stats/main', setAnalysisError);
     });
 
-    // Pull the full archive so P0 ranking is truly global.
-    // Impact = (5×sanctions)+(3×escalations)+(2×breaches) can't be queried server-side.
-    // SCALING: subscribes to the full collection for truly global P0 ranking.
+    // SCALING: subscribes to the full incident_logs collection (no limit) so
+    // client-side impact sorting captures all incidents for P0 ranking.
     // At scale, replace with a precomputed impact_score field maintained by a
     // Cloud Function, then query orderBy('impact_score').limit(3).
     const logsQuery = query(
@@ -80,11 +84,17 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       orderBy('timestamp', 'desc')
     );
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
-      let entries: SmeltLog[];
-      try {
-        entries = snapshot.docs.map((d) => parseSmeltLog(d.id, d.data()));
-      } catch (error) {
-        console.error('[App] incident_logs schema violation:', error);
+      const entries: SmeltLog[] = [];
+      let schemaErrors = 0;
+      for (const d of snapshot.docs) {
+        try {
+          entries.push(parseSmeltLog(d.id, d.data()));
+        } catch (error) {
+          schemaErrors++;
+          if (schemaErrors <= 3) console.error('[App] Skipping malformed incident_logs doc:', error);
+        }
+      }
+      if (schemaErrors > 0 && entries.length === 0) {
         setRecentLogs([]);
         setAnalysisError(INCIDENT_SCHEMA_ERROR);
         return;
@@ -296,10 +306,10 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             color_3: colors[2],
             color_4: colors[3],
             color_5: colors[4],
-            subject_box_ymin: box[0] ?? 100,
-            subject_box_xmin: box[1] ?? 100,
-            subject_box_ymax: box[2] ?? 900,
-            subject_box_xmax: box[3] ?? 900,
+            subject_box_ymin: box[0],
+            subject_box_xmin: box[1],
+            subject_box_ymax: box[2],
+            subject_box_xmax: box[3],
             legacy_infra_class: completedAnalysis.legacyInfraClass,
             diagnosis: completedAnalysis.diagnosis,
             chromatic_profile: completedAnalysis.chromaticProfile,
@@ -378,8 +388,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       )
     : [];
 
-  const formatted = formatPixels(globalStats.total_pixels_melted);
-
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
@@ -396,17 +404,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             </div>
           </div>
           <div className="flex items-center justify-between gap-4 w-full sm:w-auto sm:justify-end">
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <div className="font-mono font-extrabold text-hazard-amber text-lg leading-none tracking-tight">
-                  {formatted.value} <span className="text-xs text-stone-gray font-bold">{formatted.unit}</span>
-                </div>
-                <div className="text-[10px] font-mono text-stone-gray uppercase tracking-widest mt-0.5">
-                  DECOMMISSION INDEX
-                </div>
-              </div>
-              <div className="hazard-stripe w-2 h-10 rounded-sm shrink-0" aria-hidden="true" />
-            </div>
+            <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
             <button onClick={onNavigateManifest} className="nav-btn">
               ALL INCIDENTS
               <ArrowRight size={14} />
@@ -567,17 +565,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="p-6 bg-concrete-mid border-t border-concrete-border mt-auto">
-        <div className="max-w-7xl mx-auto w-full flex flex-col lg:flex-row justify-between items-center gap-4">
-          <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
-            &copy; 2026 Ashley Childress
-          </p>
-          <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
-            Powered by Gemini
-          </p>
-        </div>
-      </footer>
+      <SiteFooter />
 
       {/* Post-mortem overlay */}
       {selectedRecentLog && (

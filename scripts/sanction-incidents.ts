@@ -44,19 +44,7 @@ interface IncidentDoc {
   share_quote: string;
 }
 
-interface Candidate {
-  incident_id: string;
-  uid: string;
-  legacy_infra_class: string;
-  diagnosis: string;
-  severity: string;
-  archive_note: string;
-  failure_origin: string;
-  chromatic_profile: string;
-  system_dx: string;
-  incident_feed_summary: string;
-  share_quote: string;
-}
+type Candidate = IncidentDoc & { incident_id: string };
 
 interface SanctionSelection {
   sanctioned_incident_id: string;
@@ -284,22 +272,10 @@ async function run(): Promise<void> {
       }
 
       const batch = unjudgedSnap.docs;
-      const candidates: Candidate[] = batch.map((d) => {
-        const data = parseIncidentDoc(d.data(), d.id);
-        return {
-          incident_id: d.id,
-          uid: data.uid,
-          legacy_infra_class: data.legacy_infra_class,
-          diagnosis: data.diagnosis,
-          severity: data.severity,
-          archive_note: data.archive_note,
-          failure_origin: data.failure_origin,
-          chromatic_profile: data.chromatic_profile,
-          system_dx: data.system_dx,
-          incident_feed_summary: data.incident_feed_summary,
-          share_quote: data.share_quote,
-        };
-      });
+      const candidates: Candidate[] = batch.map((d) => ({
+        ...parseIncidentDoc(d.data(), d.id),
+        incident_id: d.id,
+      }));
 
       console.log('[sanction-incidents] Candidates:', candidates.map((c) => c.incident_id));
 

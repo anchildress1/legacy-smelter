@@ -13,8 +13,8 @@ function isTimestamp(value: unknown): value is Timestamp {
 
 function expectString(data: Record<string, unknown>, key: string, docId: string): string {
   const value = data[key];
-  if (typeof value !== 'string') {
-    throw new Error(`incident_logs/${docId} has invalid "${key}" (expected string)`);
+  if (typeof value !== 'string' || !value) {
+    throw new Error(`incident_logs/${docId} has invalid "${key}" (expected non-empty string)`);
   }
   return value;
 }
@@ -37,14 +37,14 @@ function expectBoolean(data: Record<string, unknown>, key: string, docId: string
 
 function expectNullableString(data: Record<string, unknown>, key: string, docId: string): string | null {
   const value = data[key];
-  if (value === null) return null;
+  if (value === null || value === undefined) return null;
   if (typeof value === 'string') return value;
   throw new Error(`incident_logs/${docId} has invalid "${key}" (expected string|null)`);
 }
 
 function expectTimestampOrNull(data: Record<string, unknown>, key: string, docId: string): Timestamp | null {
   const value = data[key];
-  if (value === null) return null;
+  if (value === null || value === undefined) return null;
   if (isTimestamp(value)) return value;
   throw new Error(`incident_logs/${docId} has invalid "${key}" (expected Timestamp|null)`);
 }

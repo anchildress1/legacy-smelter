@@ -25,9 +25,8 @@ export function hasEscalated(incidentId: string): boolean {
 /**
  * Toggles the current user's escalation on an incident.
  * Uses a Firestore transaction to read the escalation subcollection doc
- * before deciding whether to create or delete — this eliminates drift
- * between localStorage and Firestore that caused silent batch failures
- * when batch.set hit a missing `update` rule on an existing doc.
+ * before deciding whether to create or delete — this prevents drift
+ * between localStorage and the server-side escalation state.
  *
  * Returns the new escalation state (true = escalated, false = de-escalated).
  */

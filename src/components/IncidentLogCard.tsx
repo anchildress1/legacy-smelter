@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
 import { Siren, AlertTriangle, Quote } from 'lucide-react';
-import { toggleEscalation, hasEscalated, syncEscalationState } from '../services/escalationService';
+import { useEscalation } from '../hooks/useEscalation';
 
 interface IncidentLogCardProps {
   log: SmeltLog;
@@ -10,16 +10,7 @@ interface IncidentLogCardProps {
 }
 
 export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }) => {
-  const [escalated, setEscalated] = useState(() => hasEscalated(log.id));
-  const [isToggling, setIsToggling] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    syncEscalationState(log.id)
-      .then((state) => { if (!cancelled) setEscalated(state); })
-      .catch((err) => { console.error('[IncidentLogCard] syncEscalationState failed:', err); });
-    return () => { cancelled = true; };
-  }, [log.id]);
+  const { escalated, isToggling, toggle } = useEscalation(log.id);
 
   const finalColors = getFiveDistinctColors([
     log.color_1, log.color_2, log.color_3, log.color_4, log.color_5,
@@ -27,22 +18,9 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
 
   const impact = computeImpact(log.sanction_count, log.escalation_count, log.breach_count);
 
-  const handleEscalate = async (e: React.MouseEvent) => {
+  const handleEscalate = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isToggling) return;
-    setIsToggling(true);
-    try {
-      const wasEscalated = escalated;
-      setEscalated(!wasEscalated);
-      const newState = await toggleEscalation(log.id);
-      if (newState === wasEscalated) {
-        setEscalated(wasEscalated);
-      }
-    } catch (err) {
-      console.error('[IncidentLogCard] Escalation failed:', err);
-    } finally {
-      setIsToggling(false);
-    }
+    void toggle();
   };
 
   const infraClass = log.legacy_infra_class || 'Incident';

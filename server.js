@@ -23,7 +23,8 @@ import 'dotenv/config';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, 'dist');
 const PORT = process.env.PORT || 8080;
-const APP_URL = (process.env.VITE_APP_URL ?? '').replace(/\/$/, '');
+const APP_URL = (process.env.VITE_APP_URL || '').replace(/\/$/, '');
+if (!APP_URL) console.warn('[server] VITE_APP_URL is not set — OG share URLs will be relative paths.');
 
 function parsePositiveInt(rawValue, fallbackValue) {
   const parsed = Number.parseInt(rawValue ?? '', 10);
@@ -282,27 +283,42 @@ async function analyzeImage(base64Image, mimeType) {
   }
 
   const result = JSON.parse(responseText);
-  const rawColors = Array.isArray(result.dominant_hex_colors) ? result.dominant_hex_colors : [];
+
+  const requiredStringFields = [
+    'legacy_infra_class', 'diagnosis', 'chromatic_profile', 'system_dx',
+    'severity', 'primary_contamination', 'contributing_factor', 'failure_origin',
+    'disposition', 'incident_feed_summary', 'archive_note', 'og_headline',
+    'share_quote', 'anon_handle',
+  ];
+  for (const field of requiredStringFields) {
+    if (typeof result[field] !== 'string' || !result[field]) {
+      throw new Error(`Gemini response missing or empty required field: ${field}`);
+    }
+  }
+  if (!Array.isArray(result.dominant_hex_colors) || result.dominant_hex_colors.length === 0) {
+    throw new Error('Gemini response missing dominant_hex_colors array');
+  }
+  if (!Array.isArray(result.subject_box) || result.subject_box.length !== 4 || !result.subject_box.every(v => typeof v === 'number')) {
+    throw new Error('Gemini response has invalid subject_box (expected 4-number array)');
+  }
 
   return {
-    legacyInfraClass: String(result.legacy_infra_class || 'Unclassified Legacy Artifact'),
-    diagnosis: String(result.diagnosis || 'Artifact integrity compromised. Classification pending.'),
-    dominantColors: getFiveDistinctColors(rawColors),
-    chromaticProfile: String(result.chromatic_profile || 'Standard Slag Spectrum'),
-    systemDx: String(result.system_dx || 'Chronic Legacy Retention Syndrome'),
+    legacyInfraClass: result.legacy_infra_class,
+    diagnosis: result.diagnosis,
+    dominantColors: getFiveDistinctColors(result.dominant_hex_colors),
+    chromaticProfile: result.chromatic_profile,
+    systemDx: result.system_dx,
     severity: normalizeSeverity(result.severity),
-    primaryContamination: String(result.primary_contamination || 'unresolved dependencies'),
-    contributingFactor: String(result.contributing_factor || 'ambient technical debt'),
-    failureOrigin: String(result.failure_origin || 'Unauthorized backwards compatibility. Also, the architecture.'),
-    disposition: String(result.disposition || 'Critical. Immediate smelting required.'),
-    incidentFeedSummary: String(result.incident_feed_summary || 'Legacy artifact processed. Output: molten slag.'),
-    archiveNote: String(result.archive_note || 'Artifact of uncertain provenance. Thermal decommission complete. Incident archived.'),
-    ogHeadline: String(result.og_headline || 'Legacy artifact thermally decommissioned'),
-    shareQuote: String(result.share_quote || 'Hotfix deployed. Output: molten slag.'),
-    anonHandle: String(result.anon_handle || 'IncidentClerk_404'),
-    subjectBox: (Array.isArray(result.subject_box) && result.subject_box.length === 4 && result.subject_box.every(v => typeof v === 'number')
-      ? result.subject_box
-      : [100, 100, 900, 900]),
+    primaryContamination: result.primary_contamination,
+    contributingFactor: result.contributing_factor,
+    failureOrigin: result.failure_origin,
+    disposition: result.disposition,
+    incidentFeedSummary: result.incident_feed_summary,
+    archiveNote: result.archive_note,
+    ogHeadline: result.og_headline,
+    shareQuote: result.share_quote,
+    anonHandle: result.anon_handle,
+    subjectBox: result.subject_box,
   };
 }
 
@@ -381,7 +397,7 @@ app.use('/api', (err, _req, res, _next) => {
 // reads window.location.pathname to open the incident overlay.
 app.get('/s/:id', async (req, res, next) => {
   const { id } = req.params;
-  if (!FIREBASE_API_KEY || !FIREBASE_PROJECT_ID) return next();
+  if (!FIREBASE_API_KEY || !FIREBASE_PROJECT_ID || !FIREBASE_DB_ID) return next();
 
   try {
     const incident = await fetchIncident(id);
@@ -390,8 +406,9 @@ app.get('/s/:id', async (req, res, next) => {
     const canonicalUrl = `${APP_URL}/s/${encodeURIComponent(id)}`;
     const html = injectIncidentOg(getSpaHtml(), incident, canonicalUrl);
     res.setHeader('Content-Type', 'text/html');
-    // CDN caches for 24h; browsers revalidate after 1h.
-    // Incident data is immutable after write, so long CDN TTL is safe.
+    // OG fields (headline, summary, severity, class) are immutable after write,
+    // so long CDN TTL is safe. Counter fields (breaches, sanctions) are mutable
+    // but not included in OG metadata.
     res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
     return res.send(html);
   } catch (err) {
@@ -402,7 +419,7 @@ app.get('/s/:id', async (req, res, next) => {
 });
 
 // Vite hashes all asset filenames — safe to cache for 1 year.
-// index.html is excluded: it must stay fresh so app updates propagate.
+// index.html is overridden to no-store below so app updates propagate.
 app.use(express.static(DIST, {
   maxAge: '1y',
   immutable: true,
