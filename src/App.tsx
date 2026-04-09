@@ -17,7 +17,7 @@ import { GlobalStats as GlobalStatsType, SmeltLog, computeImpact } from './types
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
-import { getFiveDistinctColors, getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
+import { getFiveDistinctColors, getLogShareLinks } from './lib/utils';
 import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 import { DecommissionIndex } from './components/DecommissionIndex';
@@ -100,8 +100,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
         return;
       }
       const sorted = entries.sort((a, b) => {
-        return computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
-             - computeImpact(a.sanction_count, a.escalation_count, a.breach_count);
+        return computeImpact(b) - computeImpact(a);
       });
       setRecentLogs(sorted.slice(0, 3));
       setAnalysisError((prev) => (prev === INCIDENT_SCHEMA_ERROR ? null : prev));
@@ -380,14 +379,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     canvasRef.current?.replay();
   };
 
-  const shareLinks = analysis
-    ? buildShareLinks(
-        `${analysis.shareQuote}\n\n${analysis.incidentFeedSummary}`,
-        analysis.ogHeadline,
-        loggedIncidentId ? buildIncidentUrl(loggedIncidentId) : window.location.origin
-      )
-    : [];
-
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
@@ -570,20 +561,18 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       {/* Post-mortem overlay */}
       {selectedRecentLog && (
         <IncidentReportOverlay
+          mode="log"
           log={selectedRecentLog}
           shareLinks={getLogShareLinks(selectedRecentLog)}
           incidentId={selectedRecentLog.id}
-
           onClose={() => setSelectedRecentLog(null)}
         />
       )}
 
       {showReport && analysis && (
         <IncidentReportOverlay
+          mode="analysis"
           analysis={analysis}
-          shareLinks={shareLinks}
-          incidentId={loggedIncidentId}
-
           onClose={() => setShowReport(false)}
         />
       )}

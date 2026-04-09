@@ -7,14 +7,10 @@ import { recordBreach } from '../services/breachService';
 import { useEscalation } from '../hooks/useEscalation';
 import { db, doc, onSnapshot } from '../firebase';
 
-// analysis and log are mutually exclusive — exactly one should be non-null per call site
-interface OverlayProps {
-  analysis?: SmeltAnalysis | null;
-  log?: SmeltLog | null;
-  shareLinks?: { label: string; href: string }[];
-  incidentId?: string | null;
-  onClose: () => void;
-}
+type OverlayProps = { onClose: () => void } & (
+  | { mode: 'analysis'; analysis: SmeltAnalysis }
+  | { mode: 'log'; log: SmeltLog; shareLinks: { label: string; href: string }[]; incidentId: string }
+);
 
 interface NormalisedReport {
   legacyInfraClass: string;
@@ -59,7 +55,8 @@ function buildMarkdown(
   liveEscalationCount: number,
   liveSanctionCount: number
 ): string {
-  const impact = computeImpact(liveSanctionCount, liveEscalationCount, liveBreachCount);
+  const liveCounts = { sanction_count: liveSanctionCount, escalation_count: liveEscalationCount, breach_count: liveBreachCount };
+  const impact = computeImpact(liveCounts);
   const lines: string[] = [
     `# ${report.legacyInfraClass}`,
     '',
@@ -197,7 +194,12 @@ const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> =
   },
 };
 
-export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose }) => {
+export const IncidentReportOverlay: React.FC<OverlayProps> = (props) => {
+  const { onClose } = props;
+  const analysis = props.mode === 'analysis' ? props.analysis : null;
+  const log = props.mode === 'log' ? props.log : null;
+  const shareLinks = props.mode === 'log' ? props.shareLinks : [];
+  const incidentId = props.mode === 'log' ? props.incidentId : null;
   const report = normalise(analysis, log);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -207,6 +209,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const [liveSanctionCount, setLiveSanctionCount] = useState<number>(report?.sanctionCount ?? 0);
   const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
   const [liveEscalationCount, setLiveEscalationCount] = useState<number>(report?.escalationCount ?? 0);
+  const liveCounts = { sanction_count: liveSanctionCount, escalation_count: liveEscalationCount, breach_count: liveBreachCount };
   const { escalated, isToggling: isTogglingEscalation, toggle: toggleEscalate } = useEscalation(incidentId ?? null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -456,7 +459,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             {/* Stats row */}
             <div className="flex items-baseline justify-between py-3 border-y border-[#2a2a2a]">
               {[
-                { value: computeImpact(liveSanctionCount, liveEscalationCount, liveBreachCount), label: 'Impact' },
+                { value: computeImpact(liveCounts), label: 'Impact' },
                 { value: liveSanctionCount, label: 'Sanctions' },
                 { value: liveEscalationCount, label: 'Escalations' },
                 { value: liveBreachCount, label: 'Breaches' },

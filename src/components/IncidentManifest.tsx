@@ -117,15 +117,12 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         case 'newest':
           return (b.timestamp?.toMillis?.() ?? 0) - (a.timestamp?.toMillis?.() ?? 0);
         case 'breaches':
-          return b.breach_count - a.breach_count || computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
-            - computeImpact(a.sanction_count, a.escalation_count, a.breach_count);
+          return b.breach_count - a.breach_count || computeImpact(b) - computeImpact(a);
         case 'escalations':
-          return b.escalation_count - a.escalation_count || computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
-            - computeImpact(a.sanction_count, a.escalation_count, a.breach_count);
+          return b.escalation_count - a.escalation_count || computeImpact(b) - computeImpact(a);
         case 'impact':
         default:
-          return computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
-            - computeImpact(a.sanction_count, a.escalation_count, a.breach_count);
+          return computeImpact(b) - computeImpact(a);
       }
     });
   }, [allLogs, filterMode, sortMode]);
@@ -286,6 +283,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
       {/* Detail overlay */}
       {selectedLog && (
         <IncidentReportOverlay
+          mode="log"
           log={selectedLog}
           shareLinks={getLogShareLinks(selectedLog)}
           incidentId={selectedLog.id}

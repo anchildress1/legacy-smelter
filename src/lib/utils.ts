@@ -33,7 +33,7 @@ export function formatPixels(pixels: number): { value: string, unit: string } {
   return { value: (pixels / 1_000_000_000_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'PETAPIXELS' };
 }
 
-export const FALLBACK_COLORS = ["#ffff00", "#00c3f5", "#4db542", "#fb0094", "#fc9103"];
+export { FALLBACK_COLORS, getFiveDistinctColors } from '../../shared/colors.js';
 
 // Builds a shareable incident URL from VITE_APP_URL (validated at startup).
 // /s/:id is the canonical share path — handled by server.js for OG pre-rendering.
@@ -57,13 +57,3 @@ export function getLogShareLinks(log: SmeltLog): { label: string; href: string }
   return buildShareLinks(shareText, log.og_headline, incidentUrl);
 }
 
-export function getFiveDistinctColors(colors: string[]): string[] {
-  const hexRegex = /^#([0-9a-f]{6})$/i;
-  const validColors = colors
-    .map(c => c.toLowerCase().trim())
-    .filter(c => hexRegex.test(c));
-
-  const uniqueSrc = Array.from(new Set(validColors));
-  const combined = Array.from(new Set([...uniqueSrc, ...FALLBACK_COLORS]));
-  return combined.slice(0, 5);
-}

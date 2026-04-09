@@ -16,7 +16,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
     log.color_1, log.color_2, log.color_3, log.color_4, log.color_5,
   ]);
 
-  const impact = computeImpact(log.sanction_count, log.escalation_count, log.breach_count);
+  const impact = computeImpact(log);
 
   const handleEscalate = (e: React.MouseEvent) => {
     e.stopPropagation();

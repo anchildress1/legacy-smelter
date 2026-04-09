@@ -18,6 +18,7 @@ import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
+import { getFiveDistinctColors } from './shared/colors.js';
 import 'dotenv/config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -102,18 +103,6 @@ function injectIncidentOg(html, incident, canonicalUrl) {
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 
-const FALLBACK_COLORS = ['#ffff00', '#00c3f5', '#4db542', '#fb0094', '#fc9103'];
-
-function getFiveDistinctColors(colors) {
-  const hexRegex = /^#([0-9a-f]{6})$/i;
-  const validColors = (colors || [])
-    .filter(c => typeof c === 'string')
-    .map(c => c.toLowerCase().trim())
-    .filter(c => hexRegex.test(c));
-  const uniqueSrc = Array.from(new Set(validColors));
-  const combined = Array.from(new Set([...uniqueSrc, ...FALLBACK_COLORS]));
-  return combined.slice(0, 5);
-}
 
 const GEMINI_PROMPT = `You are the incident analysis engine for Legacy Smelter. You analyze uploaded images and classify them as condemned technical artifacts requiring thermal decommission.
 

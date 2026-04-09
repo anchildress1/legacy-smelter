@@ -42,7 +42,13 @@ export interface GlobalStats {
   total_pixels_melted: number;
 }
 
+export interface ImpactCounts {
+  sanction_count: number;
+  escalation_count: number;
+  breach_count: number;
+}
+
 /** Impact = (5 × sanctions) + (3 × escalations) + (2 × breaches), clamped to 0 */
-export function computeImpact(sanctionCount: number, escalationCount: number, breachCount: number): number {
-  return Math.max(0, (5 * sanctionCount) + (3 * escalationCount) + (2 * breachCount));
+export function computeImpact(counts: ImpactCounts): number {
+  return Math.max(0, (5 * counts.sanction_count) + (3 * counts.escalation_count) + (2 * counts.breach_count));
 }
