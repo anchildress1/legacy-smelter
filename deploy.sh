@@ -41,20 +41,20 @@ while [[ $# -gt 0 ]]; do
       sed -n '3,18p' "$0"
       exit 0
       ;;
-    *) echo "Unknown option: $1"; exit 1 ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
 
 # ── Preflight ────────────────────────────────────────────────────────────────
 
 if ! command -v gcloud &>/dev/null; then
-  echo "ERROR: gcloud CLI not found. Install from https://cloud.google.com/sdk/docs/install"
+  echo "ERROR: gcloud CLI not found. Install from https://cloud.google.com/sdk/docs/install" >&2
   exit 1
 fi
 
 PROJECT_ID="${GCP_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
-  echo "ERROR: No GCP project set. Pass --project or run: gcloud config set project <ID>"
+  echo "ERROR: No GCP project set. Pass --project or run: gcloud config set project <ID>" >&2
   exit 1
 fi
 
@@ -92,8 +92,8 @@ for var in "${required_vars[@]}"; do
   fi
 done
 if [[ ${#missing[@]} -gt 0 ]]; then
-  echo "ERROR: missing required env vars: ${missing[*]}"
-  echo "Set them in $ENV_FILE or export before running."
+  echo "ERROR: missing required env vars: ${missing[*]}" >&2
+  echo "Set them in $ENV_FILE or export before running." >&2
   exit 1
 fi
 
@@ -105,14 +105,14 @@ if [[ -z "${VITE_APP_URL:-}" ]]; then
   if [[ -n "$VITE_APP_URL" ]]; then
     echo "==> Resolved VITE_APP_URL from existing service: $VITE_APP_URL"
   else
-    echo "ERROR: VITE_APP_URL not set and no existing service to resolve from."
-    echo "Set VITE_APP_URL in $ENV_FILE or export it for first deploy."
+    echo "ERROR: VITE_APP_URL not set and no existing service to resolve from." >&2
+    echo "Set VITE_APP_URL in $ENV_FILE or export it for first deploy." >&2
     exit 1
   fi
 fi
 
 if [[ ! "$VITE_APP_URL" =~ ^https?://[^[:space:]]+$ ]]; then
-  echo "ERROR: VITE_APP_URL must be an absolute http(s) URL. Received: $VITE_APP_URL"
+  echo "ERROR: VITE_APP_URL must be an absolute http(s) URL. Received: $VITE_APP_URL" >&2
   exit 1
 fi
 VITE_APP_URL="${VITE_APP_URL%/}"

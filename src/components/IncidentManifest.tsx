@@ -5,6 +5,7 @@ import {
   onSnapshot,
   query,
   orderBy,
+  limit,
   doc,
 } from '../firebase';
 import { SmeltLog, GlobalStats, computeImpact } from '../types';
@@ -18,6 +19,7 @@ import { Flame, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from 'lucide-rea
 import { parseSmeltLog } from '../lib/smeltLogSchema';
 
 const PAGE_SIZE = 20;
+const MANIFEST_FETCH_LIMIT = 500;
 type ManifestFilter = 'all' | 'needs_ruling' | 'escalated' | 'sanctioned';
 type ManifestSort = 'impact' | 'newest' | 'breaches' | 'escalations';
 const MANIFEST_SCHEMA_ERROR_PREFIX = 'Incident data schema violation.';
@@ -55,11 +57,23 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     return () => { unsubStats(); };
   }, []);
 
-  // SCALING: subscribes to the full collection for client-side impact sorting.
-  // At scale, replace with a precomputed impact_score field and cursor-based pagination.
+  // Keep manifest reads bounded and use server-side ranking for the selected
+  // sort mode so client CPU/memory does not scale with collection size.
   useEffect(() => {
     const logsRef = collection(db, 'incident_logs');
-    const q = query(logsRef, orderBy('timestamp', 'desc'));
+    const q = (() => {
+      switch (sortMode) {
+        case 'impact':
+          return query(logsRef, orderBy('impact_score', 'desc'), orderBy('timestamp', 'desc'), limit(MANIFEST_FETCH_LIMIT));
+        case 'breaches':
+          return query(logsRef, orderBy('breach_count', 'desc'), orderBy('timestamp', 'desc'), limit(MANIFEST_FETCH_LIMIT));
+        case 'escalations':
+          return query(logsRef, orderBy('escalation_count', 'desc'), orderBy('timestamp', 'desc'), limit(MANIFEST_FETCH_LIMIT));
+        case 'newest':
+        default:
+          return query(logsRef, orderBy('timestamp', 'desc'), limit(MANIFEST_FETCH_LIMIT));
+      }
+    })();
 
     setIsLoading(true);
     setError(null);
@@ -95,7 +109,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     });
 
     return () => { unsubLogs(); };
-  }, []);
+  }, [sortMode]);
 
   const manifestCounts = useMemo(() => ({
     all: allLogs.length,
@@ -138,6 +152,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   }, [filterMode, sortMode]);
 
   const totalPages = Math.max(1, Math.ceil(sortedLogs.length / PAGE_SIZE));
+  const isWindowTruncated = allLogs.length === MANIFEST_FETCH_LIMIT;
   // Clamp page if the dataset shrinks (e.g. docs deleted) while user is on a later page
   const safePage = Math.min(currentPage, totalPages - 1);
   const pageStart = safePage * PAGE_SIZE;
@@ -175,6 +190,11 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           <h1 className="text-hazard-amber font-mono text-lg sm:text-2xl uppercase tracking-widest font-black">
             Incident Manifest{!isLoading && <span className="text-stone-gray font-bold text-sm sm:text-base ml-2">({sortedLogs.length})</span>}
           </h1>
+          {isWindowTruncated && (
+            <p className="mt-1 text-stone-gray font-mono text-[10px] uppercase tracking-wider">
+              Showing newest {MANIFEST_FETCH_LIMIT} incidents.
+            </p>
+          )}
           <div className="hazard-stripe h-1 w-full mt-3 rounded-sm" />
         </div>
 
@@ -213,7 +233,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         </div>
 
         {/* Log entries */}
-        <ul role="list" className="space-y-4 min-h-[200px]">
+        <ul className="space-y-4 min-h-[200px]">
           {isLoading && (
             <li className="flex items-center justify-center py-12 list-none">
               <div className="w-6 h-6 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin" />

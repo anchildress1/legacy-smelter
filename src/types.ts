@@ -2,6 +2,7 @@ import type { Timestamp } from 'firebase/firestore';
 
 export interface SmeltLog {
   id: string;
+  impact_score: number;
   pixel_count: number;
   incident_feed_summary: string;
   color_1: string;

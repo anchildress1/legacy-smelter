@@ -15,9 +15,9 @@
  */
 
 import express from 'express';
-import { readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { FieldValue } from 'firebase-admin/firestore';
 import { imageSize } from 'image-size';
@@ -58,10 +58,10 @@ const OG_IMAGE_HEIGHT = '688';
 
 function esc(str) {
   return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
 }
 
 async function fetchIncident(docId) {
@@ -483,6 +483,7 @@ app.post('/api/analyze', requireFirebaseAuth, rateLimitAnalyzeRoute, async (req,
       breach_count: 0,
       escalation_count: 0,
       sanction_count: 0,
+      impact_score: 0,
       sanctioned: false,
       judged: false,
       sanction_rationale: null,

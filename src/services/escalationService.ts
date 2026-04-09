@@ -17,19 +17,32 @@ function getEscalatedSet(): Set<string> {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed) || !parsed.every((v): v is string => typeof v === 'string')) {
       console.error('[escalationService] Corrupted escalations storage; clearing.');
-      localStorage.removeItem(STORAGE_KEY);
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (removeErr) {
+        console.error('[escalationService] Failed to clear corrupted storage:', removeErr);
+      }
       return new Set();
     }
     return new Set(parsed);
   } catch (err) {
     console.error('[escalationService] Failed to parse escalations; clearing.', err);
-    localStorage.removeItem(STORAGE_KEY);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (removeErr) {
+      console.error('[escalationService] Failed to clear invalid storage:', removeErr);
+    }
     return new Set();
   }
 }
 
 function persistEscalatedSet(set: Set<string>): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
+  } catch (err) {
+    // Cache persistence is best-effort; Firestore is the source of truth.
+    console.error('[escalationService] localStorage write failed:', err);
+  }
 }
 
 export function hasEscalated(incidentId: string): boolean {
@@ -66,11 +79,17 @@ export async function toggleEscalation(incidentId: string): Promise<boolean> {
 
       if (escalationSnap.exists()) {
         tx.delete(escalationRef);
-        tx.update(incidentRef, { escalation_count: increment(-1) });
+        tx.update(incidentRef, {
+          escalation_count: increment(-1),
+          impact_score: increment(-3),
+        });
         return false;
       } else {
         tx.set(escalationRef, { uid, timestamp: serverTimestamp() });
-        tx.update(incidentRef, { escalation_count: increment(1) });
+        tx.update(incidentRef, {
+          escalation_count: increment(1),
+          impact_score: increment(3),
+        });
         return true;
       }
     });

@@ -27,7 +27,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
     <div className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors group">
       <div className="w-2 shrink-0 flex flex-col" aria-hidden="true">
         {finalColors.map((col, idx) => (
-          <div key={idx} className="flex-1" style={{ backgroundColor: col }} />
+          <div key={`${col}-${idx}`} className="flex-1" style={{ backgroundColor: col }} />
         ))}
       </div>
       <button

@@ -54,10 +54,11 @@ export function buildIncidentUrl(docId: string): string {
 }
 
 export function buildShareLinks(shareText: string, headline: string, pageUrl: string): { label: string; href: string }[] {
+  const blueskyText = `${shareText} ${pageUrl}`;
   return [
     { label: 'twitter',  href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(pageUrl)}` },
     { label: 'linkedin', href: `https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(pageUrl)}&title=${encodeURIComponent(headline)}&summary=${encodeURIComponent(shareText)}` },
-    { label: 'bluesky',  href: `https://bsky.app/intent/compose?text=${encodeURIComponent(`${shareText} ${pageUrl}`)}` },
+    { label: 'bluesky',  href: `https://bsky.app/intent/compose?text=${encodeURIComponent(blueskyText)}` },
     { label: 'reddit',   href: `https://www.reddit.com/submit?url=${encodeURIComponent(pageUrl)}&title=${encodeURIComponent(headline)}` },
   ];
 }

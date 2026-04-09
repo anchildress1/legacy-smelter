@@ -62,6 +62,7 @@ export function parseSmeltLog(docId: string, raw: unknown): SmeltLog {
 
   return {
     id: docId,
+    impact_score: expectNumber(raw, 'impact_score', docId),
     pixel_count: expectNumber(raw, 'pixel_count', docId),
     incident_feed_summary: expectString(raw, 'incident_feed_summary', docId),
     color_1: expectString(raw, 'color_1', docId),

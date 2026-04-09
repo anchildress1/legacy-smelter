@@ -305,7 +305,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       }
 
       const first = focusables[0];
-      const last = focusables[focusables.length - 1];
+      const last = focusables.at(-1)!;
       const activeEl = document.activeElement as HTMLElement | null;
       const isInsidePanel = activeEl ? panelRef.current.contains(activeEl) : false;
 
@@ -386,10 +386,19 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   const platforms = (shareLinks ?? []).filter(l => SHARE_PLATFORMS[l.label]);
 
+  const handleBackdropKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target === overlayRef.current) {
+      e.preventDefault();
+      onClose();
+    }
+  };
+
   return (
     <div
       ref={overlayRef}
       onClick={handleBackdropClick}
+      onKeyDown={handleBackdropKeyDown}
+      role="presentation"
       className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
     >
       <div
@@ -403,7 +412,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         {/* Color strip — always left */}
         <div className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden" aria-hidden="true">
           {report.dominantColors.map((color, i) => (
-            <div key={i} className="flex-1" style={{ backgroundColor: color }} />
+            <div key={`${color}-${i}`} className="flex-1" style={{ backgroundColor: color }} />
           ))}
         </div>
 

@@ -17,7 +17,11 @@ function getCooldowns(): Record<string, number> {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       console.error('[breachService] Corrupted cooldowns storage; clearing.');
-      localStorage.removeItem(STORAGE_KEY);
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (removeErr) {
+        console.error('[breachService] Failed to clear corrupted cooldowns storage:', removeErr);
+      }
       return {};
     }
     const result: Record<string, number> = {};
@@ -27,7 +31,11 @@ function getCooldowns(): Record<string, number> {
     return result;
   } catch (err) {
     console.error('[breachService] Failed to parse cooldowns; clearing.', err);
-    localStorage.removeItem(STORAGE_KEY);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (removeErr) {
+      console.error('[breachService] Failed to clear invalid cooldowns storage:', removeErr);
+    }
     return {};
   }
 }
@@ -45,7 +53,12 @@ function setCooldown(incidentId: string): void {
     if (now - cooldowns[key] >= COOLDOWN_MS) delete cooldowns[key];
   }
   cooldowns[incidentId] = now;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cooldowns));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cooldowns));
+  } catch (err) {
+    // Cooldown persistence is best-effort; write success has already happened.
+    console.error('[breachService] localStorage write failed:', err);
+  }
 }
 
 export interface BreachResult {
@@ -77,6 +90,7 @@ export async function recordBreach(incidentId: string): Promise<BreachResult> {
     await ensureAnonymousAuth();
     await updateDoc(doc(db, 'incident_logs', incidentId), {
       breach_count: increment(1),
+      impact_score: increment(2),
     });
     setCooldown(incidentId);
     return { ok: true };

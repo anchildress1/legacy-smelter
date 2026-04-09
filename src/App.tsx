@@ -6,11 +6,12 @@ import {
   onSnapshot,
   query,
   orderBy,
+  limit,
   doc,
   getDoc,
 } from './firebase';
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
-import { GlobalStats as GlobalStatsType, SmeltLog, computeImpact } from './types';
+import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
@@ -29,16 +30,17 @@ const INCIDENT_SCHEMA_ERROR_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
 const GLOBAL_STATS_SCHEMA_ERROR_PREFIX = 'GLOBAL STATS SCHEMA VIOLATION.';
 
 interface AppProps {
-  onNavigateManifest: () => void;
-  deepLinkId?: string | null;
+  readonly onNavigateManifest: () => void;
+  readonly deepLinkId?: string | null;
 }
 
-export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
+export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProps>) {
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
   const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
   const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [dataIntegrityError, setDataIntegrityError] = useState<string | null>(null);
+  const [workflowError, setWorkflowError] = useState<string | null>(null);
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -63,24 +65,24 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       const data = snapshot.data();
       if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
         console.error('[App] global_stats/main has invalid total_pixels_melted:', data);
-        setAnalysisError(`${GLOBAL_STATS_SCHEMA_ERROR_PREFIX} DECOMMISSION INDEX FROZEN.`);
+        setDataIntegrityError(`${GLOBAL_STATS_SCHEMA_ERROR_PREFIX} DECOMMISSION INDEX FROZEN.`);
         return;
       }
       setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
-      setAnalysisError((prev) => (
+      setDataIntegrityError((prev) => (
         prev?.startsWith(GLOBAL_STATS_SCHEMA_ERROR_PREFIX) ? null : prev
       ));
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'global_stats/main', setAnalysisError);
+      handleFirestoreError(error, OperationType.GET, 'global_stats/main', setDataIntegrityError);
     });
 
-    // SCALING: subscribes to the full incident_logs collection (no limit) so
-    // client-side impact sorting captures all incidents for P0 ranking.
-    // At scale, replace with a precomputed impact_score field maintained by a
-    // Cloud Function, then query orderBy('impact_score').limit(3).
+    // P0 queue uses server-maintained impact_score so this listener stays
+    // bounded and does not stream the full collection into the browser.
     const logsQuery = query(
       collection(db, 'incident_logs'),
-      orderBy('timestamp', 'desc')
+      orderBy('impact_score', 'desc'),
+      orderBy('timestamp', 'desc'),
+      limit(3)
     );
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
       const entries: SmeltLog[] = [];
@@ -95,18 +97,15 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       }
       if (schemaErrors > 0) {
         const incidentWord = schemaErrors === 1 ? 'incident' : 'incidents';
-        setAnalysisError(`${INCIDENT_SCHEMA_ERROR_PREFIX} ${schemaErrors} ${incidentWord} hidden from queue.`);
+        setDataIntegrityError(`${INCIDENT_SCHEMA_ERROR_PREFIX} ${schemaErrors} ${incidentWord} hidden from queue.`);
       } else {
-        setAnalysisError((prev) => (
+        setDataIntegrityError((prev) => (
           prev?.startsWith(INCIDENT_SCHEMA_ERROR_PREFIX) ? null : prev
         ));
       }
-      const sorted = entries.sort((a, b) => {
-        return computeImpact(b) - computeImpact(a);
-      });
-      setRecentLogs(sorted.slice(0, 3));
+      setRecentLogs(entries);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'incident_logs', setAnalysisError);
+      handleFirestoreError(error, OperationType.LIST, 'incident_logs', setDataIntegrityError);
     });
 
     return () => { unsubStats(); unsubLogs(); };
@@ -178,11 +177,11 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     } catch (err) {
       const name = err instanceof Error ? err.name : '';
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        setAnalysisError('CAMERA PERMISSION DENIED. FILE PICKER OPENED AS FALLBACK.');
+        setWorkflowError('CAMERA PERMISSION DENIED. FILE PICKER OPENED AS FALLBACK.');
         cameraInputRef.current?.click();
       } else {
         console.error(`[App] Camera unavailable (${name || 'unknown'}):`, err);
-        setAnalysisError('CAMERA UNAVAILABLE. USE PROCESS ARTIFACT.');
+        setWorkflowError('CAMERA UNAVAILABLE. USE PROCESS ARTIFACT.');
       }
     }
   };
@@ -205,7 +204,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
         processImage(base64, 'image/jpeg');
       } else {
         console.error('[App] captureImage: failed to get 2D canvas context');
-        setAnalysisError('CAMERA CAPTURE FAILED. USE PROCESS ARTIFACT.');
+        setWorkflowError('CAMERA CAPTURE FAILED. USE PROCESS ARTIFACT.');
         stopCamera();
       }
     } else {
@@ -220,7 +219,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     if (import.meta.env.DEV) console.log("Processing image...", mimeType);
     resetToIdle();
     setSelectedRecentLog(null);
-    setAnalysisError(null);
+    setWorkflowError(null);
     setIsAnalyzing(true);
     flyInSound.stop();
     fireSound.stop();
@@ -234,7 +233,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       if (requestId !== activeRequestIdRef.current) return;
       console.error("Gemini analysis failed", error);
       setIsAnalyzing(false);
-      setAnalysisError('GEMINI ANALYSIS FAILED. RETRY IN A MOMENT.');
+      setWorkflowError('GEMINI ANALYSIS FAILED. RETRY IN A MOMENT.');
       return;
     }
 
@@ -255,7 +254,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       // access to data they already paid for with their upload.
       setIsComplete(true);
       setShowReport(true);
-      setAnalysisError('CANVAS RENDER FAILED. INCIDENT ARCHIVED BUT ANIMATION UNAVAILABLE. TRY A DIFFERENT BROWSER OR ENABLE HARDWARE ACCELERATION.');
+      setWorkflowError('CANVAS RENDER FAILED. INCIDENT ARCHIVED BUT ANIMATION UNAVAILABLE. TRY A DIFFERENT BROWSER OR ENABLE HARDWARE ACCELERATION.');
     }
   };
 
@@ -271,7 +270,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     };
     reader.onerror = () => {
       console.error('[App] FileReader failed:', reader.error);
-      setAnalysisError('FILE READ FAILED. THE FILE MAY BE CORRUPT OR INACCESSIBLE.');
+      setWorkflowError('FILE READ FAILED. THE FILE MAY BE CORRUPT OR INACCESSIBLE.');
     };
     reader.readAsDataURL(file);
   };
@@ -340,7 +339,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
         </div>
       </header>
 
-      <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+      <main className="flex-1 px-4 py-6 sm:px-6 max-w-7xl mx-auto w-full">
         {deepLinkError && (
           <div className="modern-card p-4 mb-6" role="alert" aria-live="assertive">
             <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">{deepLinkError}</p>
@@ -377,7 +376,9 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
               {/* Camera overlay */}
               {isCameraActive && (
                 <div className="absolute inset-0 bg-black z-30">
-                  <video ref={videoRef} playsInline className="w-full h-full object-cover" aria-label="Camera preview" />
+                  <video ref={videoRef} playsInline muted className="w-full h-full object-cover" aria-label="Camera preview">
+                    <track kind="captions" />
+                  </video>
                   <button
                     onClick={stopCamera}
                     className="absolute top-4 right-4 w-10 h-10 bg-concrete-mid/80 rounded-full flex items-center justify-center text-stone-gray hover:text-ash-white z-50"
@@ -408,11 +409,11 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
 
               {/* Analyzing overlay — shown while /api/analyze is in flight */}
               {isAnalyzing && (
-                <div role="status" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
-                  <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
-                  <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
+                <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
+                  <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" aria-hidden="true" />
+                  <output className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
                     HOTFIX PROCESSING
-                  </p>
+                  </output>
                 </div>
               )}
 
@@ -438,11 +439,18 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
               )}
             </div>
 
-            {analysisError && (
+            {(dataIntegrityError || workflowError) && (
               <div className="modern-card p-4" role="alert" aria-live="assertive">
-                <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">
-                  {analysisError}
-                </p>
+                {dataIntegrityError && (
+                  <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">
+                    {dataIntegrityError}
+                  </p>
+                )}
+                {workflowError && (
+                  <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide mt-2">
+                    {workflowError}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -456,7 +464,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
                 </h2>
                 <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" />
               </div>
-              <ul role="list" className="space-y-4">
+              <ul className="space-y-4">
                 {recentLogs.map((log) => (
                   <li key={log.id}>
                     <IncidentLogCard

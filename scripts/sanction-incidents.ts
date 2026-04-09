@@ -163,6 +163,15 @@ function hasValidVotingFields(data: Record<string, unknown>): boolean {
   );
 }
 
+function readFiniteNumber(data: Record<string, unknown>, key: string): number {
+  const value = data[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function computeImpactScore(sanctionCount: number, escalationCount: number, breachCount: number): number {
+  return (5 * sanctionCount) + (3 * escalationCount) + (2 * breachCount);
+}
+
 async function ensureVotingFieldsMigration(): Promise<void> {
   const markerRef = db.collection(MIGRATION_COLLECTION).doc(MIGRATION_DOC_ID);
   const markerSnap = await markerRef.get();
@@ -228,29 +237,29 @@ async function ensureVotingFieldsMigration(): Promise<void> {
  */
 function normalizeSelection(raw: unknown, candidates: Candidate[]): SanctionSelection {
   const candidateIds = new Set(candidates.map((c) => c.incident_id));
-  const uidToIncidentId = new Map(candidates.map((c) => [c.uid, c.incident_id]));
 
   let selectedRaw: unknown;
   let rationaleRaw: unknown;
 
   if (raw && typeof raw === 'object') {
     const obj = raw as Record<string, unknown>;
-    // Accept either `sanctioned_incident_id` (preferred) or the legacy
-    // `sanctioned_incident_uid` / `sanctioned` keys from older prompt shapes.
-    selectedRaw = obj.sanctioned_incident_id ?? obj.sanctioned_incident_uid ?? obj.sanctioned;
+    selectedRaw = obj.sanctioned_incident_id;
     rationaleRaw = obj.sanction_rationale ?? obj.rationale;
   }
 
   let selectedIncidentId = typeof selectedRaw === 'string' ? selectedRaw.trim() : '';
-  if (selectedIncidentId && !candidateIds.has(selectedIncidentId)) {
-    selectedIncidentId = uidToIncidentId.get(selectedIncidentId) ?? '';
-  }
 
   if (!selectedIncidentId) {
     throw new Error(
-      `[sanction-incidents] Model returned no valid selection. ` +
+      `[sanction-incidents] Model must return "sanctioned_incident_id". ` +
       `Candidates: ${candidates.map((c) => c.incident_id).join(', ')}. ` +
       `Raw response: ${JSON.stringify(raw).slice(0, 300)}`
+    );
+  }
+  if (!candidateIds.has(selectedIncidentId)) {
+    throw new Error(
+      `[sanction-incidents] Model selected non-candidate incident "${selectedIncidentId}". ` +
+      `Candidates: ${candidates.map((c) => c.incident_id).join(', ')}.`
     );
   }
 
@@ -325,11 +334,15 @@ async function run(): Promise<void> {
       if (malformedDocs.length > 0) {
         const quarantineBatch = db.batch();
         for (const d of malformedDocs) {
+          const data = d.data() as Record<string, unknown>;
+          const breachCount = readFiniteNumber(data, 'breach_count');
+          const escalationCount = readFiniteNumber(data, 'escalation_count');
           quarantineBatch.update(d.ref, {
             judged: true,
             sanctioned: false,
             sanction_count: 0,
             sanction_rationale: SCHEMA_QUARANTINE_RATIONALE,
+            impact_score: computeImpactScore(0, escalationCount, breachCount),
           });
         }
         await quarantineBatch.commit();
@@ -402,11 +415,16 @@ async function run(): Promise<void> {
       const writeBatch = db.batch();
       for (const d of batch) {
         const isSanctioned = d.id === selection.sanctioned_incident_id;
+        const data = d.data() as Record<string, unknown>;
+        const breachCount = readFiniteNumber(data, 'breach_count');
+        const escalationCount = readFiniteNumber(data, 'escalation_count');
+        const sanctionCount = isSanctioned ? 1 : 0;
         writeBatch.update(d.ref, {
           judged: true,
           sanctioned: isSanctioned,
-          sanction_count: isSanctioned ? 1 : 0,
+          sanction_count: sanctionCount,
           sanction_rationale: isSanctioned ? selection.sanction_rationale : null,
+          impact_score: computeImpactScore(sanctionCount, escalationCount, breachCount),
         });
       }
 

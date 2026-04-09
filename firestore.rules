@@ -15,22 +15,32 @@ service cloud.firestore {
         return /databases/$(database)/documents/incident_logs/$(logId)/escalations/$(uid);
       }
 
+      function impactScore(data) {
+        return (data.sanction_count * 5) + (data.escalation_count * 3) + (data.breach_count * 2);
+      }
+
       function isBreachIncrement() {
-        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['breach_count']) &&
-               request.resource.data.breach_count == resource.data.breach_count + 1;
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['breach_count', 'impact_score']) &&
+               request.resource.data.breach_count == resource.data.breach_count + 1 &&
+               request.resource.data.impact_score == resource.data.impact_score + 2 &&
+               request.resource.data.impact_score == impactScore(request.resource.data);
       }
 
       function isEscalationIncrement() {
-        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['escalation_count']) &&
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['escalation_count', 'impact_score']) &&
                request.resource.data.escalation_count == resource.data.escalation_count + 1 &&
+               request.resource.data.impact_score == resource.data.impact_score + 3 &&
+               request.resource.data.impact_score == impactScore(request.resource.data) &&
                !exists(escalationDocPath(request.auth.uid)) &&
                existsAfter(escalationDocPath(request.auth.uid));
       }
 
       function isEscalationDecrement() {
-        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['escalation_count']) &&
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['escalation_count', 'impact_score']) &&
                resource.data.escalation_count > 0 &&
                request.resource.data.escalation_count == resource.data.escalation_count - 1 &&
+               request.resource.data.impact_score == resource.data.impact_score - 3 &&
+               request.resource.data.impact_score == impactScore(request.resource.data) &&
                exists(escalationDocPath(request.auth.uid)) &&
                !existsAfter(escalationDocPath(request.auth.uid));
       }

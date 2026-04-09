@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, onSnapshot, query, orderBy, doc, getDoc, updateDoc, increment, serverTimestamp, runTransaction } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 
 const requiredVars = [
@@ -33,7 +33,7 @@ const auth = getAuth(app);
 let anonymousAuthPromise: Promise<void> | null = null;
 
 export async function ensureAnonymousAuth(): Promise<void> {
-  if (typeof window === 'undefined') return;
+  if (typeof globalThis.window === 'undefined') return;
   if (auth.currentUser) return;
   if (!anonymousAuthPromise) {
     anonymousAuthPromise = signInAnonymously(auth).then(() => undefined).catch((err) => {
@@ -49,10 +49,11 @@ export {
   onSnapshot,
   query,
   orderBy,
+  limit,
   doc,
   getDoc,
   updateDoc,
   increment,
   serverTimestamp,
   runTransaction,
-};
+} from 'firebase/firestore';

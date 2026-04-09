@@ -31,6 +31,18 @@ const REQUIRED_DEFAULTS = {
   sanction_rationale: null,
 } as const;
 
+function resolveFiniteNumber(
+  data: Record<string, unknown>,
+  updates: Record<string, unknown>,
+  key: 'breach_count' | 'escalation_count' | 'sanction_count'
+): number {
+  const fromUpdate = updates[key];
+  if (typeof fromUpdate === 'number' && Number.isFinite(fromUpdate)) return fromUpdate;
+  const fromData = data[key];
+  if (typeof fromData === 'number' && Number.isFinite(fromData)) return fromData;
+  return 0;
+}
+
 async function run(): Promise<void> {
   console.log(`[backfill] Scanning incident_logs collection…`);
 
@@ -65,6 +77,15 @@ async function run(): Promise<void> {
         } else if (typeof defaultValue === 'boolean') {
           if (typeof value !== 'boolean') updates[field] = defaultValue;
         }
+      }
+
+      const breachCount = resolveFiniteNumber(data, updates, 'breach_count');
+      const escalationCount = resolveFiniteNumber(data, updates, 'escalation_count');
+      const sanctionCount = resolveFiniteNumber(data, updates, 'sanction_count');
+      const impactScore = (5 * sanctionCount) + (3 * escalationCount) + (2 * breachCount);
+      const currentImpact = data.impact_score;
+      if (typeof currentImpact !== 'number' || !Number.isFinite(currentImpact) || currentImpact !== impactScore) {
+        updates.impact_score = impactScore;
       }
 
       if (Object.keys(updates).length === 0) continue;

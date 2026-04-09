@@ -111,7 +111,7 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 }
 
 function hexToInt(hex: string): number {
-  return parseInt(hex.slice(1), 16);
+  return Number.parseInt(hex.slice(1), 16);
 }
 
 function intToVec3(c: number): [number, number, number] {
@@ -238,7 +238,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         // Crop via PixiJS frame Rectangle
         const baseTex = PIXI.Texture.from(img);
         let texture = baseTex;
-        if (subjectBox && subjectBox.length === 4) {
+        if (subjectBox?.length === 4) {
           const [ymin, xmin, ymax, xmax] = subjectBox;
           const cx = Math.max(0, Math.round((xmin / 1000) * img.width));
           const cy = Math.max(0, Math.round((ymin / 1000) * img.height));
@@ -256,7 +256,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         }
 
         if (spriteRef.current) {
-          state.app.stage.removeChild(spriteRef.current);
+          spriteRef.current.removeFromParent();
           spriteRef.current.texture.destroy(true);
           spriteRef.current = null;
         }
@@ -452,7 +452,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                     spriteRef.current.visible = false;
                   } else {
                     const s = getImgScale(baseScale, spriteRef.current);
-                    const squish = 1.0 - mp * 0.9; // 1.0 → 0.1
+                    const squish = 1 - mp * 0.9; // 1.0 → 0.1
                     spriteRef.current.scale.x = s;
                     spriteRef.current.scale.y = s * squish;
                     spriteRef.current.x = imageX;

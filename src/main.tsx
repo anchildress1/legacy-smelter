@@ -6,13 +6,15 @@ import './index.css';
 
 type Page = 'smelter' | 'manifest';
 
+const DEEP_LINK_PATH_RE = /\/s\/([^/?#]+)$/;
+
 function getPageFromHash(): Page {
-  return window.location.hash === '#manifest' ? 'manifest' : 'smelter';
+  return globalThis.location.hash === '#manifest' ? 'manifest' : 'smelter';
 }
 
 // Read the incident ID from /s/:id on initial load — deep link to a specific incident.
 function getDeepLinkId(): string | null {
-  const match = window.location.pathname.match(/\/s\/([^/?#]+)$/);
+  const match = DEEP_LINK_PATH_RE.exec(globalThis.location.pathname);
   if (!match) return null;
   try {
     return decodeURIComponent(match[1]);
@@ -34,27 +36,27 @@ function Root() {
   // Preserve non-root base paths (e.g. /app/s/:id -> /app).
   useEffect(() => {
     if (!deepLinkId) return;
-    const cleanedPath = window.location.pathname.replace(/\/s\/[^/?#]+$/, '') || '/';
-    history.replaceState(null, '', `${cleanedPath}${window.location.search}${window.location.hash}`);
+    const cleanedPath = globalThis.location.pathname.replace(DEEP_LINK_PATH_RE, '') || '/';
+    history.replaceState(null, '', `${cleanedPath}${globalThis.location.search}${globalThis.location.hash}`);
   }, [deepLinkId]);
 
   useEffect(() => {
     const sync = () => setPage(getPageFromHash());
-    window.addEventListener('hashchange', sync);
-    window.addEventListener('popstate', sync);
+    globalThis.addEventListener('hashchange', sync);
+    globalThis.addEventListener('popstate', sync);
     return () => {
-      window.removeEventListener('hashchange', sync);
-      window.removeEventListener('popstate', sync);
+      globalThis.removeEventListener('hashchange', sync);
+      globalThis.removeEventListener('popstate', sync);
     };
   }, []);
 
   const navigateTo = useCallback((p: Page) => {
     const url = p === 'smelter'
-      ? window.location.pathname + window.location.search
+      ? globalThis.location.pathname + globalThis.location.search
       : '#' + p;
     history.pushState(null, '', url);
     setPage(p);
-    window.scrollTo(0, 0);
+    globalThis.scrollTo(0, 0);
   }, []);
 
   if (page === 'manifest') {
@@ -63,7 +65,9 @@ function Root() {
   return <App onNavigateManifest={() => navigateTo('manifest')} deepLinkId={deepLinkId} />;
 }
 
-createRoot(document.getElementById('root')!).render(
+const rootEl = document.getElementById('root');
+if (!rootEl) throw new Error('Root element #root not found');
+createRoot(rootEl).render(
   <StrictMode>
     <Root />
   </StrictMode>,
