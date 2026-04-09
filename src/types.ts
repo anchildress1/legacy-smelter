@@ -28,7 +28,7 @@ export interface SmeltLog {
   og_headline: string;
   share_quote: string;
   anon_handle: string;
-  timestamp: Timestamp | null;
+  timestamp: Timestamp;
   uid: string;
   breach_count: number;
   escalation_count: number;

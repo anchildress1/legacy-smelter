@@ -18,6 +18,7 @@ export interface SmeltAnalysis {
   anonHandle: string;
   pixelCount: number;
   subjectBox: [number, number, number, number]; // [ymin, xmin, ymax, xmax] 0-1000
+  incidentId: string; // Firestore doc ID, assigned server-side on write
 }
 
 function expectString(obj: Record<string, unknown>, key: string): string {
@@ -28,7 +29,7 @@ function expectString(obj: Record<string, unknown>, key: string): string {
   return value;
 }
 
-function parseSmeltAnalysis(raw: unknown, pixelCount: number): SmeltAnalysis {
+function parseSmeltAnalysis(raw: unknown): SmeltAnalysis {
   if (!raw || typeof raw !== 'object') {
     throw new Error('API response is not an object');
   }
@@ -44,7 +45,10 @@ function parseSmeltAnalysis(raw: unknown, pixelCount: number): SmeltAnalysis {
     throw new Error('API response has invalid subjectBox (expected 4-number array)');
   }
 
-  const pixelCountVal = typeof obj.pixelCount === 'number' ? obj.pixelCount : pixelCount;
+  const pixelCount = obj.pixelCount;
+  if (typeof pixelCount !== 'number' || !Number.isFinite(pixelCount) || pixelCount <= 0) {
+    throw new Error('API response missing or invalid pixelCount');
+  }
 
   return {
     legacyInfraClass: expectString(obj, 'legacyInfraClass'),
@@ -62,32 +66,29 @@ function parseSmeltAnalysis(raw: unknown, pixelCount: number): SmeltAnalysis {
     ogHeadline: expectString(obj, 'ogHeadline'),
     shareQuote: expectString(obj, 'shareQuote'),
     anonHandle: expectString(obj, 'anonHandle'),
-    pixelCount: pixelCountVal,
+    pixelCount,
     subjectBox: subjectBox as [number, number, number, number],
+    incidentId: expectString(obj, 'incidentId'),
   };
 }
 
+async function calculatePixelCount(base64Image: string, mimeType: string): Promise<number> {
+  const img = new Image();
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error('Failed to decode image'));
+    img.src = `data:${mimeType};base64,${base64Image}`;
+  });
+  return img.width * img.height;
+}
+
 export async function analyzeLegacyTech(base64Image: string, mimeType: string): Promise<SmeltAnalysis> {
-  // Pixel count is calculated client-side (requires browser Image API)
-  let pixelCount = 2073600; // fallback: 1920×1080 (full-HD)
-  if (typeof window !== "undefined") {
-    try {
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = `data:${mimeType};base64,${base64Image}`;
-      });
-      pixelCount = img.width * img.height;
-    } catch (err) {
-      console.warn("Failed to calculate pixel count", err);
-    }
-  }
+  const pixelCount = await calculatePixelCount(base64Image, mimeType);
 
   const response = await fetch('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: base64Image, mimeType }),
+    body: JSON.stringify({ image: base64Image, mimeType, pixelCount }),
   });
 
   if (!response.ok) {
@@ -95,6 +96,5 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
     throw new Error(body.error || `Server returned ${response.status}`);
   }
 
-  const result = await response.json();
-  return parseSmeltAnalysis(result, pixelCount);
+  return parseSmeltAnalysis(await response.json());
 }

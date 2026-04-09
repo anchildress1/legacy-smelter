@@ -37,38 +37,23 @@ function expectBoolean(data: Record<string, unknown>, key: string, docId: string
 
 function expectNullableString(data: Record<string, unknown>, key: string, docId: string): string | null {
   const value = data[key];
-  if (value === null || value === undefined) return null;
+  if (value === null) return null;
   if (typeof value === 'string') return value;
   throw new Error(`incident_logs/${docId} has invalid "${key}" (expected string|null)`);
 }
 
-function expectTimestampOrNull(data: Record<string, unknown>, key: string, docId: string): Timestamp | null {
+function expectTimestamp(data: Record<string, unknown>, key: string, docId: string): Timestamp {
   const value = data[key];
-  if (value === null || value === undefined) return null;
-  if (isTimestamp(value)) return value;
-  throw new Error(`incident_logs/${docId} has invalid "${key}" (expected Timestamp|null)`);
-}
-
-// Voting/sanction fields are optional — absent on newly created incidents,
-// populated by the sanction script and escalation/breach services.
-function optionalNumber(data: Record<string, unknown>, key: string, fallback: number): number {
-  const value = data[key];
-  if (value === undefined) return fallback;
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  return fallback;
-}
-
-function optionalBoolean(data: Record<string, unknown>, key: string, fallback: boolean): boolean {
-  const value = data[key];
-  if (value === undefined) return fallback;
-  if (typeof value === 'boolean') return value;
-  return fallback;
+  if (!isTimestamp(value)) {
+    throw new Error(`incident_logs/${docId} has invalid "${key}" (expected Timestamp)`);
+  }
+  return value;
 }
 
 /**
  * Strict parser for incident_logs documents.
- * Core incident fields are required and validated.
- * Voting/sanction fields are optional with sensible defaults for unjudged incidents.
+ * Every field is required. No fallbacks. No legacy handling.
+ * The server writes all fields on create via the admin SDK.
  */
 export function parseSmeltLog(docId: string, raw: unknown): SmeltLog {
   if (!isObject(raw)) {
@@ -77,7 +62,6 @@ export function parseSmeltLog(docId: string, raw: unknown): SmeltLog {
 
   return {
     id: docId,
-    // Core incident fields — required
     pixel_count: expectNumber(raw, 'pixel_count', docId),
     incident_feed_summary: expectString(raw, 'incident_feed_summary', docId),
     color_1: expectString(raw, 'color_1', docId),
@@ -102,14 +86,13 @@ export function parseSmeltLog(docId: string, raw: unknown): SmeltLog {
     og_headline: expectString(raw, 'og_headline', docId),
     share_quote: expectString(raw, 'share_quote', docId),
     anon_handle: expectString(raw, 'anon_handle', docId),
-    timestamp: expectTimestampOrNull(raw, 'timestamp', docId),
+    timestamp: expectTimestamp(raw, 'timestamp', docId),
     uid: expectString(raw, 'uid', docId),
-    // Voting/sanction fields — optional, default to unjudged state
-    breach_count: optionalNumber(raw, 'breach_count', 0),
-    escalation_count: optionalNumber(raw, 'escalation_count', 0),
-    sanction_count: optionalNumber(raw, 'sanction_count', 0),
-    judged: optionalBoolean(raw, 'judged', false),
-    sanctioned: optionalBoolean(raw, 'sanctioned', false),
+    breach_count: expectNumber(raw, 'breach_count', docId),
+    escalation_count: expectNumber(raw, 'escalation_count', docId),
+    sanction_count: expectNumber(raw, 'sanction_count', docId),
+    judged: expectBoolean(raw, 'judged', docId),
+    sanctioned: expectBoolean(raw, 'sanctioned', docId),
     sanction_rationale: expectNullableString(raw, 'sanction_rationale', docId),
   };
 }

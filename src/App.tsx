@@ -8,16 +8,13 @@ import {
   orderBy,
   doc,
   getDoc,
-  setDoc,
-  increment,
-  serverTimestamp
 } from './firebase';
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
 import { GlobalStats as GlobalStatsType, SmeltLog, computeImpact } from './types';
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
-import { getFiveDistinctColors, getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
+import { getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
 import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 import { DecommissionIndex } from './components/DecommissionIndex';
@@ -44,14 +41,11 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
-  const [isWritingData, setIsWritingData] = useState(false);
   const [buttonsDelayed, setButtonsDelayed] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  // Firestore doc ID of the most recently smelted incident — used for share links
-  const [loggedIncidentId, setLoggedIncidentId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -59,9 +53,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const canvasRef = useRef<SmelterCanvasHandle>(null);
   const activeRequestIdRef = useRef(0);
   const analysisRef = useRef<SmeltAnalysis | null>(null);
-  const hasWrittenRef = useRef(false);
+  const hasRevealedReportRef = useRef(false);
   const smeltTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const writeSpinnerDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
@@ -120,10 +113,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       if (smeltTimerRef.current !== null) {
         clearTimeout(smeltTimerRef.current);
         smeltTimerRef.current = null;
-      }
-      if (writeSpinnerDelayRef.current !== null) {
-        clearTimeout(writeSpinnerDelayRef.current);
-        writeSpinnerDelayRef.current = null;
       }
       if (videoRef.current?.srcObject) {
         (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
@@ -270,104 +259,26 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     reader.readAsDataURL(file);
   };
 
-  const handleSmeltComplete = async () => {
+  const handleSmeltComplete = () => {
     if (import.meta.env.DEV) console.log("Smelt complete");
     fireSound.stop();
     purrSound.play();
     setIsPlaying(false);
 
-    const completedAnalysis = analysisRef.current;
-    if (!completedAnalysis) return;
+    if (!analysisRef.current) return;
 
     // Always delay buttons — works for both first smelt and replay
     setButtonsDelayed(true);
+    setIsComplete(true);
 
-    if (!hasWrittenRef.current) {
-      // First completion — reveal report after delay regardless of write outcome,
-      // then write to Firestore in the background.
-      const writeRequestId = activeRequestIdRef.current;
-      hasWrittenRef.current = true;
-      setIsComplete(true);
-
-      // Let the dragon return to rest before showing the spinner
-      if (writeSpinnerDelayRef.current !== null) {
-        clearTimeout(writeSpinnerDelayRef.current);
-      }
-      writeSpinnerDelayRef.current = setTimeout(() => {
-        writeSpinnerDelayRef.current = null;
-        if (writeRequestId !== activeRequestIdRef.current) return;
-        setIsWritingData(true);
-      }, 1200);
-
-      smeltTimerRef.current = setTimeout(() => {
-        smeltTimerRef.current = null;
-        setButtonsDelayed(false);
-        setIsWritingData(false);
+    smeltTimerRef.current = setTimeout(() => {
+      smeltTimerRef.current = null;
+      setButtonsDelayed(false);
+      if (!hasRevealedReportRef.current) {
+        hasRevealedReportRef.current = true;
         setShowReport(true);
-      }, 5000);
-
-      (async () => {
-        try {
-          const colors = getFiveDistinctColors(completedAnalysis.dominantColors);
-          const box = completedAnalysis.subjectBox;
-          const logRef = doc(collection(db, 'incident_logs'));
-          await setDoc(logRef, {
-            pixel_count: completedAnalysis.pixelCount,
-            incident_feed_summary: completedAnalysis.incidentFeedSummary,
-            color_1: colors[0],
-            color_2: colors[1],
-            color_3: colors[2],
-            color_4: colors[3],
-            color_5: colors[4],
-            subject_box_ymin: box[0],
-            subject_box_xmin: box[1],
-            subject_box_ymax: box[2],
-            subject_box_xmax: box[3],
-            legacy_infra_class: completedAnalysis.legacyInfraClass,
-            diagnosis: completedAnalysis.diagnosis,
-            chromatic_profile: completedAnalysis.chromaticProfile,
-            system_dx: completedAnalysis.systemDx,
-            severity: completedAnalysis.severity,
-            primary_contamination: completedAnalysis.primaryContamination,
-            contributing_factor: completedAnalysis.contributingFactor,
-            failure_origin: completedAnalysis.failureOrigin,
-            disposition: completedAnalysis.disposition,
-            archive_note: completedAnalysis.archiveNote,
-            og_headline: completedAnalysis.ogHeadline,
-            share_quote: completedAnalysis.shareQuote,
-            anon_handle: completedAnalysis.anonHandle,
-            timestamp: serverTimestamp(),
-            uid: crypto.randomUUID(),
-            breach_count: 0,
-            escalation_count: 0,
-            sanction_count: 0,
-            sanctioned: false,
-            judged: false,
-            sanction_rationale: null,
-          });
-          if (writeRequestId !== activeRequestIdRef.current) return;
-          setLoggedIncidentId(logRef.id);
-
-          const statsRef = doc(db, 'global_stats', 'main');
-          await setDoc(statsRef, {
-            total_pixels_melted: increment(completedAnalysis.pixelCount)
-          }, { merge: true });
-
-        } catch (error) {
-          if (writeRequestId !== activeRequestIdRef.current) return;
-          hasWrittenRef.current = false;
-          setIsWritingData(false);
-          setAnalysisError('ARCHIVE WRITE FAILED. INCIDENT NOT PERSISTED TO MANIFEST.');
-          handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
-        }
-      })();
-    } else {
-      // Replay — no Firestore write, just delay the buttons
-      smeltTimerRef.current = setTimeout(() => {
-        smeltTimerRef.current = null;
-        setButtonsDelayed(false);
-      }, 5000);
-    }
+      }
+    }, 5000);
   };
 
   const resetToIdle = () => {
@@ -375,19 +286,13 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       clearTimeout(smeltTimerRef.current);
       smeltTimerRef.current = null;
     }
-    if (writeSpinnerDelayRef.current !== null) {
-      clearTimeout(writeSpinnerDelayRef.current);
-      writeSpinnerDelayRef.current = null;
-    }
     setIsComplete(false);
     setShowReport(false);
     setAnalysis(null);
     analysisRef.current = null;
-    hasWrittenRef.current = false;
-    setIsWritingData(false);
+    hasRevealedReportRef.current = false;
     setButtonsDelayed(false);
     setIsPlaying(false);
-    setLoggedIncidentId(null);
   };
 
   const handleReplay = () => {
@@ -401,7 +306,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     ? buildShareLinks(
         `${analysis.shareQuote}\n\n${analysis.incidentFeedSummary}`,
         analysis.ogHeadline,
-        loggedIncidentId ? buildIncidentUrl(loggedIncidentId) : window.location.origin
+        buildIncidentUrl(analysis.incidentId)
       )
     : [];
 
@@ -506,18 +411,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
                 </div>
               )}
 
-              {/* Loading post-mortem overlay — delayed 1.2s after smelt, stays until report reveals */}
-              {isWritingData && !showReport && (
-                <div role="status" aria-live="polite" className="absolute inset-0 z-40 flex items-center justify-center">
-                  <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border flex items-center gap-3">
-                    <div className="w-4 h-4 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin shrink-0" />
-                    <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
-                      COMPILING INCIDENT POSTMORTEM // STAND BY
-                    </p>
-                  </div>
-                </div>
-              )}
-
               {/* Post-smelt controls — replay + view report */}
               {isComplete && !buttonsDelayed && !isPlaying && (
                 <div className="absolute inset-0 z-40 bg-concrete/70 backdrop-blur-sm flex items-center justify-center gap-3">
@@ -598,7 +491,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
         <IncidentReportOverlay
           analysis={analysis}
           shareLinks={reportShareLinks}
-          incidentId={loggedIncidentId}
+          incidentId={analysis.incidentId}
           onClose={() => setShowReport(false)}
         />
       )}

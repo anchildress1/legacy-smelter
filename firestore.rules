@@ -2,89 +2,32 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isHexColor(val) {
-      return val is string && val.matches('^#[0-9a-fA-F]{6}$');
-    }
-
-    function isValidIncidentLog(data) {
-      // Core incident fields — required on every create
-      let required = [
-               'pixel_count', 'incident_feed_summary',
-               'color_1', 'color_2', 'color_3', 'color_4', 'color_5',
-               'subject_box_ymin', 'subject_box_xmin', 'subject_box_ymax', 'subject_box_xmax',
-               'legacy_infra_class', 'diagnosis',
-               'chromatic_profile', 'system_dx', 'severity',
-               'primary_contamination', 'contributing_factor', 'failure_origin',
-               'disposition', 'archive_note',
-               'og_headline', 'share_quote', 'anon_handle',
-               'timestamp', 'uid'
-             ];
-      // Voting/sanction fields — written by the client with defaults on create,
-      // later mutated by the sanction script and escalation/breach services.
-      // Optional on create so docs are valid even if these are omitted.
-      let optional = [
-               'breach_count', 'escalation_count',
-               'sanction_count', 'sanctioned', 'judged', 'sanction_rationale'
-             ];
-      return data.keys().hasAll(required) &&
-             data.keys().hasOnly(required.concat(optional)) &&
-             data.pixel_count is number && data.pixel_count > 0 &&
-             data.incident_feed_summary is string && data.incident_feed_summary.size() <= 500 &&
-             isHexColor(data.color_1) &&
-             isHexColor(data.color_2) &&
-             isHexColor(data.color_3) &&
-             isHexColor(data.color_4) &&
-             isHexColor(data.color_5) &&
-             data.subject_box_ymin is number &&
-             data.subject_box_xmin is number &&
-             data.subject_box_ymax is number &&
-             data.subject_box_xmax is number &&
-             data.legacy_infra_class is string && data.legacy_infra_class.size() <= 80 &&
-             data.diagnosis is string && data.diagnosis.size() <= 200 &&
-             data.chromatic_profile is string && data.chromatic_profile.size() <= 60 &&
-             data.system_dx is string && data.system_dx.size() <= 300 &&
-             data.severity is string && data.severity.size() > 0 && data.severity.size() <= 50 &&
-             data.primary_contamination is string && data.primary_contamination.size() <= 80 &&
-             data.contributing_factor is string && data.contributing_factor.size() <= 80 &&
-             data.failure_origin is string && data.failure_origin.size() <= 400 &&
-             data.disposition is string && data.disposition.size() <= 300 &&
-             data.archive_note is string && data.archive_note.size() <= 800 &&
-             data.og_headline is string && data.og_headline.size() <= 200 &&
-             data.share_quote is string && data.share_quote.size() <= 300 &&
-             data.anon_handle is string && data.anon_handle.size() <= 50 &&
-             data.timestamp is timestamp &&
-             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 100;
-    }
-
-    function isValidGlobalStats(data) {
-      return data.total_pixels_melted is number && data.total_pixels_melted >= 0;
-    }
-
+    // incident_logs:
+    //   - Creates happen server-side via firebase-admin (rules bypassed).
+    //   - Reads are public.
+    //   - Client updates are limited to single-field counter increments
+    //     (breach_count, escalation_count). Escalation additionally requires
+    //     a matching write to the escalations/{uid} subcollection via a
+    //     client-side transaction.
+    //   - Deletes are disallowed for clients.
     match /incident_logs/{logId} {
       allow read: if true;
-      allow create: if isValidIncidentLog(request.resource.data);
-      // NOTE: Firestore rules cannot query subcollection existence, so the
-      // one-vote-per-user constraint for escalation_count is enforced via:
-      //   1. The escalations/{uid} subcollection (create/delete only for that UID) — tracks one vote per user
-      //   2. A client-side Firestore transaction that creates/deletes the subcollection doc
-      //      and increments/decrements escalation_count atomically
-      // A malicious client bypassing that transaction could still attempt to update
-      // escalation_count directly, so integrity relies on clients following this protocol.
-      // Acceptable for this app.
+      allow create: if false;
+      allow delete: if false;
       allow update: if request.auth != null &&
                        (
-                         // Allow incrementing breach_count by 1
+                         // Increment breach_count by 1
                          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['breach_count']) &&
-                          request.resource.data.breach_count == resource.data.get('breach_count', 0) + 1)
+                          request.resource.data.breach_count == resource.data.breach_count + 1)
                          ||
-                         // Allow incrementing escalation_count by 1
+                         // Increment escalation_count by 1
                          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['escalation_count']) &&
-                          request.resource.data.escalation_count == resource.data.get('escalation_count', 0) + 1)
+                          request.resource.data.escalation_count == resource.data.escalation_count + 1)
                          ||
-                         // Allow decrementing escalation_count by 1 (minimum 0)
+                         // Decrement escalation_count by 1 (minimum 0)
                          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['escalation_count']) &&
-                          resource.data.get('escalation_count', 0) > 0 &&
-                          request.resource.data.escalation_count == resource.data.get('escalation_count', 0) - 1)
+                          resource.data.escalation_count > 0 &&
+                          request.resource.data.escalation_count == resource.data.escalation_count - 1)
                        );
 
       // Per-user escalation tracking: one doc per user per incident
@@ -98,13 +41,15 @@ service cloud.firestore {
       }
     }
 
+    // global_stats:
+    //   - Reads are public.
+    //   - Writes are server-side only (admin SDK bypasses rules).
     match /global_stats/main {
       allow read: if true;
-      allow create: if isValidGlobalStats(request.resource.data);
-      allow update: if isValidGlobalStats(request.resource.data) &&
-                       request.resource.data.total_pixels_melted >= resource.data.total_pixels_melted;
+      allow write: if false;
     }
 
+    // Deny-by-default for everything else.
     match /{document=**} {
       allow read, write: if false;
     }

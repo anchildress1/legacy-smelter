@@ -1,24 +1,28 @@
 /**
  * Legacy Smelter — API + OG pre-render server
  *
- * POST /api/analyze — proxies image analysis requests to Gemini, keeping the
- * API key server-side. In Cloud Run the key is injected from Google Secret
- * Manager via the GEMINI_API_KEY env var.
+ * POST /api/analyze — analyzes image with Gemini, writes the incident log to
+ * Firestore, and returns the analysis plus the new document ID. The client
+ * then plays the smelt animation and opens the overlay with a fully-persisted
+ * document (timestamp already resolved, no split-brain write path).
  *
  * GET /s/:id — injects incident-specific Open Graph meta tags into the HTML
  * so Slack and other platform crawlers receive meaningful unfurl data without
  * executing JS.
  *
- * Firestore data is fetched via the public REST API (no admin SDK required).
- * The client-side SPA then reads `/s/:id` and opens the incident overlay normally.
+ * Firestore OG lookups use the public REST API; incident writes use the
+ * firebase-admin SDK initialized in shared/admin-init.js.
  */
 
 import express from 'express';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'node:crypto';
 import { GoogleGenAI, Type } from '@google/genai';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getFiveDistinctColors } from './shared/colors.js';
+import { getDb } from './shared/admin-init.js';
 import 'dotenv/config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -336,7 +340,7 @@ app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
   }
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const { image, mimeType } = body;
+  const { image, mimeType, pixelCount } = body;
   if (typeof image !== 'string' || typeof mimeType !== 'string' || !image || !mimeType) {
     return res.status(400).json({ error: 'Request must include "image" (base64) and "mimeType".' });
   }
@@ -346,14 +350,68 @@ app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
   if (image.length > MAX_BASE64_LENGTH) {
     return res.status(413).json({ error: 'Image too large.' });
   }
+  if (typeof pixelCount !== 'number' || !Number.isFinite(pixelCount) || pixelCount <= 0) {
+    return res.status(400).json({ error: 'Request must include a positive "pixelCount".' });
+  }
 
+  let analysis;
   try {
-    const analysis = await analyzeImage(image, mimeType);
-    return res.json(analysis);
+    analysis = await analyzeImage(image, mimeType);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[server] Gemini analysis failed:', msg);
     return res.status(502).json({ error: 'Analysis failed. Try again shortly.' });
+  }
+
+  // Persist the incident log and bump the global pixel counter.
+  // Write is required — if Firestore rejects, return 502 and the client retries.
+  try {
+    const adminDb = getDb();
+    const logRef = adminDb.collection('incident_logs').doc();
+    const [ymin, xmin, ymax, xmax] = analysis.subjectBox;
+    await logRef.set({
+      pixel_count: pixelCount,
+      incident_feed_summary: analysis.incidentFeedSummary,
+      color_1: analysis.dominantColors[0],
+      color_2: analysis.dominantColors[1],
+      color_3: analysis.dominantColors[2],
+      color_4: analysis.dominantColors[3],
+      color_5: analysis.dominantColors[4],
+      subject_box_ymin: ymin,
+      subject_box_xmin: xmin,
+      subject_box_ymax: ymax,
+      subject_box_xmax: xmax,
+      legacy_infra_class: analysis.legacyInfraClass,
+      diagnosis: analysis.diagnosis,
+      chromatic_profile: analysis.chromaticProfile,
+      system_dx: analysis.systemDx,
+      severity: analysis.severity,
+      primary_contamination: analysis.primaryContamination,
+      contributing_factor: analysis.contributingFactor,
+      failure_origin: analysis.failureOrigin,
+      disposition: analysis.disposition,
+      archive_note: analysis.archiveNote,
+      og_headline: analysis.ogHeadline,
+      share_quote: analysis.shareQuote,
+      anon_handle: analysis.anonHandle,
+      timestamp: FieldValue.serverTimestamp(),
+      uid: randomUUID(),
+      breach_count: 0,
+      escalation_count: 0,
+      sanction_count: 0,
+      sanctioned: false,
+      judged: false,
+      sanction_rationale: null,
+    });
+    await adminDb.collection('global_stats').doc('main').set(
+      { total_pixels_melted: FieldValue.increment(pixelCount) },
+      { merge: true }
+    );
+    return res.json({ ...analysis, incidentId: logRef.id, pixelCount });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[server] Firestore write failed:', msg);
+    return res.status(502).json({ error: 'Archive write failed. Try again shortly.' });
   }
 });
 
