@@ -324,12 +324,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             anon_handle: completedAnalysis.anonHandle,
             timestamp: serverTimestamp(),
             uid: crypto.randomUUID(),
-            breach_count: 0,
-            escalation_count: 0,
-            sanction_count: 0,
-            sanctioned: false,
-            judged: false,
-            sanction_rationale: null
           });
           if (writeRequestId !== activeRequestIdRef.current) return;
           setLoggedIncidentId(logRef.id);

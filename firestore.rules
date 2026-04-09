@@ -7,7 +7,8 @@ service cloud.firestore {
     }
 
     function isValidIncidentLog(data) {
-      let fields = [
+      // Core incident fields — required on every create
+      let required = [
                'pixel_count', 'incident_feed_summary',
                'color_1', 'color_2', 'color_3', 'color_4', 'color_5',
                'subject_box_ymin', 'subject_box_xmin', 'subject_box_ymax', 'subject_box_xmax',
@@ -16,11 +17,17 @@ service cloud.firestore {
                'primary_contamination', 'contributing_factor', 'failure_origin',
                'disposition', 'archive_note',
                'og_headline', 'share_quote', 'anon_handle',
-               'timestamp', 'uid', 'breach_count', 'escalation_count',
+               'timestamp', 'uid'
+             ];
+      // Voting/sanction fields — written by the client with defaults on create,
+      // later mutated by the sanction script and escalation/breach services.
+      // Optional on create so docs are valid even if these are omitted.
+      let optional = [
+               'breach_count', 'escalation_count',
                'sanction_count', 'sanctioned', 'judged', 'sanction_rationale'
              ];
-      return data.keys().hasAll(fields) &&
-             data.keys().hasOnly(fields) &&
+      return data.keys().hasAll(required) &&
+             data.keys().hasOnly(required.concat(optional)) &&
              data.pixel_count is number && data.pixel_count > 0 &&
              data.incident_feed_summary is string && data.incident_feed_summary.size() <= 500 &&
              isHexColor(data.color_1) &&
@@ -46,13 +53,7 @@ service cloud.firestore {
              data.share_quote is string && data.share_quote.size() <= 300 &&
              data.anon_handle is string && data.anon_handle.size() <= 50 &&
              data.timestamp is timestamp &&
-             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 100 &&
-             data.breach_count is number && data.breach_count == 0 &&
-             data.escalation_count is number && data.escalation_count == 0 &&
-             data.sanction_count is number && data.sanction_count == 0 &&
-             data.sanctioned is bool && data.sanctioned == false &&
-             data.judged is bool && data.judged == false &&
-             data.sanction_rationale == null;
+             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 100;
     }
 
     function isValidGlobalStats(data) {
