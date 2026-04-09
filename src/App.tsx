@@ -17,7 +17,7 @@ import { GlobalStats as GlobalStatsType, SmeltLog, computeImpact } from './types
 import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
-import { getFiveDistinctColors, getLogShareLinks } from './lib/utils';
+import { getFiveDistinctColors, getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
 import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 import { DecommissionIndex } from './components/DecommissionIndex';
@@ -28,7 +28,7 @@ import { parseSmeltLog } from './lib/smeltLogSchema';
 const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false, volume: 0.5 });
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
-const INCIDENT_SCHEMA_ERROR = 'INCIDENT DATA SCHEMA VIOLATION. FIX MALFORMED INCIDENT_LOGS DOCUMENTS.';
+const INCIDENT_SCHEMA_ERROR_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
 
 interface AppProps {
   onNavigateManifest: () => void;
@@ -61,6 +61,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const analysisRef = useRef<SmeltAnalysis | null>(null);
   const hasWrittenRef = useRef(false);
   const smeltTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const writeSpinnerDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
@@ -94,16 +95,18 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
           if (schemaErrors <= 3) console.error('[App] Skipping malformed incident_logs doc:', error);
         }
       }
-      if (schemaErrors > 0 && entries.length === 0) {
-        setRecentLogs([]);
-        setAnalysisError(INCIDENT_SCHEMA_ERROR);
-        return;
+      if (schemaErrors > 0) {
+        const incidentWord = schemaErrors === 1 ? 'incident' : 'incidents';
+        setAnalysisError(`${INCIDENT_SCHEMA_ERROR_PREFIX} ${schemaErrors} ${incidentWord} hidden from queue.`);
+      } else {
+        setAnalysisError((prev) => (
+          prev?.startsWith(INCIDENT_SCHEMA_ERROR_PREFIX) ? null : prev
+        ));
       }
       const sorted = entries.sort((a, b) => {
         return computeImpact(b) - computeImpact(a);
       });
       setRecentLogs(sorted.slice(0, 3));
-      setAnalysisError((prev) => (prev === INCIDENT_SCHEMA_ERROR ? null : prev));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'incident_logs', setAnalysisError);
     });
@@ -117,6 +120,10 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       if (smeltTimerRef.current !== null) {
         clearTimeout(smeltTimerRef.current);
         smeltTimerRef.current = null;
+      }
+      if (writeSpinnerDelayRef.current !== null) {
+        clearTimeout(writeSpinnerDelayRef.current);
+        writeSpinnerDelayRef.current = null;
       }
       if (videoRef.current?.srcObject) {
         (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
@@ -283,7 +290,14 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       setIsComplete(true);
 
       // Let the dragon return to rest before showing the spinner
-      setTimeout(() => setIsWritingData(true), 1200);
+      if (writeSpinnerDelayRef.current !== null) {
+        clearTimeout(writeSpinnerDelayRef.current);
+      }
+      writeSpinnerDelayRef.current = setTimeout(() => {
+        writeSpinnerDelayRef.current = null;
+        if (writeRequestId !== activeRequestIdRef.current) return;
+        setIsWritingData(true);
+      }, 1200);
 
       smeltTimerRef.current = setTimeout(() => {
         smeltTimerRef.current = null;
@@ -324,6 +338,12 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
             anon_handle: completedAnalysis.anonHandle,
             timestamp: serverTimestamp(),
             uid: crypto.randomUUID(),
+            breach_count: 0,
+            escalation_count: 0,
+            sanction_count: 0,
+            sanctioned: false,
+            judged: false,
+            sanction_rationale: null,
           });
           if (writeRequestId !== activeRequestIdRef.current) return;
           setLoggedIncidentId(logRef.id);
@@ -355,6 +375,10 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       clearTimeout(smeltTimerRef.current);
       smeltTimerRef.current = null;
     }
+    if (writeSpinnerDelayRef.current !== null) {
+      clearTimeout(writeSpinnerDelayRef.current);
+      writeSpinnerDelayRef.current = null;
+    }
     setIsComplete(false);
     setShowReport(false);
     setAnalysis(null);
@@ -372,6 +396,14 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     setIsPlaying(true);
     canvasRef.current?.replay();
   };
+
+  const reportShareLinks = analysis
+    ? buildShareLinks(
+        `${analysis.shareQuote}\n\n${analysis.incidentFeedSummary}`,
+        analysis.ogHeadline,
+        loggedIncidentId ? buildIncidentUrl(loggedIncidentId) : window.location.origin
+      )
+    : [];
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
@@ -557,7 +589,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       {/* Post-mortem overlay */}
       {selectedRecentLog && (
         <IncidentReportOverlay
-          mode="log"
           log={selectedRecentLog}
           shareLinks={getLogShareLinks(selectedRecentLog)}
           incidentId={selectedRecentLog.id}
@@ -567,8 +598,9 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
 
       {showReport && analysis && (
         <IncidentReportOverlay
-          mode="analysis"
           analysis={analysis}
+          shareLinks={reportShareLinks}
+          incidentId={loggedIncidentId}
           onClose={() => setShowReport(false)}
         />
       )}

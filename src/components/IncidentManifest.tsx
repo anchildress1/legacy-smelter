@@ -20,7 +20,7 @@ import { parseSmeltLog } from '../lib/smeltLogSchema';
 const PAGE_SIZE = 20;
 type ManifestFilter = 'all' | 'needs_ruling' | 'escalated' | 'sanctioned';
 type ManifestSort = 'impact' | 'newest' | 'breaches' | 'escalations';
-const MANIFEST_SCHEMA_ERROR = 'Incident data schema violation. Fix malformed incident_logs documents.';
+const MANIFEST_SCHEMA_ERROR_PREFIX = 'Incident data schema violation.';
 
 interface IncidentManifestProps {
   onNavigateHome: () => void;
@@ -69,14 +69,15 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           if (schemaErrors <= 3) console.error('[IncidentManifest] Skipping malformed doc:', parseErr);
         }
       }
-      if (schemaErrors > 0 && entries.length === 0) {
-        setAllLogs([]);
-        setError(MANIFEST_SCHEMA_ERROR);
-        setIsLoading(false);
-        return;
+      if (schemaErrors > 0) {
+        const incidentWord = schemaErrors === 1 ? 'incident' : 'incidents';
+        setError(`${MANIFEST_SCHEMA_ERROR_PREFIX} ${schemaErrors} ${incidentWord} hidden from manifest.`);
+      } else {
+        setError((prev) => (
+          prev?.startsWith(MANIFEST_SCHEMA_ERROR_PREFIX) ? null : prev
+        ));
       }
       setAllLogs(entries);
-      setError((prev) => (prev === MANIFEST_SCHEMA_ERROR ? null : prev));
       if (!gotFirst) {
         gotFirst = true;
         setIsLoading(false);
@@ -279,7 +280,6 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
       {/* Detail overlay */}
       {selectedLog && (
         <IncidentReportOverlay
-          mode="log"
           log={selectedLog}
           shareLinks={getLogShareLinks(selectedLog)}
           incidentId={selectedLog.id}

@@ -7,10 +7,13 @@ import { recordBreach } from '../services/breachService';
 import { useEscalation } from '../hooks/useEscalation';
 import { db, doc, onSnapshot } from '../firebase';
 
-type OverlayProps = { onClose: () => void } & (
-  | { mode: 'analysis'; analysis: SmeltAnalysis }
-  | { mode: 'log'; log: SmeltLog; shareLinks: { label: string; href: string }[]; incidentId: string }
-);
+interface OverlayProps {
+  analysis?: SmeltAnalysis | null;
+  log?: SmeltLog | null;
+  shareLinks?: { label: string; href: string }[];
+  incidentId?: string | null;
+  onClose: () => void;
+}
 
 interface NormalisedReport {
   legacyInfraClass: string;
@@ -194,12 +197,7 @@ const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> =
   },
 };
 
-export const IncidentReportOverlay: React.FC<OverlayProps> = (props) => {
-  const { onClose } = props;
-  const analysis = props.mode === 'analysis' ? props.analysis : null;
-  const log = props.mode === 'log' ? props.log : null;
-  const shareLinks = props.mode === 'log' ? props.shareLinks : [];
-  const incidentId = props.mode === 'log' ? props.incidentId : null;
+export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose }) => {
   const report = normalise(analysis, log);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -338,7 +336,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = (props) => {
     }
   };
 
-  const platforms = (shareLinks || []).filter(l => SHARE_PLATFORMS[l.label]);
+  const platforms = (shareLinks ?? []).filter(l => SHARE_PLATFORMS[l.label]);
 
   return (
     <div
