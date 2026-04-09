@@ -10,7 +10,7 @@
     "start": "node server.js",
     "serve": "npm run build && npm run start",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p scripts/tsconfig.json",
     "sanction-incidents": "tsx scripts/sanction-incidents.ts"
   },
   "dependencies": {

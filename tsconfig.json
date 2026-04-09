@@ -24,8 +24,14 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
+  "include": [
+    "src",
+    "vite.config.ts",
+    "shared/colors.d.ts"
+  ],
   "exclude": [
     "dist",
-    "node_modules"
+    "node_modules",
+    "scripts"
   ]
 }

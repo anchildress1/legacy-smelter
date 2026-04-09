@@ -28,8 +28,10 @@ import 'dotenv/config';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, 'dist');
 const PORT = process.env.PORT || 8080;
-const APP_URL = (process.env.VITE_APP_URL || '').replace(/\/$/, '');
-if (!APP_URL) console.warn('[server] VITE_APP_URL is not set — OG share URLs will be relative paths.');
+const APP_URL = (process.env.VITE_APP_URL || '').trim().replace(/\/$/, '');
+if (!APP_URL) {
+  throw new Error('[server] Missing required VITE_APP_URL (canonical share URL).');
+}
 
 function parsePositiveInt(rawValue, fallbackValue) {
   const parsed = Number.parseInt(rawValue ?? '', 10);

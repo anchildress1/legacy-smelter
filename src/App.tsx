@@ -37,7 +37,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
   const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [showSlowWaitSpinner, setShowSlowWaitSpinner] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
@@ -53,7 +52,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const canvasRef = useRef<SmelterCanvasHandle>(null);
   const activeRequestIdRef = useRef(0);
   const analysisRef = useRef<SmeltAnalysis | null>(null);
-  const slowWaitSpinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
@@ -106,13 +104,9 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     return () => { unsubStats(); unsubLogs(); };
   }, []);
 
-  // Release camera hardware and pending timers if component unmounts mid-flow
+  // Release camera hardware if component unmounts mid-flow
   useEffect(() => {
     return () => {
-      if (slowWaitSpinnerTimerRef.current !== null) {
-        clearTimeout(slowWaitSpinnerTimerRef.current);
-        slowWaitSpinnerTimerRef.current = null;
-      }
       if (videoRef.current?.srcObject) {
         (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
       }
@@ -211,22 +205,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     fireSound.stop();
     purrSound.stop();
 
-    // The dragon idle animation is the primary waiting indicator. Only show
-    // the COMPILING POSTMORTEM spinner if analyze takes longer than 2.5s.
-    if (slowWaitSpinnerTimerRef.current !== null) clearTimeout(slowWaitSpinnerTimerRef.current);
-    slowWaitSpinnerTimerRef.current = setTimeout(() => {
-      slowWaitSpinnerTimerRef.current = null;
-      if (requestId === activeRequestIdRef.current) setShowSlowWaitSpinner(true);
-    }, 2500);
-
-    const clearSlowWaitSpinner = () => {
-      if (slowWaitSpinnerTimerRef.current !== null) {
-        clearTimeout(slowWaitSpinnerTimerRef.current);
-        slowWaitSpinnerTimerRef.current = null;
-      }
-      setShowSlowWaitSpinner(false);
-    };
-
     const base64Data = base64.split(',')[1];
     let result: SmeltAnalysis;
     try {
@@ -234,7 +212,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     } catch (error) {
       if (requestId !== activeRequestIdRef.current) return;
       console.error("Gemini analysis failed", error);
-      clearSlowWaitSpinner();
       setIsAnalyzing(false);
       setCurrentImage(null);
       setAnalysisError('GEMINI ANALYSIS FAILED. RETRY IN A MOMENT.');
@@ -243,7 +220,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
 
     if (requestId !== activeRequestIdRef.current) return;
     if (import.meta.env.DEV) console.log("Analysis complete:", result);
-    clearSlowWaitSpinner();
     setAnalysis(result);
     analysisRef.current = result;
     setIsAnalyzing(false);
@@ -285,11 +261,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   };
 
   const resetToIdle = () => {
-    if (slowWaitSpinnerTimerRef.current !== null) {
-      clearTimeout(slowWaitSpinnerTimerRef.current);
-      slowWaitSpinnerTimerRef.current = null;
-    }
-    setShowSlowWaitSpinner(false);
     setIsComplete(false);
     setShowReport(false);
     setAnalysis(null);
@@ -403,17 +374,13 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
               />
 
 
-              {/* Slow-wait spinner — only shown if /api/analyze takes longer
-                  than 2.5s. The dragon idle animation is the primary waiting
-                  indicator; this is the fallback for long waits. */}
-              {showSlowWaitSpinner && (
-                <div role="status" aria-live="polite" className="absolute inset-0 z-40 flex items-center justify-center">
-                  <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border flex items-center gap-3">
-                    <div className="w-4 h-4 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin shrink-0" />
-                    <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
-                      COMPILING INCIDENT POSTMORTEM // STAND BY
-                    </p>
-                  </div>
+              {/* Analyzing overlay — shown while /api/analyze is in flight */}
+              {isAnalyzing && (
+                <div role="status" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
+                  <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
+                  <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
+                    HOTFIX PROCESSING
+                  </p>
                 </div>
               )}
 

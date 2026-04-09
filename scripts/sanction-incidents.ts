@@ -11,12 +11,13 @@
 
 import 'dotenv/config';
 import { FieldValue } from 'firebase-admin/firestore';
+import type { DocumentData, DocumentReference, Transaction } from 'firebase-admin/firestore';
 import { GoogleGenAI } from '@google/genai';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { db } from './lib/admin-init';
+import { db } from './lib/admin-init.js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MIN_BATCH = 5;
@@ -25,6 +26,7 @@ const LOCK_COLLECTION = 'system_locks';
 const LOCK_DOC_ID = 'sanction-incidents';
 const LOCK_TTL_MS = 8 * 60 * 1000;
 const RUN_ID = randomUUID();
+const SCHEMA_QUARANTINE_RATIONALE = 'Skipped by sanction job: invalid incident schema.';
 
 if (!GEMINI_API_KEY) throw new Error('Missing GEMINI_API_KEY');
 
@@ -52,7 +54,7 @@ interface SanctionSelection {
 }
 
 
-function getLockRef() {
+function getLockRef(): DocumentReference<DocumentData> {
   return db.collection(LOCK_COLLECTION).doc(LOCK_DOC_ID);
 }
 
@@ -61,7 +63,7 @@ async function acquireRunLock(): Promise<boolean> {
   const now = Date.now();
   const lockExpiresAt = now + LOCK_TTL_MS;
 
-  return db.runTransaction(async (tx) => {
+  return db.runTransaction(async (tx: Transaction) => {
     const snap = await tx.get(lockRef);
     const data = (snap.data() ?? {}) as Record<string, unknown>;
     const expiresAt = typeof data.lock_expires_at_ms === 'number' ? data.lock_expires_at_ms : 0;
@@ -82,7 +84,7 @@ async function refreshRunLock(): Promise<void> {
   const now = Date.now();
   const lockExpiresAt = now + LOCK_TTL_MS;
 
-  await db.runTransaction(async (tx) => {
+  await db.runTransaction(async (tx: Transaction) => {
     const snap = await tx.get(lockRef);
     const data = (snap.data() ?? {}) as Record<string, unknown>;
     if (data.run_id !== RUN_ID) {
@@ -97,7 +99,7 @@ async function refreshRunLock(): Promise<void> {
 
 async function releaseRunLock(): Promise<void> {
   const lockRef = getLockRef();
-  await db.runTransaction(async (tx) => {
+  await db.runTransaction(async (tx: Transaction) => {
     const snap = await tx.get(lockRef);
     const data = (snap.data() ?? {}) as Record<string, unknown>;
     if (data.run_id !== RUN_ID) return;
@@ -213,10 +215,45 @@ async function run(): Promise<void> {
       }
 
       const batch = unjudgedSnap.docs;
-      const candidates: Candidate[] = batch.map((d) => ({
-        ...parseIncidentDoc(d.data(), d.id),
-        incident_id: d.id,
-      }));
+      const candidates: Candidate[] = [];
+      const malformedDocs: typeof batch = [];
+
+      for (const d of batch) {
+        try {
+          candidates.push({
+            ...parseIncidentDoc(d.data(), d.id),
+            incident_id: d.id,
+          });
+        } catch (err) {
+          malformedDocs.push(d);
+          console.error(
+            `[sanction-incidents] Quarantining malformed incident_logs/${d.id}:`,
+            err
+          );
+        }
+      }
+
+      if (malformedDocs.length > 0) {
+        const quarantineBatch = db.batch();
+        for (const d of malformedDocs) {
+          quarantineBatch.update(d.ref, {
+            judged: true,
+            sanctioned: false,
+            sanction_count: 0,
+            sanction_rationale: SCHEMA_QUARANTINE_RATIONALE,
+          });
+        }
+        await quarantineBatch.commit();
+        console.warn(
+          `[sanction-incidents] Quarantined ${malformedDocs.length} malformed incident(s); continuing run.`
+        );
+      }
+
+      if (candidates.length < MIN_BATCH) {
+        // Query limit is fixed to MIN_BATCH. If we quarantined malformed docs,
+        // this pass may no longer have a full valid candidate set. Re-query.
+        continue;
+      }
 
       console.log('[sanction-incidents] Candidates:', candidates.map((c) => c.incident_id));
 

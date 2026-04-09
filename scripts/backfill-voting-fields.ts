@@ -10,7 +10,7 @@
  */
 
 import 'dotenv/config';
-import { db } from './lib/admin-init';
+import { db } from './lib/admin-init.js';
 
 const BATCH_LIMIT = 400;
 
