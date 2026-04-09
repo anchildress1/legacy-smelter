@@ -532,7 +532,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
                 </h2>
                 <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" />
               </div>
-              <ul role="list" className="space-y-3">
+              <ul role="list" className="space-y-4">
                 {recentLogs.map((log) => (
                   <li key={log.id}>
                     <IncidentLogCard

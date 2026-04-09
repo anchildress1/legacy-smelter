@@ -171,7 +171,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         {/* Page title */}
         <div className="mb-5">
           <h1 className="text-hazard-amber font-mono text-lg sm:text-2xl uppercase tracking-widest font-black">
-            Incident Manifest
+            Incident Manifest{!isLoading && <span className="text-stone-gray font-bold text-sm sm:text-base ml-2">({sortedLogs.length})</span>}
           </h1>
           <div className="hazard-stripe h-1 w-full mt-3 rounded-sm" />
         </div>
@@ -188,10 +188,10 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
               key={value}
               type="button"
               onClick={() => setFilterMode(value)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors ${
                 filterMode === value
                   ? 'border-hazard-amber/40 bg-hazard-amber/10 text-hazard-amber'
-                  : 'border-[#333] text-stone-gray hover:text-ash-white'
+                  : 'border-[#444] bg-[#1a1a1a] text-stone-gray hover:text-ash-white hover:border-[#555]'
               }`}
             >
               {label}
@@ -211,7 +211,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         </div>
 
         {/* Log entries */}
-        <ul role="list" className="space-y-3 min-h-[200px]">
+        <ul role="list" className="space-y-4 min-h-[200px]">
           {isLoading && (
             <li className="flex items-center justify-center py-12 list-none">
               <div className="w-6 h-6 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin" />
