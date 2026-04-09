@@ -41,6 +41,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showPostSmeltSpinner, setShowPostSmeltSpinner] = useState(false);
   const [buttonsDelayed, setButtonsDelayed] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
@@ -55,6 +56,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const analysisRef = useRef<SmeltAnalysis | null>(null);
   const hasRevealedReportRef = useRef(false);
   const smeltTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const postSmeltSpinnerDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
@@ -113,6 +115,10 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       if (smeltTimerRef.current !== null) {
         clearTimeout(smeltTimerRef.current);
         smeltTimerRef.current = null;
+      }
+      if (postSmeltSpinnerDelayRef.current !== null) {
+        clearTimeout(postSmeltSpinnerDelayRef.current);
+        postSmeltSpinnerDelayRef.current = null;
       }
       if (videoRef.current?.srcObject) {
         (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
@@ -271,9 +277,22 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     setButtonsDelayed(true);
     setIsComplete(true);
 
+    // Let the dragon return to rest (1.2s) before covering the canvas
+    // with the COMPILING POSTMORTEM spinner, then reveal the report at 5s.
+    if (postSmeltSpinnerDelayRef.current !== null) {
+      clearTimeout(postSmeltSpinnerDelayRef.current);
+    }
+    if (!hasRevealedReportRef.current) {
+      postSmeltSpinnerDelayRef.current = setTimeout(() => {
+        postSmeltSpinnerDelayRef.current = null;
+        setShowPostSmeltSpinner(true);
+      }, 1200);
+    }
+
     smeltTimerRef.current = setTimeout(() => {
       smeltTimerRef.current = null;
       setButtonsDelayed(false);
+      setShowPostSmeltSpinner(false);
       if (!hasRevealedReportRef.current) {
         hasRevealedReportRef.current = true;
         setShowReport(true);
@@ -286,8 +305,13 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       clearTimeout(smeltTimerRef.current);
       smeltTimerRef.current = null;
     }
+    if (postSmeltSpinnerDelayRef.current !== null) {
+      clearTimeout(postSmeltSpinnerDelayRef.current);
+      postSmeltSpinnerDelayRef.current = null;
+    }
     setIsComplete(false);
     setShowReport(false);
+    setShowPostSmeltSpinner(false);
     setAnalysis(null);
     analysisRef.current = null;
     hasRevealedReportRef.current = false;
@@ -401,13 +425,27 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
               />
 
 
-              {/* Analyzing overlay — Gemini + Firestore write in flight */}
+              {/* Analyzing overlay — shown while /api/analyze is in flight */}
               {isAnalyzing && (
-                <div role="status" aria-live="polite" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
+                <div role="status" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
                   <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
-                  <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest animate-pulse">
-                    COMPILING INCIDENT POSTMORTEM // STAND BY
+                  <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
+                    HOTFIX PROCESSING
                   </p>
+                </div>
+              )}
+
+              {/* Post-smelt spinner — covers the tail end of the animation
+                  delay so the report reveal doesn't look like an abrupt freeze
+                  frame. Delayed 1.2s so the dragon returns to rest first. */}
+              {showPostSmeltSpinner && !showReport && (
+                <div role="status" aria-live="polite" className="absolute inset-0 z-40 flex items-center justify-center">
+                  <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border flex items-center gap-3">
+                    <div className="w-4 h-4 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin shrink-0" />
+                    <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
+                      COMPILING INCIDENT POSTMORTEM // STAND BY
+                    </p>
+                  </div>
                 </div>
               )}
 
