@@ -21,6 +21,7 @@ const PAGE_SIZE = 20;
 type ManifestFilter = 'all' | 'needs_ruling' | 'escalated' | 'sanctioned';
 type ManifestSort = 'impact' | 'newest' | 'breaches' | 'escalations';
 const MANIFEST_SCHEMA_ERROR_PREFIX = 'Incident data schema violation.';
+const GLOBAL_STATS_SCHEMA_ERROR_PREFIX = 'Global stats schema violation.';
 
 interface IncidentManifestProps {
   onNavigateHome: () => void;
@@ -38,12 +39,17 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
   useEffect(() => {
     const unsubStats = onSnapshot(doc(db, 'global_stats', 'main'), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (typeof data.total_pixels_melted === 'number') {
-          setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
-        }
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
+        console.error('[IncidentManifest] global_stats/main has invalid total_pixels_melted:', data);
+        setError(`${GLOBAL_STATS_SCHEMA_ERROR_PREFIX} Decommission Index frozen.`);
+        return;
       }
+      setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
+      setError((prev) => (
+        prev?.startsWith(GLOBAL_STATS_SCHEMA_ERROR_PREFIX) ? null : prev
+      ));
     }, (err) => handleFirestoreError(err, OperationType.GET, 'global_stats/main', setError));
 
     return () => { unsubStats(); };
@@ -83,9 +89,8 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         setIsLoading(false);
       }
     }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'incident_logs');
+      handleFirestoreError(err, OperationType.LIST, 'incident_logs', setError);
       setAllLogs([]);
-      setError('Failed to load incidents.');
       setIsLoading(false);
     });
 
@@ -96,7 +101,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     all: allLogs.length,
     needs_ruling: allLogs.filter((log) => !log.judged).length,
     escalated: allLogs.filter((log) => log.escalation_count > 0).length,
-    sanctioned: allLogs.filter((log) => log.sanctioned || log.sanction_count > 0).length,
+    sanctioned: allLogs.filter((log) => log.sanctioned).length,
   }), [allLogs]);
 
   const sortedLogs = useMemo(() => {
@@ -107,7 +112,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         case 'escalated':
           return log.escalation_count > 0;
         case 'sanctioned':
-          return log.sanctioned || log.sanction_count > 0;
+          return log.sanctioned;
         default:
           return true;
       }
@@ -116,7 +121,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     return filtered.sort((a, b) => {
       switch (sortMode) {
         case 'newest':
-          return (b.timestamp?.toMillis?.() ?? 0) - (a.timestamp?.toMillis?.() ?? 0);
+          return b.timestamp.toMillis() - a.timestamp.toMillis();
         case 'breaches':
           return b.breach_count - a.breach_count || computeImpact(b) - computeImpact(a);
         case 'escalations':

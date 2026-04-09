@@ -5,10 +5,29 @@ const STORAGE_KEY = 'breach_cooldowns';
 const inFlightBreaches = new Set<string>();
 
 function getCooldowns(): Record<string, number> {
+  let raw: string | null;
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    raw = localStorage.getItem(STORAGE_KEY);
   } catch (err) {
-    console.warn('[breachService] Failed to parse localStorage cooldowns:', err);
+    console.error('[breachService] localStorage read failed:', err);
+    return {};
+  }
+  if (raw === null) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      console.error('[breachService] Corrupted cooldowns storage; clearing.');
+      localStorage.removeItem(STORAGE_KEY);
+      return {};
+    }
+    const result: Record<string, number> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'number' && Number.isFinite(value)) result[key] = value;
+    }
+    return result;
+  } catch (err) {
+    console.error('[breachService] Failed to parse cooldowns; clearing.', err);
+    localStorage.removeItem(STORAGE_KEY);
     return {};
   }
 }
@@ -29,15 +48,29 @@ function setCooldown(incidentId: string): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cooldowns));
 }
 
+export interface BreachResult {
+  readonly ok: boolean;
+  readonly skipped?: 'cooldown' | 'in_flight';
+  readonly error?: string;
+}
+
 /**
- * Increments breach_count on an incident doc.
- * 7-second per-user-per-card cooldown (persisted in localStorage)
- * prevents rapid-fire increments from double-clicks, tab duplication,
- * or page refreshes.
+ * Increments breach_count on an incident doc. The counter feeds the Impact
+ * score (2× weight) and the P0 feed sort — this is product state, not
+ * analytics.
+ *
+ * Concurrency: in-flight calls for the same incident are deduped and rapid
+ * repeats are rate-limited by a 7-second per-browser cooldown keyed on
+ * incidentId (persisted in localStorage; note this is per-browser, not
+ * per-user — a shared device cannot distinguish identities).
+ *
+ * Failure handling: returns a structured result. Cooldown is only recorded
+ * on success so failed calls can be retried immediately. Callers should
+ * surface errors visibly rather than assuming success.
  */
-export async function recordBreach(incidentId: string): Promise<void> {
-  if (isOnCooldown(incidentId)) return;
-  if (inFlightBreaches.has(incidentId)) return;
+export async function recordBreach(incidentId: string): Promise<BreachResult> {
+  if (isOnCooldown(incidentId)) return { ok: false, skipped: 'cooldown' };
+  if (inFlightBreaches.has(incidentId)) return { ok: false, skipped: 'in_flight' };
 
   inFlightBreaches.add(incidentId);
   try {
@@ -46,8 +79,10 @@ export async function recordBreach(incidentId: string): Promise<void> {
       breach_count: increment(1),
     });
     setCooldown(incidentId);
+    return { ok: true };
   } catch (err) {
     console.error('[breachService] Increment failed:', err);
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   } finally {
     inFlightBreaches.delete(incidentId);
   }

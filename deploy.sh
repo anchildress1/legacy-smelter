@@ -83,6 +83,7 @@ required_vars=(
   VITE_FIREBASE_STORAGE_BUCKET
   VITE_FIREBASE_MESSAGING_SENDER_ID
   VITE_FIREBASE_APP_ID
+  VITE_FIREBASE_FIRESTORE_DATABASE_ID
 )
 missing=()
 for var in "${required_vars[@]}"; do
@@ -95,9 +96,6 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   echo "Set them in $ENV_FILE or export before running."
   exit 1
 fi
-
-# Keep runtime and firebase.json aligned on a single named Firestore database.
-VITE_FIREBASE_FIRESTORE_DATABASE_ID="${VITE_FIREBASE_FIRESTORE_DATABASE_ID:-legacy-smelter}"
 
 # Auto-resolve VITE_APP_URL from existing Cloud Run service if not set.
 if [[ -z "${VITE_APP_URL:-}" ]]; then

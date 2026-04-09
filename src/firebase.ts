@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, onSnapshot, query, orderBy, doc, getDoc, setDoc, updateDoc, increment, serverTimestamp, runTransaction } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, query, orderBy, doc, getDoc, updateDoc, increment, serverTimestamp, runTransaction } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 
 const requiredVars = [
@@ -51,7 +51,6 @@ export {
   orderBy,
   doc,
   getDoc,
-  setDoc,
   updateDoc,
   increment,
   serverTimestamp,

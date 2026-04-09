@@ -1,7 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
 
-export type Severity = string;
-
 export interface SmeltLog {
   id: string;
   pixel_count: number;
@@ -19,7 +17,7 @@ export interface SmeltLog {
   diagnosis: string;
   chromatic_profile: string;
   system_dx: string;
-  severity: Severity;
+  severity: string;
   primary_contamination: string;
   contributing_factor: string;
   failure_origin: string;
@@ -42,13 +40,18 @@ export interface GlobalStats {
   total_pixels_melted: number;
 }
 
-export interface ImpactCounts {
-  sanction_count: number;
-  escalation_count: number;
-  breach_count: number;
-}
+/**
+ * Counter subset used by `computeImpact`. Field names intentionally match
+ * `SmeltLog` (snake_case) so `computeImpact(log)` works via structural
+ * subtyping without an adapter. Do NOT propagate this convention to other
+ * helper types.
+ */
+export type ImpactCounts = Pick<SmeltLog, 'sanction_count' | 'escalation_count' | 'breach_count'>;
 
-/** Impact = (5 × sanctions) + (3 × escalations) + (2 × breaches), clamped to 0 */
+/** Impact = (5 × sanctions) + (3 × escalations) + (2 × breaches), each clamped to 0 */
 export function computeImpact(counts: ImpactCounts): number {
-  return Math.max(0, (5 * counts.sanction_count) + (3 * counts.escalation_count) + (2 * counts.breach_count));
+  const s = Math.max(0, counts.sanction_count);
+  const e = Math.max(0, counts.escalation_count);
+  const b = Math.max(0, counts.breach_count);
+  return 5 * s + 3 * e + 2 * b;
 }

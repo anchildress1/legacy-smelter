@@ -6,7 +6,10 @@
  * Env: FIREBASE_PROJECT_ID, FIREBASE_FIRESTORE_DATABASE_ID,
  *      GOOGLE_APPLICATION_CREDENTIALS (or FIREBASE_SERVICE_ACCOUNT_JSON)
  *
- * Safe to re-run: only writes to docs actually missing a field.
+ * Document writes are idempotent — only docs actually missing a field are
+ * patched. NOTE: the migration marker at system_migrations/voting-fields-v1
+ * is overwritten on every run with fresh completed_at / scanned_count /
+ * patched_count values, so re-runs will replace the original audit trail.
  */
 
 import 'dotenv/config';

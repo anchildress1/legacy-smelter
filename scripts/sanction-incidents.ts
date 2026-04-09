@@ -27,6 +27,7 @@ const LOCK_DOC_ID = 'sanction-incidents';
 const LOCK_TTL_MS = 8 * 60 * 1000;
 const RUN_ID = randomUUID();
 const SCHEMA_QUARANTINE_RATIONALE = 'Skipped by sanction job: invalid incident schema.';
+const MAX_SELECTION_ATTEMPTS = 2;
 const MIGRATION_COLLECTION = 'system_migrations';
 const MIGRATION_DOC_ID = 'voting-fields-v1';
 const MIGRATION_SCAN_PAGE_SIZE = 500;
@@ -220,6 +221,11 @@ async function ensureVotingFieldsMigration(): Promise<void> {
   );
 }
 
+/**
+ * Normalizes Gemini's judging response to a SanctionSelection.
+ * Throws if the model returned no valid selection or no rationale — callers
+ * MUST NOT fabricate a judgment.
+ */
 function normalizeSelection(raw: unknown, candidates: Candidate[]): SanctionSelection {
   const candidateIds = new Set(candidates.map((c) => c.incident_id));
   const uidToIncidentId = new Map(candidates.map((c) => [c.uid, c.incident_id]));
@@ -229,6 +235,8 @@ function normalizeSelection(raw: unknown, candidates: Candidate[]): SanctionSele
 
   if (raw && typeof raw === 'object') {
     const obj = raw as Record<string, unknown>;
+    // Accept either `sanctioned_incident_id` (preferred) or the legacy
+    // `sanctioned_incident_uid` / `sanctioned` keys from older prompt shapes.
     selectedRaw = obj.sanctioned_incident_id ?? obj.sanctioned_incident_uid ?? obj.sanctioned;
     rationaleRaw = obj.sanction_rationale ?? obj.rationale;
   }
@@ -239,14 +247,19 @@ function normalizeSelection(raw: unknown, candidates: Candidate[]): SanctionSele
   }
 
   if (!selectedIncidentId) {
-    // Keep the job progressing on malformed model output.
-    selectedIncidentId = candidates[0].incident_id;
-    console.warn('[sanction-incidents] Model returned invalid selection, defaulting to oldest incident in batch');
+    throw new Error(
+      `[sanction-incidents] Model returned no valid selection. ` +
+      `Candidates: ${candidates.map((c) => c.incident_id).join(', ')}. ` +
+      `Raw response: ${JSON.stringify(raw).slice(0, 300)}`
+    );
   }
 
-  let sanctionRationale = sanitizeRationale(rationaleRaw);
+  const sanctionRationale = sanitizeRationale(rationaleRaw);
   if (!sanctionRationale) {
-    sanctionRationale = 'Selected for strongest screenshot value and deadpan incident specificity.';
+    throw new Error(
+      `[sanction-incidents] Model selected ${selectedIncidentId} without a rationale. ` +
+      `Raw response: ${JSON.stringify(raw).slice(0, 300)}`
+    );
   }
 
   return {
@@ -334,29 +347,59 @@ async function run(): Promise<void> {
       console.log('[sanction-incidents] Candidates:', candidates.map((c) => c.incident_id));
 
       const prompt = `${JUDGING_PROMPT}\n\n## Incidents\n\n${JSON.stringify(candidates, null, 2)}`;
+      let selection: SanctionSelection | null = null;
+      for (let attempt = 1; attempt <= MAX_SELECTION_ATTEMPTS && !selection; attempt++) {
+        try {
+          const response = await ai.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: [{ parts: [{ text: prompt }] }],
+            config: { responseMimeType: 'application/json' },
+          });
+          const responseText = response.text?.trim();
+          if (!responseText) {
+            console.error(
+              `[sanction-incidents] Empty Gemini response (attempt ${attempt}/${MAX_SELECTION_ATTEMPTS}).`
+            );
+            continue;
+          }
 
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [{ parts: [{ text: prompt }] }],
-        config: { responseMimeType: 'application/json' },
-      });
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(responseText);
+          } catch (parseErr) {
+            console.error(
+              `[sanction-incidents] Failed to parse Gemini response (attempt ${attempt}/${MAX_SELECTION_ATTEMPTS}):`,
+              parseErr
+            );
+            continue;
+          }
 
-      const responseText = response.text?.trim();
-      if (!responseText) throw new Error('Gemini returned empty response');
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(responseText);
-      } catch (parseErr) {
-        throw new Error(`Failed to parse Gemini response (${parseErr instanceof Error ? parseErr.message : parseErr}): ${responseText.slice(0, 200)}`);
+          try {
+            selection = normalizeSelection(parsed, candidates);
+          } catch (selectionErr) {
+            console.error(
+              `[sanction-incidents] Invalid Gemini selection (attempt ${attempt}/${MAX_SELECTION_ATTEMPTS}):`,
+              selectionErr
+            );
+          }
+        } catch (modelErr) {
+          console.error(
+            `[sanction-incidents] Gemini call failed (attempt ${attempt}/${MAX_SELECTION_ATTEMPTS}):`,
+            modelErr
+          );
+        }
       }
 
-      const selection = normalizeSelection(parsed, candidates);
+      if (!selection) {
+        throw new Error(
+          `[sanction-incidents] Model failed to produce a valid sanction selection after ${MAX_SELECTION_ATTEMPTS} attempt(s).`
+        );
+      }
+
       console.log(`[sanction-incidents] Sanctioned incident: ${selection.sanctioned_incident_id}`);
       console.log(`[sanction-incidents] Rationale: ${selection.sanction_rationale}`);
 
       const writeBatch = db.batch();
-
       for (const d of batch) {
         const isSanctioned = d.id === selection.sanctioned_incident_id;
         writeBatch.update(d.ref, {

@@ -7,19 +7,17 @@ import './index.css';
 type Page = 'smelter' | 'manifest';
 
 function getPageFromHash(): Page {
-  try {
-    return window.location.hash === '#manifest' ? 'manifest' : 'smelter';
-  } catch {
-    return 'smelter';
-  }
+  return window.location.hash === '#manifest' ? 'manifest' : 'smelter';
 }
 
 // Read the incident ID from /s/:id on initial load — deep link to a specific incident.
 function getDeepLinkId(): string | null {
+  const match = window.location.pathname.match(/\/s\/([^/?#]+)$/);
+  if (!match) return null;
   try {
-    const match = window.location.pathname.match(/\/s\/([^/?#]+)$/);
-    return match ? decodeURIComponent(match[1]) : null;
-  } catch {
+    return decodeURIComponent(match[1]);
+  } catch (err) {
+    console.error('[main] Invalid deep-link incident id encoding:', err);
     return null;
   }
 }

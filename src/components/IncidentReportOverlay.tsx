@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
-import { SmeltLog, Severity, computeImpact } from '../types';
+import { SmeltLog, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
-import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren, Quote } from 'lucide-react';
+import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
 import { useEscalation } from '../hooks/useEscalation';
 import { db, doc, onSnapshot } from '../firebase';
@@ -18,7 +18,7 @@ interface OverlayProps {
 interface NormalisedReport {
   legacyInfraClass: string;
   incidentFeedSummary: string;
-  severity: Severity;
+  severity: string;
   diagnosis: string;
   failureOrigin: string;
   primaryContamination: string;
@@ -199,6 +199,14 @@ const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> =
 };
 
 export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose }) => {
+  if (import.meta.env.DEV) {
+    if (analysis && log) {
+      throw new Error('IncidentReportOverlay: pass `analysis` OR `log`, never both.');
+    }
+    if ((analysis || log) && !incidentId) {
+      console.warn('IncidentReportOverlay: `incidentId` should be set when analysis or log is provided.');
+    }
+  }
   const report = normalise(analysis, log);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -209,8 +217,15 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
   const [liveEscalationCount, setLiveEscalationCount] = useState<number>(report?.escalationCount ?? 0);
   const [liveTimestamp, setLiveTimestamp] = useState<Date | null>(report?.timestamp ?? null);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const liveCounts = { sanction_count: liveSanctionCount, escalation_count: liveEscalationCount, breach_count: liveBreachCount };
-  const { escalated, isToggling: isTogglingEscalation, toggle: toggleEscalate } = useEscalation(incidentId ?? null);
+  const {
+    escalated,
+    isToggling: isTogglingEscalation,
+    error: escalationError,
+    toggle: toggleEscalate,
+  } = useEscalation(incidentId ?? null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
@@ -220,31 +235,41 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     setLiveBreachCount(report?.breachCount ?? 0);
     setLiveEscalationCount(report?.escalationCount ?? 0);
     setLiveTimestamp(report?.timestamp ?? null);
+    setLiveError(null);
+    setCopyError(null);
   }, [incidentId]);
 
   // Live-subscribe to counter fields while overlay is open
   useEffect(() => {
     if (!incidentId) return;
     return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        const sc = data.sanction_count;
-        const bc = data.breach_count;
-        const ec = data.escalation_count;
-        if (typeof sc !== 'number' || typeof bc !== 'number' || typeof ec !== 'number') {
-          console.error(`[IncidentReportOverlay] incident_logs/${incidentId} has non-numeric counter fields`);
-          return;
-        }
-        setLiveSanctionCount(sc);
-        setLiveBreachCount(bc);
-        setLiveEscalationCount(ec);
-        const ts = data.timestamp;
-        if (ts && typeof ts.toDate === 'function') {
-          setLiveTimestamp(ts.toDate());
-        }
+      if (!snap.exists()) {
+        setLiveError('Incident removed from archive.');
+        return;
+      }
+      const data = snap.data();
+      const sc = data.sanction_count;
+      const bc = data.breach_count;
+      const ec = data.escalation_count;
+      if (typeof sc !== 'number' || typeof bc !== 'number' || typeof ec !== 'number') {
+        console.error(
+          `[IncidentReportOverlay] incident_logs/${incidentId} has non-numeric counter fields`,
+          { sanction_count: sc, breach_count: bc, escalation_count: ec }
+        );
+        setLiveError('Incident data schema violation. Live counts frozen.');
+        return;
+      }
+      setLiveError(null);
+      setLiveSanctionCount(sc);
+      setLiveBreachCount(bc);
+      setLiveEscalationCount(ec);
+      const ts = data.timestamp;
+      if (ts && typeof ts.toDate === 'function') {
+        setLiveTimestamp(ts.toDate());
       }
     }, (error) => {
       console.error('[IncidentReportOverlay] Live count subscription failed:', error);
+      setLiveError('Live counts unavailable. Reconnecting…');
     });
   }, [incidentId]);
 
@@ -319,19 +344,27 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const handleCopyText = async () => {
     try {
       await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount, liveEscalationCount, liveSanctionCount, liveTimestamp));
-      handleBreach();
+      setCopyError(null);
       setCopyTextState('copied');
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
       copyTimeoutRef.current = setTimeout(() => setCopyTextState('idle'), 2000);
+      recordBreachAsync();
     } catch (err) {
       console.error('[IncidentReportOverlay] Clipboard write failed:', err);
+      setCopyError('Copy failed. Select the text manually or check browser permissions.');
     }
   };
 
-  // Fire-and-forget: breach recording is best-effort analytics.
-  // recordBreach handles its own errors internally.
-  const handleBreach = () => {
-    if (incidentId) void recordBreach(incidentId);
+  // Breaches feed the Impact score (2× weight) and drive the P0 feed sort —
+  // this is product state, not analytics. Errors are surfaced via liveError
+  // so the user knows their action didn't register.
+  const recordBreachAsync = () => {
+    if (!incidentId) return;
+    void recordBreach(incidentId).then((result) => {
+      if (!result.ok && !result.skipped) {
+        setLiveError('Breach not recorded. Check your connection and try again.');
+      }
+    });
   };
 
   const handleEscalate = () => void toggleEscalate();
@@ -340,12 +373,14 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     if (!incidentUrl) return;
     try {
       await navigator.clipboard.writeText(incidentUrl);
-      handleBreach();
+      setCopyError(null);
       setCopyLinkState('copied');
       if (copyLinkTimeoutRef.current !== null) clearTimeout(copyLinkTimeoutRef.current);
       copyLinkTimeoutRef.current = setTimeout(() => setCopyLinkState('idle'), 2000);
+      recordBreachAsync();
     } catch (err) {
       console.error('[IncidentReportOverlay] Clipboard write failed:', err);
+      setCopyError('Copy link failed. Check browser permissions.');
     }
   };
 
@@ -389,7 +424,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                   href={href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={handleBreach}
+                  onClick={recordBreachAsync}
                   className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
                   aria-label={`Post to ${cfg.name}`}
                   title={cfg.name}
@@ -435,6 +470,16 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
           <div className="px-5 sm:px-8 py-5 sm:py-6 space-y-5">
 
             {/* Title + severity */}
+            {(liveError || escalationError || copyError) && (
+              <div
+                role="alert"
+                aria-live="polite"
+                className="border border-hazard-amber/40 bg-hazard-amber/10 rounded p-2.5 font-mono text-[11px] uppercase tracking-wider text-hazard-amber"
+              >
+                {liveError ?? escalationError ?? copyError}
+              </div>
+            )}
+
             <div>
               <div className="flex justify-between items-start gap-3">
                 <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
@@ -459,13 +504,11 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </p>
 
             {/* Quote — the star */}
-            {report.shareQuote && (
-              <div className="border-l-2 border-hazard-amber pl-4 py-1">
-                <p className="text-hazard-amber font-mono text-base sm:text-lg italic leading-snug">
-                  "{report.shareQuote}"
-                </p>
-              </div>
-            )}
+            <div className="border-l-2 border-hazard-amber pl-4 py-1">
+              <p className="text-hazard-amber font-mono text-base sm:text-lg italic leading-snug">
+                "{report.shareQuote}"
+              </p>
+            </div>
 
             {/* Stats row */}
             <div className="flex items-baseline justify-between py-3 border-y border-[#2a2a2a]">
@@ -506,37 +549,27 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </section>
 
             {/* Telemetry */}
-            {(report.failureOrigin || report.primaryContamination || report.contributingFactor || report.systemDx) && (
-              <section className="border-t border-[#2a2a2a] pt-4">
-                <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em] mb-3">Telemetry</p>
-                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 font-mono">
-                  {report.failureOrigin && (
-                    <div>
-                      <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Failure Origin</dt>
-                      <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
-                    </div>
-                  )}
-                  {report.systemDx && (
-                    <div>
-                      <dt className="text-[9px] uppercase tracking-wider text-stone-gray">System Diagnosis</dt>
-                      <dd className="text-ash-white text-sm mt-0.5">{report.systemDx}</dd>
-                    </div>
-                  )}
-                  {report.primaryContamination && (
-                    <div>
-                      <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Primary Contaminant</dt>
-                      <dd className="text-ash-white text-sm mt-0.5">{report.primaryContamination}</dd>
-                    </div>
-                  )}
-                  {report.contributingFactor && (
-                    <div>
-                      <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Contributing Factor</dt>
-                      <dd className="text-ash-white text-sm mt-0.5">{report.contributingFactor}</dd>
-                    </div>
-                  )}
-                </dl>
-              </section>
-            )}
+            <section className="border-t border-[#2a2a2a] pt-4">
+              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em] mb-3">Telemetry</p>
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 font-mono">
+                <div>
+                  <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Failure Origin</dt>
+                  <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
+                </div>
+                <div>
+                  <dt className="text-[9px] uppercase tracking-wider text-stone-gray">System Diagnosis</dt>
+                  <dd className="text-ash-white text-sm mt-0.5">{report.systemDx}</dd>
+                </div>
+                <div>
+                  <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Primary Contaminant</dt>
+                  <dd className="text-ash-white text-sm mt-0.5">{report.primaryContamination}</dd>
+                </div>
+                <div>
+                  <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Contributing Factor</dt>
+                  <dd className="text-ash-white text-sm mt-0.5">{report.contributingFactor}</dd>
+                </div>
+              </dl>
+            </section>
 
             {/* Archive Note */}
             <section className="border-t border-[#2a2a2a] pt-4">

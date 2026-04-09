@@ -11,6 +11,7 @@
 
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 import { readFileSync } from 'node:fs';
 
 function getServiceAccountCredential() {
@@ -29,21 +30,33 @@ function getServiceAccountCredential() {
   return undefined;
 }
 
-let _db = null;
-
-export function getDb() {
-  if (_db) return _db;
-
+function ensureApp() {
   const projectId = process.env.FIREBASE_PROJECT_ID;
-  const databaseId = process.env.FIREBASE_FIRESTORE_DATABASE_ID;
   if (!projectId) throw new Error('Missing FIREBASE_PROJECT_ID');
-  if (!databaseId) throw new Error('Missing FIREBASE_FIRESTORE_DATABASE_ID');
 
   if (getApps().length === 0) {
     const credential = getServiceAccountCredential();
     initializeApp(credential ? { credential: cert(credential), projectId } : { projectId });
   }
+  return projectId;
+}
 
+let _db = null;
+
+export function getDb() {
+  if (_db) return _db;
+  ensureApp();
+  const databaseId = process.env.FIREBASE_FIRESTORE_DATABASE_ID;
+  if (!databaseId) throw new Error('Missing FIREBASE_FIRESTORE_DATABASE_ID');
   _db = getFirestore(databaseId);
   return _db;
+}
+
+let _auth = null;
+
+export function getAdminAuth() {
+  if (_auth) return _auth;
+  ensureApp();
+  _auth = getAuth();
+  return _auth;
 }

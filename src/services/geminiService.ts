@@ -1,4 +1,5 @@
-import type { Severity } from "../types";
+import { ensureAnonymousAuth } from "../firebase";
+import { getAuth } from "firebase/auth";
 
 export interface SmeltAnalysis {
   legacyInfraClass: string;
@@ -6,7 +7,7 @@ export interface SmeltAnalysis {
   dominantColors: string[];
   chromaticProfile: string;
   systemDx: string;
-  severity: Severity;
+  severity: string;
   primaryContamination: string;
   contributingFactor: string;
   failureOrigin: string;
@@ -73,15 +74,31 @@ function parseSmeltAnalysis(raw: unknown): SmeltAnalysis {
 }
 
 export async function analyzeLegacyTech(base64Image: string, mimeType: string): Promise<SmeltAnalysis> {
+  await ensureAnonymousAuth();
+  const user = getAuth().currentUser;
+  if (!user) {
+    throw new Error('Authentication required to analyze image.');
+  }
+  const idToken = await user.getIdToken();
+
   const response = await fetch('/api/analyze', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${idToken}`,
+    },
     body: JSON.stringify({ image: base64Image, mimeType }),
   });
 
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: 'Analysis failed' }));
-    throw new Error(body.error || `Server returned ${response.status}`);
+    let errorMsg = `Server returned ${response.status}`;
+    try {
+      const body = await response.json();
+      if (typeof body?.error === 'string' && body.error) errorMsg = body.error;
+    } catch {
+      // Response body wasn't JSON — keep the status-based message.
+    }
+    throw new Error(errorMsg);
   }
 
   return parseSmeltAnalysis(await response.json());

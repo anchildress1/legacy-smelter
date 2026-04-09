@@ -18,12 +18,11 @@ import express from 'express';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { randomUUID } from 'node:crypto';
 import { GoogleGenAI, Type } from '@google/genai';
 import { FieldValue } from 'firebase-admin/firestore';
 import { imageSize } from 'image-size';
 import { getFiveDistinctColors } from './shared/colors.js';
-import { getDb } from './shared/admin-init.js';
+import { getDb, getAdminAuth } from './shared/admin-init.js';
 import 'dotenv/config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -70,11 +69,16 @@ async function fetchIncident(docId) {
   const encodedDocId = encodeURIComponent(docId);
   const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_PROJECT_ID)}/databases/${encodedDb}/documents/incident_logs/${encodedDocId}?key=${FIREBASE_API_KEY}`;
   const res = await fetch(url);
-  if (!res.ok) return null;
+  if (res.status === 404) return { notFound: true };
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Firestore REST ${res.status}: ${body.slice(0, 200)}`);
+  }
   const data = await res.json();
-  if (!data.fields) return null;
+  if (!data.fields) throw new Error(`Firestore REST returned no fields for ${docId}`);
   const str = (k) => data.fields[k]?.stringValue ?? '';
   return {
+    notFound: false,
     og_headline: str('og_headline'),
     incident_feed_summary: str('incident_feed_summary'),
     severity: str('severity'),
@@ -82,9 +86,17 @@ async function fetchIncident(docId) {
   };
 }
 
-let _spaHtmlCache = null;
+// Read index.html once at startup so a missing build fails the server
+// immediately with an actionable error instead of the first request returning
+// a generic 500.
+let _spaHtmlCache;
+try {
+  _spaHtmlCache = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  throw new Error(`[server] Cannot read ${DIST}/index.html. Run "npm run build" first. Cause: ${msg}`);
+}
 function getSpaHtml() {
-  if (!_spaHtmlCache) _spaHtmlCache = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
   return _spaHtmlCache;
 }
 
@@ -218,6 +230,28 @@ const apiRateLimitSweep = setInterval(() => {
 // Prevent the timer from keeping the process alive during shutdown.
 apiRateLimitSweep.unref();
 
+// Verify a Firebase ID token (anonymous or otherwise) on the Authorization
+// header. Rejects if missing/invalid. Attaches the decoded uid to req.authUid.
+async function requireFirebaseAuth(req, res, next) {
+  const header = req.headers.authorization;
+  if (typeof header !== 'string' || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing Authorization header.' });
+  }
+  const idToken = header.slice('Bearer '.length).trim();
+  if (!idToken) {
+    return res.status(401).json({ error: 'Empty bearer token.' });
+  }
+  try {
+    const decoded = await getAdminAuth().verifyIdToken(idToken);
+    req.authUid = decoded.uid;
+    return next();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[server] ID token verification failed:', msg);
+    return res.status(401).json({ error: 'Invalid or expired ID token.' });
+  }
+}
+
 function rateLimitAnalyzeRoute(req, res, next) {
   const now = Date.now();
   const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
@@ -225,6 +259,11 @@ function rateLimitAnalyzeRoute(req, res, next) {
   // Reject when the bucket map is full and this is a new IP — prevents
   // unbounded memory growth from high-cardinality traffic.
   if (!apiRateLimitBuckets.has(clientIp) && apiRateLimitBuckets.size >= API_RATE_LIMIT_MAX_BUCKETS) {
+    console.warn(
+      '[server][ERR_RATE_LIMIT_BUCKET_FULL] bucket map at capacity (%d); rejecting %s',
+      API_RATE_LIMIT_MAX_BUCKETS,
+      clientIp
+    );
     return res.status(503).json({ error: 'Server busy. Try again shortly.' });
   }
 
@@ -360,9 +399,15 @@ app.use('/api', (req, res, next) => {
 // JSON body parsing — 10 MB limit for base64-encoded images
 app.use('/api', express.json({ limit: '10mb' }));
 
-// POST /api/analyze — accepts { image, mimeType } and returns SmeltAnalysis.
-// The Gemini API key stays server-side; the client never sees it.
-app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
+// POST /api/analyze — accepts { image, mimeType } from an authenticated
+// Firebase user (anonymous is fine) via a Bearer ID token in the
+// Authorization header. Derives pixelCount from the image bytes, calls
+// Gemini, writes the incident_log and bumps global_stats in an atomic
+// batch, and returns SmeltAnalysis + { incidentId, pixelCount }.
+// The Gemini API key stays server-side; Firestore writes use the admin SDK
+// (which bypasses security rules), so auth is what protects global_stats
+// from being poisoned by anonymous bots.
+app.post('/api/analyze', requireFirebaseAuth, rateLimitAnalyzeRoute, async (req, res) => {
   if (!GEMINI_API_KEY) {
     return res.status(500).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
   }
@@ -434,7 +479,7 @@ app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
       share_quote: analysis.shareQuote,
       anon_handle: analysis.anonHandle,
       timestamp: FieldValue.serverTimestamp(),
-      uid: randomUUID(),
+      uid: req.authUid,
       breach_count: 0,
       escalation_count: 0,
       sanction_count: 0,
@@ -485,25 +530,39 @@ app.use('/api', (err, _req, res, _next) => {
 // reads window.location.pathname to open the incident overlay.
 app.get('/s/:id', async (req, res, next) => {
   const { id } = req.params;
-  if (!FIREBASE_API_KEY || !FIREBASE_PROJECT_ID || !FIREBASE_DB_ID) return next();
-
-  try {
-    const incident = await fetchIncident(id);
-    if (!incident?.og_headline) return next();
-
-    const canonicalUrl = `${APP_URL}/s/${encodeURIComponent(id)}`;
-    const html = injectIncidentOg(getSpaHtml(), incident, canonicalUrl);
-    res.setHeader('Content-Type', 'text/html');
-    // OG fields (headline, summary, severity, class) are immutable after write,
-    // so long CDN TTL is safe. Counter fields (breaches, sanctions) are mutable
-    // but not included in OG metadata.
-    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
-    return res.send(html);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[server] OG render failed for id=%s: %s', id, msg);
+  if (!FIREBASE_API_KEY || !FIREBASE_PROJECT_ID || !FIREBASE_DB_ID) {
+    console.warn('[server] OG route misconfigured (missing env); falling through to SPA');
     return next();
   }
+
+  let incident;
+  try {
+    incident = await fetchIncident(id);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[server][ERR_OG_FETCH_FAILED] id=%s: %s', id, msg);
+    // Fallback to the generic SPA, but do NOT cache — a transient Firestore
+    // error should not poison the CDN for hours.
+    res.setHeader('Cache-Control', 'no-store');
+    return next();
+  }
+
+  if (incident.notFound) return next();
+  if (!incident.og_headline) {
+    console.error('[server][ERR_OG_EMPTY_HEADLINE] id=%s', id);
+    res.setHeader('Cache-Control', 'no-store');
+    return next();
+  }
+
+  const canonicalUrl = `${APP_URL}/s/${encodeURIComponent(id)}`;
+  const html = injectIncidentOg(getSpaHtml(), incident, canonicalUrl);
+  res.setHeader('Content-Type', 'text/html');
+  // OG fields (og_headline, incident_feed_summary, severity, legacy_infra_class)
+  // are never mutated after the initial server-side write in POST /api/analyze,
+  // so long CDN TTL is safe. If that ever changes, this cache must be
+  // shortened.
+  res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+  return res.send(html);
 });
 
 // Vite hashes all asset filenames — safe to cache for 1 year.

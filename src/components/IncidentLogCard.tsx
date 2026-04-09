@@ -23,8 +23,6 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
     void toggle();
   };
 
-  const infraClass = log.legacy_infra_class || 'Incident';
-
   return (
     <div className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors group">
       <div className="w-2 shrink-0 flex flex-col" aria-hidden="true">
@@ -54,21 +52,19 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
         <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-2">
           {log.incident_feed_summary}
         </p>
-        {log.share_quote && (
-          <div className="mt-2 flex items-start gap-2 border-l-2 border-hazard-amber/40 pl-2.5">
-            <Quote size={12} className="mt-0.5 shrink-0 text-hazard-amber/70" aria-hidden="true" />
-            <p className="text-xs font-mono italic leading-snug text-hazard-amber/90 line-clamp-2">
-              "{log.share_quote}"
-            </p>
-          </div>
-        )}
+        <div className="mt-2 flex items-start gap-2 border-l-2 border-hazard-amber/40 pl-2.5">
+          <Quote size={12} className="mt-0.5 shrink-0 text-hazard-amber/70" aria-hidden="true" />
+          <p className="text-xs font-mono italic leading-snug text-hazard-amber/90 line-clamp-2">
+            "{log.share_quote}"
+          </p>
+        </div>
         <div className="mt-2 flex items-center gap-x-3 gap-y-1 flex-wrap font-mono text-[10px] uppercase tracking-wider">
-          {log.sanction_count > 0 && (
+          {log.sanctioned && (
             <span className="font-bold text-hazard-amber">Sanctioned</span>
           )}
           <span className="text-stone-gray">Impact {impact}</span>
           <span className="text-stone-gray text-xs ml-auto">
-            {log.timestamp?.toDate ? formatTimestamp(log.timestamp.toDate()) : '—'}
+            {formatTimestamp(log.timestamp.toDate())}
           </span>
         </div>
       </button>
@@ -80,7 +76,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
             ? 'bg-hazard-amber/15 text-hazard-amber border-l-hazard-amber/30'
             : 'text-stone-gray/60 hover:text-hazard-amber/80 hover:bg-hazard-amber/5'
         } ${isToggling ? 'opacity-50' : ''}`}
-        aria-label={escalated ? `Remove escalation for ${infraClass}` : `Escalate ${infraClass}`}
+        aria-label={escalated ? `Remove escalation for ${log.legacy_infra_class}` : `Escalate ${log.legacy_infra_class}`}
         title={escalated ? 'De-escalate' : 'Escalate'}
       >
         <Siren size={18} />

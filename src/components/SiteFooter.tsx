@@ -5,8 +5,8 @@ interface SiteFooterProps {
 }
 
 export const SiteFooter: React.FC<SiteFooterProps> = ({ maxWidth = 'max-w-7xl' }) => (
-  <footer className="p-6 bg-concrete-mid border-t border-concrete-border mt-auto">
-    <div className={`${maxWidth} mx-auto w-full flex flex-col md:flex-row justify-between items-center gap-4`}>
+  <footer className="py-6 bg-concrete-mid border-t border-concrete-border mt-auto">
+    <div className={`${maxWidth} mx-auto w-full px-4 sm:px-6 flex flex-col md:flex-row justify-between items-center gap-4`}>
       <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
         &copy; 2026 Ashley Childress
       </p>

@@ -26,6 +26,7 @@ const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
 const INCIDENT_SCHEMA_ERROR_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
+const GLOBAL_STATS_SCHEMA_ERROR_PREFIX = 'GLOBAL STATS SCHEMA VIOLATION.';
 
 interface AppProps {
   onNavigateManifest: () => void;
@@ -51,18 +52,24 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const canvasRef = useRef<SmelterCanvasHandle>(null);
   const activeRequestIdRef = useRef(0);
   const analysisRef = useRef<SmeltAnalysis | null>(null);
+  const postmortemAutoOpenedRef = useRef(false);
   const cameraAttachTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingCameraStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
     const unsubStats = onSnapshot(statsDoc, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (typeof data.total_pixels_melted === 'number') {
-          setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
-        }
+      if (!snapshot.exists()) return;
+      const data = snapshot.data();
+      if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
+        console.error('[App] global_stats/main has invalid total_pixels_melted:', data);
+        setAnalysisError(`${GLOBAL_STATS_SCHEMA_ERROR_PREFIX} DECOMMISSION INDEX FROZEN.`);
+        return;
       }
+      setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
+      setAnalysisError((prev) => (
+        prev?.startsWith(GLOBAL_STATS_SCHEMA_ERROR_PREFIX) ? null : prev
+      ));
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'global_stats/main', setAnalysisError);
     });
@@ -242,8 +249,13 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     } catch (error) {
       if (requestId !== activeRequestIdRef.current) return;
       console.error('[App] Canvas rendering failed:', error);
-      resetToIdle();
-      setAnalysisError('CANVAS RENDER FAILED. TRY A DIFFERENT BROWSER OR ENABLE HARDWARE ACCELERATION.');
+      // The server already persisted the incident. Preserve `analysis` so the
+      // user can still open the postmortem (with its share links and live
+      // counts) even though the animation is broken. Otherwise they lose all
+      // access to data they already paid for with their upload.
+      setIsComplete(true);
+      setShowReport(true);
+      setAnalysisError('CANVAS RENDER FAILED. INCIDENT ARCHIVED BUT ANIMATION UNAVAILABLE. TRY A DIFFERENT BROWSER OR ENABLE HARDWARE ACCELERATION.');
     }
   };
 
@@ -269,8 +281,12 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     fireSound.stop();
     purrSound.play();
     setIsPlaying(false);
-    if (analysisRef.current) {
-      setIsComplete(true);
+    if (!analysisRef.current) return;
+    setIsComplete(true);
+    // Only auto-open the postmortem the first time. On replay, the user
+    // already dismissed it once — don't force it back open.
+    if (!postmortemAutoOpenedRef.current) {
+      postmortemAutoOpenedRef.current = true;
       setShowReport(true);
     }
   };
@@ -280,6 +296,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     setShowReport(false);
     setAnalysis(null);
     analysisRef.current = null;
+    postmortemAutoOpenedRef.current = false;
     setIsPlaying(false);
   };
 

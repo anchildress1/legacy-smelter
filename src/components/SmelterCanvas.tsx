@@ -88,8 +88,10 @@ const PUDDLE_FRAG = `
 const DRAGON_TEX_H = 672;     // native pixel height of dragon sprite frames
 const ANIM_SPEED = 0.2;
 const FLY_SPEED = 0.005;
-const MELT_SPEED = 0.012;     // ~1.4s dissolve
-const SETTLE_FRAMES = 90;     // ~1.5s of post-fire dragon idle before completion
+const MELT_SPEED = 0.012;     // melt progress increment per tick — ~1.4s total dissolve at 60fps
+const SETTLE_FRAMES = 90;     // idle-frame hold after the flame sequence ends (~1.5s at 60fps).
+                              // Total settling wall-clock is longer because the flame animation
+                              // (20 frames × ANIM_SPEED 0.2) must finish before the counter starts.
 
 // Layout ratios and reference dimensions
 const LAYOUT_REF_WIDTH = 900; // canvas width at which dragon renders at full scale
@@ -198,40 +200,31 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         // Pick top 3 dominant colors for puddle
         const palette = getFiveDistinctColors(colors);
         const picked = palette.slice(0, Math.min(3, palette.length)).map(h => ensureBright(hexToInt(h)));
-        while (picked.length < 3) picked.push(picked[0] || 0xcccccc);
+        while (picked.length < 3) picked.push(picked[0] ?? 0xcccccc);
 
-        // Create puddle palette-swap filter
-        try {
-          puddleFilterRef.current = PIXI.Filter.from({
-            gl: { vertex: FILTER_VERT, fragment: PUDDLE_FRAG },
-            resources: {
-              puddleUniforms: {
-                uColor1: { value: intToVec3(picked[0]), type: 'vec3<f32>' },
-                uColor2: { value: intToVec3(picked[1]), type: 'vec3<f32>' },
-                uColor3: { value: intToVec3(picked[2]), type: 'vec3<f32>' },
-              },
+        // Create puddle palette-swap filter. Failure is fatal — the filters
+        // ARE the animation, and a silent degrade would ship a broken smelt.
+        puddleFilterRef.current = PIXI.Filter.from({
+          gl: { vertex: FILTER_VERT, fragment: PUDDLE_FRAG },
+          resources: {
+            puddleUniforms: {
+              uColor1: { value: intToVec3(picked[0]), type: 'vec3<f32>' },
+              uColor2: { value: intToVec3(picked[1]), type: 'vec3<f32>' },
+              uColor3: { value: intToVec3(picked[2]), type: 'vec3<f32>' },
             },
-          });
-        } catch (err) {
-          console.error('[SmelterCanvas] Puddle filter failed:', err);
-          puddleFilterRef.current = null;
-        }
+          },
+        });
 
-        // Create melt filter for image dissolution
-        try {
-          meltFilterRef.current = PIXI.Filter.from({
-            gl: { vertex: FILTER_VERT, fragment: MELT_FRAG },
-            resources: {
-              meltUniforms: {
-                uTime: { value: 0, type: 'f32' },
-                uMeltAmount: { value: 0, type: 'f32' },
-              },
+        // Create melt filter for image dissolution. Also fatal on failure.
+        meltFilterRef.current = PIXI.Filter.from({
+          gl: { vertex: FILTER_VERT, fragment: MELT_FRAG },
+          resources: {
+            meltUniforms: {
+              uTime: { value: 0, type: 'f32' },
+              uMeltAmount: { value: 0, type: 'f32' },
             },
-          });
-        } catch (err) {
-          console.error('[SmelterCanvas] Melt filter failed:', err);
-          meltFilterRef.current = null;
-        }
+          },
+        });
 
         // Load image
         const img = new Image();
@@ -372,8 +365,10 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         };
 
         let time = 0;
+        let consecutiveTickerErrors = 0;
+        const MAX_CONSECUTIVE_TICKER_ERRORS = 5;
 
-        app.ticker.add((ticker) => {
+        const tickerFn = (ticker: PIXI.Ticker) => {
           try {
             time += 0.05 * ticker.deltaTime;
             const { width, height } = app.screen;
@@ -542,10 +537,20 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
               spriteRef.current.y = imageY;
               spriteRef.current.scale.set(getImgScale(baseScale, spriteRef.current));
             }
+            consecutiveTickerErrors = 0;
           } catch (err) {
-            console.error('[SmelterCanvas] Ticker error:', err);
+            consecutiveTickerErrors++;
+            console.error(
+              `[SmelterCanvas] Ticker error (${consecutiveTickerErrors}/${MAX_CONSECUTIVE_TICKER_ERRORS}):`,
+              err
+            );
+            if (consecutiveTickerErrors >= MAX_CONSECUTIVE_TICKER_ERRORS) {
+              console.error('[SmelterCanvas] Ticker disabled after repeated failures.');
+              app.ticker.remove(tickerFn);
+            }
           }
-        });
+        };
+        app.ticker.add(tickerFn);
 
         readyResolveRef.current?.();
       };
