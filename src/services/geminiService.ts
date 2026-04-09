@@ -72,23 +72,11 @@ function parseSmeltAnalysis(raw: unknown): SmeltAnalysis {
   };
 }
 
-async function calculatePixelCount(base64Image: string, mimeType: string): Promise<number> {
-  const img = new Image();
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve();
-    img.onerror = () => reject(new Error('Failed to decode image'));
-    img.src = `data:${mimeType};base64,${base64Image}`;
-  });
-  return img.width * img.height;
-}
-
 export async function analyzeLegacyTech(base64Image: string, mimeType: string): Promise<SmeltAnalysis> {
-  const pixelCount = await calculatePixelCount(base64Image, mimeType);
-
   const response = await fetch('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: base64Image, mimeType, pixelCount }),
+    body: JSON.stringify({ image: base64Image, mimeType }),
   });
 
   if (!response.ok) {

@@ -21,6 +21,7 @@ import { fileURLToPath } from 'url';
 import { randomUUID } from 'node:crypto';
 import { GoogleGenAI, Type } from '@google/genai';
 import { FieldValue } from 'firebase-admin/firestore';
+import { imageSize } from 'image-size';
 import { getFiveDistinctColors } from './shared/colors.js';
 import { getDb } from './shared/admin-init.js';
 import 'dotenv/config';
@@ -260,6 +261,24 @@ function getAiClient() {
   return _aiClient;
 }
 
+function derivePixelCount(base64Image) {
+  const imageBytes = Buffer.from(base64Image, 'base64');
+  if (!imageBytes.length) {
+    throw new Error('Image payload is empty after base64 decode.');
+  }
+  const dimensions = imageSize(imageBytes);
+  const width = dimensions.width;
+  const height = dimensions.height;
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
+    throw new Error('Could not determine valid image dimensions.');
+  }
+  const pixelCount = width * height;
+  if (!Number.isSafeInteger(pixelCount) || pixelCount <= 0) {
+    throw new Error('Computed pixel count is invalid.');
+  }
+  return pixelCount;
+}
+
 async function analyzeImage(base64Image, mimeType) {
   const ai = getAiClient();
 
@@ -349,7 +368,7 @@ app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
   }
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const { image, mimeType, pixelCount } = body;
+  const { image, mimeType } = body;
   if (typeof image !== 'string' || typeof mimeType !== 'string' || !image || !mimeType) {
     return res.status(400).json({ error: 'Request must include "image" (base64) and "mimeType".' });
   }
@@ -359,13 +378,17 @@ app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
   if (image.length > MAX_BASE64_LENGTH) {
     return res.status(413).json({ error: 'Image too large.' });
   }
-  if (
-    typeof pixelCount !== 'number' ||
-    !Number.isSafeInteger(pixelCount) ||
-    pixelCount <= 0 ||
-    pixelCount > MAX_PIXEL_COUNT
-  ) {
-    return res.status(400).json({ error: `Request must include a positive integer "pixelCount" <= ${MAX_PIXEL_COUNT}.` });
+
+  let pixelCount;
+  try {
+    pixelCount = derivePixelCount(image);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[server] Image dimension parse failed:', msg);
+    return res.status(400).json({ error: 'Invalid image payload.' });
+  }
+  if (pixelCount > MAX_PIXEL_COUNT) {
+    return res.status(413).json({ error: `Image dimensions exceed max pixel count (${MAX_PIXEL_COUNT}).` });
   }
 
   let analysis;
