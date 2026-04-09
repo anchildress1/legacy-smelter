@@ -11,7 +11,7 @@
 
 import 'dotenv/config';
 import { FieldValue } from 'firebase-admin/firestore';
-import type { DocumentData, DocumentReference, Transaction } from 'firebase-admin/firestore';
+import type { DocumentData, DocumentReference, QueryDocumentSnapshot, Transaction } from 'firebase-admin/firestore';
 import { GoogleGenAI } from '@google/genai';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -27,6 +27,9 @@ const LOCK_DOC_ID = 'sanction-incidents';
 const LOCK_TTL_MS = 8 * 60 * 1000;
 const RUN_ID = randomUUID();
 const SCHEMA_QUARANTINE_RATIONALE = 'Skipped by sanction job: invalid incident schema.';
+const MIGRATION_COLLECTION = 'system_migrations';
+const MIGRATION_DOC_ID = 'voting-fields-v1';
+const MIGRATION_SCAN_PAGE_SIZE = 500;
 
 if (!GEMINI_API_KEY) throw new Error('Missing GEMINI_API_KEY');
 
@@ -145,6 +148,78 @@ function parseIncidentDoc(raw: unknown, incidentId: string): IncidentDoc {
   };
 }
 
+function hasValidVotingFields(data: Record<string, unknown>): boolean {
+  return (
+    typeof data.breach_count === 'number' &&
+    Number.isFinite(data.breach_count) &&
+    typeof data.escalation_count === 'number' &&
+    Number.isFinite(data.escalation_count) &&
+    typeof data.sanction_count === 'number' &&
+    Number.isFinite(data.sanction_count) &&
+    typeof data.sanctioned === 'boolean' &&
+    typeof data.judged === 'boolean' &&
+    (data.sanction_rationale === null || typeof data.sanction_rationale === 'string')
+  );
+}
+
+async function ensureVotingFieldsMigration(): Promise<void> {
+  const markerRef = db.collection(MIGRATION_COLLECTION).doc(MIGRATION_DOC_ID);
+  const markerSnap = await markerRef.get();
+  if (markerSnap.exists) return;
+
+  console.warn(
+    `[sanction-incidents] Migration marker ${MIGRATION_COLLECTION}/${MIGRATION_DOC_ID} missing; validating incident_logs schema.`
+  );
+
+  let scannedCount = 0;
+  let invalidCount = 0;
+  let cursor: QueryDocumentSnapshot<DocumentData> | null = null;
+
+  while (true) {
+    let queryRef = db
+      .collection('incident_logs')
+      .orderBy('__name__')
+      .select(
+        'breach_count',
+        'escalation_count',
+        'sanction_count',
+        'sanctioned',
+        'judged',
+        'sanction_rationale'
+      )
+      .limit(MIGRATION_SCAN_PAGE_SIZE);
+
+    if (cursor) queryRef = queryRef.startAfter(cursor);
+
+    const pageSnap = await queryRef.get();
+    if (pageSnap.empty) break;
+
+    scannedCount += pageSnap.size;
+    for (const d of pageSnap.docs) {
+      if (!hasValidVotingFields(d.data() as Record<string, unknown>)) invalidCount += 1;
+    }
+
+    cursor = pageSnap.docs[pageSnap.docs.length - 1];
+  }
+
+  if (invalidCount > 0) {
+    throw new Error(
+      `[sanction-incidents] Missing migration marker and found ${invalidCount} incident(s) without voting fields. Run: npx tsx scripts/backfill-voting-fields.ts`
+    );
+  }
+
+  await markerRef.set({
+    completed_at: FieldValue.serverTimestamp(),
+    scanned_count: scannedCount,
+    patched_count: 0,
+    source: 'scripts/sanction-incidents.ts preflight',
+  }, { merge: true });
+
+  console.warn(
+    `[sanction-incidents] Migration marker created after validating ${scannedCount} incident(s).`
+  );
+}
+
 function normalizeSelection(raw: unknown, candidates: Candidate[]): SanctionSelection {
   const candidateIds = new Set(candidates.map((c) => c.incident_id));
   const uidToIncidentId = new Map(candidates.map((c) => [c.uid, c.incident_id]));
@@ -182,6 +257,7 @@ function normalizeSelection(raw: unknown, candidates: Candidate[]): SanctionSele
 
 async function run(): Promise<void> {
   console.log('[sanction-incidents] Starting run...');
+  await ensureVotingFieldsMigration();
   const lockAcquired = await acquireRunLock();
   if (!lockAcquired) {
     console.log('[sanction-incidents] Another run is in progress; exiting.');

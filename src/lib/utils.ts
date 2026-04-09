@@ -35,11 +35,22 @@ export function formatPixels(pixels: number): { value: string, unit: string } {
 
 export { FALLBACK_COLORS, getFiveDistinctColors } from '../../shared/colors.js';
 
+const APP_BASE_URL_RAW = (import.meta.env.VITE_APP_URL ?? '').trim();
+if (!APP_BASE_URL_RAW) {
+  throw new Error('Missing required VITE_APP_URL for canonical share links.');
+}
+
+let APP_BASE_URL = '';
+try {
+  APP_BASE_URL = new URL(APP_BASE_URL_RAW).toString().replace(/\/$/, '');
+} catch {
+  throw new Error(`VITE_APP_URL must be an absolute URL. Received: "${APP_BASE_URL_RAW}"`);
+}
+
 // Builds a shareable incident URL from VITE_APP_URL (validated at startup).
 // /s/:id is the canonical share path — handled by server.js for OG pre-rendering.
 export function buildIncidentUrl(docId: string): string {
-  const base = import.meta.env.VITE_APP_URL.replace(/\/$/, '');
-  return `${base}/s/${encodeURIComponent(docId)}`;
+  return `${APP_BASE_URL}/s/${encodeURIComponent(docId)}`;
 }
 
 export function buildShareLinks(shareText: string, headline: string, pageUrl: string): { label: string; href: string }[] {
@@ -56,4 +67,3 @@ export function getLogShareLinks(log: SmeltLog): { label: string; href: string }
   const shareText = `${log.share_quote}\n\n${log.incident_feed_summary}`;
   return buildShareLinks(shareText, log.og_headline, incidentUrl);
 }
-

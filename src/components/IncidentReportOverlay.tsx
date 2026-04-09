@@ -56,7 +56,8 @@ function buildMarkdown(
   report: NormalisedReport,
   liveBreachCount: number,
   liveEscalationCount: number,
-  liveSanctionCount: number
+  liveSanctionCount: number,
+  liveTimestamp: Date | null
 ): string {
   const liveCounts = { sanction_count: liveSanctionCount, escalation_count: liveEscalationCount, breach_count: liveBreachCount };
   const impact = computeImpact(liveCounts);
@@ -81,8 +82,8 @@ function buildMarkdown(
     `**Containment Breaches:** ${liveBreachCount}`,
   );
 
-  if (report.timestamp) {
-    lines.push(`**Filed:** ${formatTimestamp(report.timestamp)}`);
+  if (liveTimestamp) {
+    lines.push(`**Filed:** ${formatTimestamp(liveTimestamp)}`);
   }
 
   const telemetry = [
@@ -207,11 +208,19 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const [liveSanctionCount, setLiveSanctionCount] = useState<number>(report?.sanctionCount ?? 0);
   const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
   const [liveEscalationCount, setLiveEscalationCount] = useState<number>(report?.escalationCount ?? 0);
+  const [liveTimestamp, setLiveTimestamp] = useState<Date | null>(report?.timestamp ?? null);
   const liveCounts = { sanction_count: liveSanctionCount, escalation_count: liveEscalationCount, breach_count: liveBreachCount };
   const { escalated, isToggling: isTogglingEscalation, toggle: toggleEscalate } = useEscalation(incidentId ?? null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
+
+  useEffect(() => {
+    setLiveSanctionCount(report?.sanctionCount ?? 0);
+    setLiveBreachCount(report?.breachCount ?? 0);
+    setLiveEscalationCount(report?.escalationCount ?? 0);
+    setLiveTimestamp(report?.timestamp ?? null);
+  }, [incidentId]);
 
   // Live-subscribe to counter fields while overlay is open
   useEffect(() => {
@@ -229,6 +238,10 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         setLiveSanctionCount(sc);
         setLiveBreachCount(bc);
         setLiveEscalationCount(ec);
+        const ts = data.timestamp;
+        if (ts && typeof ts.toDate === 'function') {
+          setLiveTimestamp(ts.toDate());
+        }
       }
     }, (error) => {
       console.error('[IncidentReportOverlay] Live count subscription failed:', error);
@@ -305,7 +318,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   const handleCopyText = async () => {
     try {
-      await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount, liveEscalationCount, liveSanctionCount));
+      await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount, liveEscalationCount, liveSanctionCount, liveTimestamp));
       handleBreach();
       setCopyTextState('copied');
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
@@ -545,7 +558,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             {/* Case footer */}
             <div className="border-t border-[#2a2a2a] pt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-xs text-stone-gray">
               <span>Filed by <span className="text-hazard-amber font-bold">{report.anonHandle}</span></span>
-              {report.timestamp && <span>{formatTimestamp(report.timestamp)}</span>}
+              {liveTimestamp && <span>{formatTimestamp(liveTimestamp)}</span>}
               <span>{report.chromaticProfile}</span>
             </div>
 

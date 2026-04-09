@@ -113,6 +113,12 @@ if [[ -z "${VITE_APP_URL:-}" ]]; then
   fi
 fi
 
+if [[ ! "$VITE_APP_URL" =~ ^https?://[^[:space:]]+$ ]]; then
+  echo "ERROR: VITE_APP_URL must be an absolute http(s) URL. Received: $VITE_APP_URL"
+  exit 1
+fi
+VITE_APP_URL="${VITE_APP_URL%/}"
+
 # ── Derived values ───────────────────────────────────────────────────────────
 
 SERVICE_SA="${SERVICE_NAME}-run@${PROJECT_ID}.iam.gserviceaccount.com"

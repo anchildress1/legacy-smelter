@@ -6,7 +6,11 @@ export function useEscalation(incidentId: string | null) {
   const [isToggling, setIsToggling] = useState(false);
 
   useEffect(() => {
-    if (!incidentId) return;
+    if (!incidentId) {
+      setEscalated(false);
+      return;
+    }
+    setEscalated(hasEscalated(incidentId));
     let cancelled = false;
     syncEscalationState(incidentId)
       .then((state) => { if (!cancelled) setEscalated(state); })

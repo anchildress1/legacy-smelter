@@ -27,7 +27,8 @@
   "include": [
     "src",
     "vite.config.ts",
-    "shared/colors.d.ts"
+    "shared/colors.d.ts",
+    "shared/admin-init.d.ts"
   ],
   "exclude": [
     "dist",

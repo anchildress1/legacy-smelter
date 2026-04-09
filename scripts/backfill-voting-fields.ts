@@ -10,9 +10,14 @@
  */
 
 import 'dotenv/config';
+import { FieldValue } from 'firebase-admin/firestore';
+import type { DocumentData, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { db } from './lib/admin-init.js';
 
 const BATCH_LIMIT = 400;
+const READ_PAGE_SIZE = 500;
+const MIGRATION_COLLECTION = 'system_migrations';
+const MIGRATION_DOC_ID = 'voting-fields-v1';
 
 const REQUIRED_DEFAULTS = {
   breach_count: 0,
@@ -25,41 +30,56 @@ const REQUIRED_DEFAULTS = {
 
 async function run(): Promise<void> {
   console.log(`[backfill] Scanning incident_logs collection…`);
-  const snap = await db.collection('incident_logs').get();
-  console.log(`[backfill] ${snap.size} documents total`);
 
   let patched = 0;
+  let scanned = 0;
   let batch = db.batch();
   let batchSize = 0;
+  let cursor: QueryDocumentSnapshot<DocumentData> | null = null;
 
-  for (const doc of snap.docs) {
-    const data = doc.data();
-    const updates: Record<string, unknown> = {};
+  while (true) {
+    let queryRef = db
+      .collection('incident_logs')
+      .orderBy('__name__')
+      .limit(READ_PAGE_SIZE);
+    if (cursor) queryRef = queryRef.startAfter(cursor);
 
-    for (const [field, defaultValue] of Object.entries(REQUIRED_DEFAULTS)) {
-      const value = data[field];
-      if (field === 'sanction_rationale') {
-        if (value !== null && typeof value !== 'string') updates[field] = defaultValue;
-      } else if (typeof defaultValue === 'number') {
-        if (typeof value !== 'number' || !Number.isFinite(value)) updates[field] = defaultValue;
-      } else if (typeof defaultValue === 'boolean') {
-        if (typeof value !== 'boolean') updates[field] = defaultValue;
+    const pageSnap = await queryRef.get();
+    if (pageSnap.empty) break;
+
+    scanned += pageSnap.size;
+
+    for (const doc of pageSnap.docs) {
+      const data = doc.data();
+      const updates: Record<string, unknown> = {};
+
+      for (const [field, defaultValue] of Object.entries(REQUIRED_DEFAULTS)) {
+        const value = data[field];
+        if (field === 'sanction_rationale') {
+          if (value !== null && typeof value !== 'string') updates[field] = defaultValue;
+        } else if (typeof defaultValue === 'number') {
+          if (typeof value !== 'number' || !Number.isFinite(value)) updates[field] = defaultValue;
+        } else if (typeof defaultValue === 'boolean') {
+          if (typeof value !== 'boolean') updates[field] = defaultValue;
+        }
+      }
+
+      if (Object.keys(updates).length === 0) continue;
+
+      console.log(`[backfill] ${doc.id} <- ${JSON.stringify(updates)}`);
+      batch.update(doc.ref, updates);
+      patched++;
+      batchSize++;
+
+      if (batchSize >= BATCH_LIMIT) {
+        await batch.commit();
+        console.log(`[backfill] Committed batch of ${batchSize}`);
+        batch = db.batch();
+        batchSize = 0;
       }
     }
 
-    if (Object.keys(updates).length === 0) continue;
-
-    console.log(`[backfill] ${doc.id} <- ${JSON.stringify(updates)}`);
-    batch.update(doc.ref, updates);
-    patched++;
-    batchSize++;
-
-    if (batchSize >= BATCH_LIMIT) {
-      await batch.commit();
-      console.log(`[backfill] Committed batch of ${batchSize}`);
-      batch = db.batch();
-      batchSize = 0;
-    }
+    cursor = pageSnap.docs[pageSnap.docs.length - 1];
   }
 
   if (batchSize > 0) {
@@ -67,11 +87,20 @@ async function run(): Promise<void> {
     console.log(`[backfill] Committed final batch of ${batchSize}`);
   }
 
+  console.log(`[backfill] ${scanned} documents scanned`);
   if (patched === 0) {
-    console.log(`[backfill] All ${snap.size} documents already conform. No changes.`);
+    console.log(`[backfill] All ${scanned} documents already conform. No changes.`);
   } else {
-    console.log(`[backfill] Patched ${patched} document(s) out of ${snap.size}.`);
+    console.log(`[backfill] Patched ${patched} document(s) out of ${scanned}.`);
   }
+
+  await db.collection(MIGRATION_COLLECTION).doc(MIGRATION_DOC_ID).set({
+    completed_at: FieldValue.serverTimestamp(),
+    scanned_count: scanned,
+    patched_count: patched,
+    source: 'scripts/backfill-voting-fields.ts',
+  }, { merge: true });
+  console.log(`[backfill] Marked migration ${MIGRATION_COLLECTION}/${MIGRATION_DOC_ID} as complete.`);
 }
 
 run().catch((err) => {

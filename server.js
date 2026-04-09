@@ -28,9 +28,15 @@ import 'dotenv/config';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, 'dist');
 const PORT = process.env.PORT || 8080;
-const APP_URL = (process.env.VITE_APP_URL || '').trim().replace(/\/$/, '');
-if (!APP_URL) {
+const APP_URL_RAW = (process.env.VITE_APP_URL || '').trim();
+if (!APP_URL_RAW) {
   throw new Error('[server] Missing required VITE_APP_URL (canonical share URL).');
+}
+let APP_URL = '';
+try {
+  APP_URL = new URL(APP_URL_RAW).toString().replace(/\/$/, '');
+} catch {
+  throw new Error(`[server] VITE_APP_URL must be an absolute URL. Received: "${APP_URL_RAW}"`);
 }
 
 function parsePositiveInt(rawValue, fallbackValue) {
@@ -246,6 +252,7 @@ function rateLimitAnalyzeRoute(req, res, next) {
 
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif']);
 const MAX_BASE64_LENGTH = 9 * 1024 * 1024; // ~6.75 MB decoded
+const MAX_PIXEL_COUNT = 200_000_000; // 200 MP hard cap to prevent poisoned stats input
 
 let _aiClient = null;
 function getAiClient() {
@@ -352,8 +359,13 @@ app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
   if (image.length > MAX_BASE64_LENGTH) {
     return res.status(413).json({ error: 'Image too large.' });
   }
-  if (typeof pixelCount !== 'number' || !Number.isFinite(pixelCount) || pixelCount <= 0) {
-    return res.status(400).json({ error: 'Request must include a positive "pixelCount".' });
+  if (
+    typeof pixelCount !== 'number' ||
+    !Number.isSafeInteger(pixelCount) ||
+    pixelCount <= 0 ||
+    pixelCount > MAX_PIXEL_COUNT
+  ) {
+    return res.status(400).json({ error: `Request must include a positive integer "pixelCount" <= ${MAX_PIXEL_COUNT}.` });
   }
 
   let analysis;
@@ -370,8 +382,10 @@ app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
   try {
     const adminDb = getDb();
     const logRef = adminDb.collection('incident_logs').doc();
+    const statsRef = adminDb.collection('global_stats').doc('main');
     const [ymin, xmin, ymax, xmax] = analysis.subjectBox;
-    await logRef.set({
+    const writeBatch = adminDb.batch();
+    writeBatch.set(logRef, {
       pixel_count: pixelCount,
       incident_feed_summary: analysis.incidentFeedSummary,
       color_1: analysis.dominantColors[0],
@@ -405,10 +419,12 @@ app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
       judged: false,
       sanction_rationale: null,
     });
-    await adminDb.collection('global_stats').doc('main').set(
+    writeBatch.set(
+      statsRef,
       { total_pixels_melted: FieldValue.increment(pixelCount) },
       { merge: true }
     );
+    await writeBatch.commit();
     return res.json({ ...analysis, incidentId: logRef.id, pixelCount });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
