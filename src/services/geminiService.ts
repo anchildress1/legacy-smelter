@@ -1,5 +1,6 @@
 import { ensureAnonymousAuth } from "../firebase";
 import { getAuth } from "firebase/auth";
+import { isObject, isNonEmptyString, isFiniteNumber, isNumberTuple4 } from "../lib/typeGuards";
 
 export interface SmeltAnalysis {
   legacyInfraClass: string;
@@ -24,52 +25,51 @@ export interface SmeltAnalysis {
 
 function expectString(obj: Record<string, unknown>, key: string): string {
   const value = obj[key];
-  if (typeof value !== 'string' || !value) {
+  if (!isNonEmptyString(value)) {
     throw new Error(`API response missing or empty "${key}"`);
   }
   return value;
 }
 
 function parseSmeltAnalysis(raw: unknown): SmeltAnalysis {
-  if (!raw || typeof raw !== 'object') {
+  if (!isObject(raw)) {
     throw new Error('API response is not an object');
   }
-  const obj = raw as Record<string, unknown>;
 
-  const dominantColors = obj.dominantColors;
+  const dominantColors = raw.dominantColors;
   if (!Array.isArray(dominantColors)) {
     throw new Error('API response missing dominantColors array');
   }
 
-  const subjectBox = obj.subjectBox;
-  if (!Array.isArray(subjectBox) || subjectBox.length !== 4 || !subjectBox.every(v => typeof v === 'number')) {
+  const subjectBox = raw.subjectBox;
+  if (!isNumberTuple4(subjectBox)) {
     throw new Error('API response has invalid subjectBox (expected 4-number array)');
   }
 
-  const pixelCount = obj.pixelCount;
-  if (typeof pixelCount !== 'number' || !Number.isFinite(pixelCount) || pixelCount <= 0) {
+  const pixelCount = raw.pixelCount;
+  if (!isFiniteNumber(pixelCount) || pixelCount <= 0) {
     throw new Error('API response missing or invalid pixelCount');
   }
 
   return {
-    legacyInfraClass: expectString(obj, 'legacyInfraClass'),
-    diagnosis: expectString(obj, 'diagnosis'),
+    legacyInfraClass: expectString(raw, 'legacyInfraClass'),
+    diagnosis: expectString(raw, 'diagnosis'),
     dominantColors: dominantColors.filter((c): c is string => typeof c === 'string'),
-    chromaticProfile: expectString(obj, 'chromaticProfile'),
-    systemDx: expectString(obj, 'systemDx'),
-    severity: expectString(obj, 'severity'),
-    primaryContamination: expectString(obj, 'primaryContamination'),
-    contributingFactor: expectString(obj, 'contributingFactor'),
-    failureOrigin: expectString(obj, 'failureOrigin'),
-    disposition: expectString(obj, 'disposition'),
-    incidentFeedSummary: expectString(obj, 'incidentFeedSummary'),
-    archiveNote: expectString(obj, 'archiveNote'),
-    ogHeadline: expectString(obj, 'ogHeadline'),
-    shareQuote: expectString(obj, 'shareQuote'),
-    anonHandle: expectString(obj, 'anonHandle'),
+    chromaticProfile: expectString(raw, 'chromaticProfile'),
+    systemDx: expectString(raw, 'systemDx'),
+    severity: expectString(raw, 'severity'),
+    primaryContamination: expectString(raw, 'primaryContamination'),
+    contributingFactor: expectString(raw, 'contributingFactor'),
+    failureOrigin: expectString(raw, 'failureOrigin'),
+    disposition: expectString(raw, 'disposition'),
+    incidentFeedSummary: expectString(raw, 'incidentFeedSummary'),
+    archiveNote: expectString(raw, 'archiveNote'),
+    ogHeadline: expectString(raw, 'ogHeadline'),
+    shareQuote: expectString(raw, 'shareQuote'),
+    anonHandle: expectString(raw, 'anonHandle'),
     pixelCount,
-    subjectBox: subjectBox as [number, number, number, number],
-    incidentId: expectString(obj, 'incidentId'),
+    subjectBox,
+    incidentId: expectString(raw, 'incidentId'),
   };
 }
 

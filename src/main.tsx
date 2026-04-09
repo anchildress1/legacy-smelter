@@ -1,8 +1,12 @@
-import { StrictMode, useState, useEffect, useCallback } from 'react';
+import { StrictMode, useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App.tsx';
-import { IncidentManifest } from './components/IncidentManifest.tsx';
 import './index.css';
+
+const App = lazy(() => import('./App.tsx'));
+const IncidentManifest = lazy(async () => {
+  const module = await import('./components/IncidentManifest.tsx');
+  return { default: module.IncidentManifest };
+});
 
 type Page = 'smelter' | 'manifest';
 
@@ -19,6 +23,9 @@ function getDeepLinkId(): string | null {
   try {
     return decodeURIComponent(match[1]);
   } catch (err) {
+    // decodeURIComponent throws URIError on malformed percent-encoding
+    // (e.g. /s/%E0%A4%A or bare "%" characters). Treat as no deep link
+    // rather than crashing the initial render.
     console.error('[main] Invalid deep-link incident id encoding:', err);
     return null;
   }
@@ -59,10 +66,24 @@ function Root() {
     globalThis.scrollTo(0, 0);
   }, []);
 
+  const routeFallback = (
+    <div className="min-h-screen bg-concrete text-ash-white flex items-center justify-center">
+      <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+    </div>
+  );
+
   if (page === 'manifest') {
-    return <IncidentManifest onNavigateHome={() => navigateTo('smelter')} />;
+    return (
+      <Suspense fallback={routeFallback}>
+        <IncidentManifest onNavigateHome={() => navigateTo('smelter')} />
+      </Suspense>
+    );
   }
-  return <App onNavigateManifest={() => navigateTo('manifest')} deepLinkId={deepLinkId} />;
+  return (
+    <Suspense fallback={routeFallback}>
+      <App onNavigateManifest={() => navigateTo('manifest')} deepLinkId={deepLinkId} />
+    </Suspense>
+  );
 }
 
 const rootEl = document.getElementById('root');

@@ -1,9 +1,9 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { SmeltLog } from '../types';
+import { schemaFieldError, schemaPayloadError } from './firestoreErrors';
+import { isObject, isNonEmptyString, isFiniteNumber, isBoolean } from './typeGuards';
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+const COLLECTION = 'incident_logs';
 
 function isTimestamp(value: unknown): value is Timestamp {
   return isObject(value)
@@ -13,24 +13,24 @@ function isTimestamp(value: unknown): value is Timestamp {
 
 function expectString(data: Record<string, unknown>, key: string, docId: string): string {
   const value = data[key];
-  if (typeof value !== 'string' || !value) {
-    throw new Error(`incident_logs/${docId} has invalid "${key}" (expected non-empty string)`);
+  if (!isNonEmptyString(value)) {
+    throw schemaFieldError(COLLECTION, docId, key, 'non-empty string');
   }
   return value;
 }
 
 function expectNumber(data: Record<string, unknown>, key: string, docId: string): number {
   const value = data[key];
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`incident_logs/${docId} has invalid "${key}" (expected finite number)`);
+  if (!isFiniteNumber(value)) {
+    throw schemaFieldError(COLLECTION, docId, key, 'finite number');
   }
   return value;
 }
 
 function expectBoolean(data: Record<string, unknown>, key: string, docId: string): boolean {
   const value = data[key];
-  if (typeof value !== 'boolean') {
-    throw new Error(`incident_logs/${docId} has invalid "${key}" (expected boolean)`);
+  if (!isBoolean(value)) {
+    throw schemaFieldError(COLLECTION, docId, key, 'boolean');
   }
   return value;
 }
@@ -39,13 +39,13 @@ function expectNullableString(data: Record<string, unknown>, key: string, docId:
   const value = data[key];
   if (value === null) return null;
   if (typeof value === 'string') return value;
-  throw new Error(`incident_logs/${docId} has invalid "${key}" (expected string|null)`);
+  throw schemaFieldError(COLLECTION, docId, key, 'string|null');
 }
 
 function expectTimestamp(data: Record<string, unknown>, key: string, docId: string): Timestamp {
   const value = data[key];
   if (!isTimestamp(value)) {
-    throw new Error(`incident_logs/${docId} has invalid "${key}" (expected Timestamp)`);
+    throw schemaFieldError(COLLECTION, docId, key, 'Timestamp');
   }
   return value;
 }
@@ -57,7 +57,7 @@ function expectTimestamp(data: Record<string, unknown>, key: string, docId: stri
  */
 export function parseSmeltLog(docId: string, raw: unknown): SmeltLog {
   if (!isObject(raw)) {
-    throw new Error(`incident_logs/${docId} has invalid payload (expected object)`);
+    throw schemaPayloadError(COLLECTION, docId, 'object');
   }
 
   return {

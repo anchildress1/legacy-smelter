@@ -218,7 +218,12 @@ function normalizeSeverity(value) {
 
 const apiRateLimitBuckets = new Map();
 const API_RATE_LIMIT_MAX_BUCKETS = 10_000;
-const apiRateLimitSweep = setInterval(() => {
+// NOTE: this interval is intentionally NOT .unref()'d. When server.js is the
+// Node entry point, unrefing this timer causes the process to exit ~100ms
+// after app.listen() despite the HTTP server holding an open socket. The
+// interval is cheap (a Map sweep every 60s) and there's no graceful shutdown
+// path that would benefit from it being unref'd.
+setInterval(() => {
   const now = Date.now();
   for (const [key, bucket] of apiRateLimitBuckets.entries()) {
     if (now - bucket.windowStart >= API_RATE_LIMIT_WINDOW_MS) {
@@ -226,9 +231,6 @@ const apiRateLimitSweep = setInterval(() => {
     }
   }
 }, Math.max(API_RATE_LIMIT_WINDOW_MS, 60_000));
-
-// Prevent the timer from keeping the process alive during shutdown.
-apiRateLimitSweep.unref();
 
 // Verify a Firebase ID token (anonymous or otherwise) on the Authorization
 // header. Rejects if missing/invalid. Attaches the decoded uid to req.authUid.
@@ -247,7 +249,8 @@ async function requireFirebaseAuth(req, res, next) {
     return next();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn('[server] ID token verification failed:', msg);
+    const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+    console.error('[server][ERR_AUTH_TOKEN_INVALID] ip=%s: %s', clientIp, msg);
     return res.status(401).json({ error: 'Invalid or expired ID token.' });
   }
 }

@@ -11,6 +11,13 @@ interface SmelterCanvasProps {
   onComplete: () => void;
   onFlyInStart?: () => void;
   onFireStart?: () => void;
+  /**
+   * Fires when the animation state machine has crashed so many consecutive
+   * times that the ticker has been removed. After this fires, the canvas is
+   * frozen — the parent should surface an error and either auto-open the
+   * postmortem (if the write already succeeded) or reset to idle.
+   */
+  onRenderFailure?: (err: Error) => void;
 }
 
 type AnimPhase = 'empty' | 'flying_in' | 'landing' | 'melting' | 'settling' | 'complete';
@@ -146,7 +153,7 @@ interface PixiState {
 }
 
 export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>(
-  ({ onComplete, onFlyInStart, onFireStart }, ref) => {
+  ({ onComplete, onFlyInStart, onFireStart, onRenderFailure }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const ps = useRef<PixiState | null>(null);
     const spriteRef = useRef<PIXI.Sprite | null>(null);
@@ -156,14 +163,14 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
     const meltProgressRef = useRef(0);
     const flyProgressRef = useRef(0);
     const settleProgressRef = useRef(0);
-    const cbRef = useRef({ onComplete, onFlyInStart, onFireStart });
+    const cbRef = useRef({ onComplete, onFlyInStart, onFireStart, onRenderFailure });
     const readyResolveRef = useRef<() => void>(undefined);
     const readyRejectRef = useRef<(err: unknown) => void>(undefined);
     const readyPromiseRef = useRef<Promise<void>>(new Promise(() => {}));
 
     useEffect(() => {
-      cbRef.current = { onComplete, onFlyInStart, onFireStart };
-    }, [onComplete, onFlyInStart, onFireStart]);
+      cbRef.current = { onComplete, onFlyInStart, onFireStart, onRenderFailure };
+    }, [onComplete, onFlyInStart, onFireStart, onRenderFailure]);
 
     const beginSequence = () => {
       if (!ps.current || !spriteRef.current) return;
@@ -383,9 +390,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
               case 'empty': {
                 dragon.visible = true;
                 setDragonTex(textures.idle, true);
-                dragon.x = dragonRestX;
-                dragon.y = dragonY;
-                dragon.scale.set(-baseScale, baseScale);
+                setDragonRestPose(dragon, dragonRestX, dragonY, baseScale);
                 break;
               }
 
@@ -401,16 +406,13 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 if (t >= 1) {
                   phaseRef.current = 'landing';
                   setDragonTex(textures.land, false);
-                  dragon.scale.set(-baseScale, baseScale);
-                  dragon.x = dragonRestX;
+                  setDragonRestPose(dragon, dragonRestX, dragonY, baseScale);
                 }
                 break;
               }
 
               case 'landing': {
-                dragon.x = dragonRestX;
-                dragon.y = dragonY;
-                dragon.scale.set(-baseScale, baseScale);
+                setDragonRestPose(dragon, dragonRestX, dragonY, baseScale);
                 if (!dragon.playing) {
                   phaseRef.current = 'melting';
                   meltProgressRef.current = 0;
@@ -427,9 +429,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
               }
 
               case 'melting': {
-                dragon.x = dragonRestX;
-                dragon.y = dragonY;
-                dragon.scale.set(-baseScale, baseScale);
+                setDragonRestPose(dragon, dragonRestX, dragonY, baseScale);
 
                 if (!dragon.playing && dragon.textures === textures.flame) {
                   setDragonTex(textures.idle, true);
@@ -471,9 +471,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                     puddle.filters = [puddleFilterRef.current];
                   }
                   puddle.alpha = puddleAlpha;
-                  puddle.x = imageX;
-                  puddle.y = puddleY;
-                  puddle.scale.set((width * PUDDLE_WIDTH_RATIO) / PUDDLE_SPRITE_W);
+                  setPuddleRestPose(puddle, imageX, puddleY, width);
                 }
 
                 if (mp >= 1) {
@@ -488,9 +486,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 // for SETTLE_FRAMES before firing onComplete. This prevents the
                 // post-smelt controls from appearing while the dragon is still
                 // mid-fire or hasn't had time to stand down.
-                dragon.x = dragonRestX;
-                dragon.y = dragonY;
-                dragon.scale.set(-baseScale, baseScale);
+                setDragonRestPose(dragon, dragonRestX, dragonY, baseScale);
 
                 if (!dragon.playing && dragon.textures === textures.flame) {
                   setDragonTex(textures.idle, true);
@@ -498,9 +494,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 if (!dragon.playing) dragon.play();
 
                 if (!puddle.playing) puddle.play();
-                puddle.x = imageX;
-                puddle.y = puddleY;
-                puddle.scale.set((width * PUDDLE_WIDTH_RATIO) / PUDDLE_SPRITE_W);
+                setPuddleRestPose(puddle, imageX, puddleY, width);
 
                 // Only start counting idle frames once the dragon has actually
                 // switched back to idle (flame sequence finished).
@@ -515,15 +509,11 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
               }
 
               case 'complete': {
-                dragon.x = dragonRestX;
-                dragon.y = dragonY;
-                dragon.scale.set(-baseScale, baseScale);
+                setDragonRestPose(dragon, dragonRestX, dragonY, baseScale);
                 setDragonTex(textures.idle, true);
 
                 if (!puddle.playing) puddle.play();
-                puddle.x = imageX;
-                puddle.y = puddleY;
-                puddle.scale.set((width * PUDDLE_WIDTH_RATIO) / PUDDLE_SPRITE_W);
+                setPuddleRestPose(puddle, imageX, puddleY, width);
                 break;
               }
             }
@@ -547,6 +537,10 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
             if (consecutiveTickerErrors >= MAX_CONSECUTIVE_TICKER_ERRORS) {
               console.error('[SmelterCanvas] Ticker disabled after repeated failures.');
               app.ticker.remove(tickerFn);
+              const wrapped = err instanceof Error
+                ? err
+                : new Error(`[SmelterCanvas] Ticker crashed: ${String(err)}`);
+              cbRef.current.onRenderFailure?.(wrapped);
             }
           }
         };
@@ -577,4 +571,37 @@ function getImgScale(baseScale: number, sprite: PIXI.Sprite): number {
   const target = dragonVisualH * 0.6;
   const max = Math.max(sprite.texture.width, sprite.texture.height);
   return max > 0 ? target / max : 1;
+}
+
+/**
+ * Places the dragon at its rest position (facing left, so scale.x is
+ * negative). This is the "on the ground, not flying in" pose shared by
+ * the landing, melting, settling, and complete phases — pulled out of
+ * the ticker switch so adjusting the rest pose only needs one edit.
+ */
+function setDragonRestPose(
+  dragon: PIXI.AnimatedSprite,
+  restX: number,
+  restY: number,
+  baseScale: number,
+): void {
+  dragon.x = restX;
+  dragon.y = restY;
+  dragon.scale.set(-baseScale, baseScale);
+}
+
+/**
+ * Places the puddle at its anchor point under the image and rescales
+ * it to PUDDLE_WIDTH_RATIO of the current canvas width. Shared by the
+ * melting, settling, and complete phases.
+ */
+function setPuddleRestPose(
+  puddle: PIXI.AnimatedSprite,
+  imageX: number,
+  puddleY: number,
+  canvasWidth: number,
+): void {
+  puddle.x = imageX;
+  puddle.y = puddleY;
+  puddle.scale.set((canvasWidth * PUDDLE_WIDTH_RATIO) / PUDDLE_SPRITE_W);
 }

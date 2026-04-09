@@ -226,6 +226,9 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     error: escalationError,
     toggle: toggleEscalate,
   } = useEscalation(incidentId ?? null);
+  const activeErrors = [liveError, escalationError, copyError].filter(
+    (msg): msg is string => !!msg
+  );
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
@@ -357,14 +360,25 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   // Breaches feed the Impact score (2× weight) and drive the P0 feed sort —
   // this is product state, not analytics. Errors are surfaced via liveError
-  // so the user knows their action didn't register.
+  // so the user knows their action didn't register. Skipped states
+  // (cooldown / in-flight) are intentionally silent to avoid spamming the
+  // user when they click repeatedly.
   const recordBreachAsync = () => {
     if (!incidentId) return;
-    void recordBreach(incidentId).then((result) => {
-      if (!result.ok && !result.skipped) {
-        setLiveError('Breach not recorded. Check your connection and try again.');
-      }
-    });
+    recordBreach(incidentId)
+      .then((result) => {
+        if (result.ok || result.skipped) return;
+        console.error('[IncidentReportOverlay] Breach record failed:', result.error);
+        setLiveError(
+          result.error
+            ? `Breach not recorded: ${result.error}`
+            : 'Breach not recorded. Check your connection and try again.'
+        );
+      })
+      .catch((err) => {
+        console.error('[IncidentReportOverlay] Breach record threw unexpectedly:', err);
+        setLiveError('Breach not recorded due to an unexpected error.');
+      });
   };
 
   const handleEscalate = () => void toggleEscalate();
@@ -478,17 +492,20 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         <div className="flex-1 overflow-y-auto">
           <div className="px-5 sm:px-8 py-5 sm:py-6 space-y-5">
 
-            {/* Title + severity */}
-            {(liveError || escalationError || copyError) && (
+            {activeErrors.length > 0 && (
               <div
                 role="alert"
                 aria-live="polite"
-                className="border border-hazard-amber/40 bg-hazard-amber/10 rounded p-2.5 font-mono text-[11px] uppercase tracking-wider text-hazard-amber"
+                aria-atomic="true"
+                className="border border-hazard-amber/40 bg-hazard-amber/10 rounded p-2.5 font-mono text-[11px] uppercase tracking-wider text-hazard-amber space-y-1"
               >
-                {liveError ?? escalationError ?? copyError}
+                {activeErrors.map((msg) => (
+                  <p key={msg}>{msg}</p>
+                ))}
               </div>
             )}
 
+            {/* Title + severity */}
             <div>
               <div className="flex justify-between items-start gap-3">
                 <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Howl } from 'howler';
 import {
   db,
@@ -12,7 +12,7 @@ import {
 } from './firebase';
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
 import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
-import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
+import type { SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
 import { getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
@@ -28,6 +28,10 @@ const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, 
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
 const INCIDENT_SCHEMA_ERROR_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
 const GLOBAL_STATS_SCHEMA_ERROR_PREFIX = 'GLOBAL STATS SCHEMA VIOLATION.';
+const SmelterCanvas = lazy(async () => {
+  const module = await import('./components/SmelterCanvas');
+  return { default: module.SmelterCanvas };
+});
 
 interface AppProps {
   readonly onNavigateManifest: () => void;
@@ -39,7 +43,10 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
   const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
   const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [dataIntegrityError, setDataIntegrityError] = useState<string | null>(null);
+  // Split data-integrity errors into distinct slots so the two async
+  // snapshots (stats + incidents) cannot clobber each other's state.
+  const [incidentSchemaError, setIncidentSchemaError] = useState<string | null>(null);
+  const [statsSchemaError, setStatsSchemaError] = useState<string | null>(null);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
@@ -65,15 +72,13 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       const data = snapshot.data();
       if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
         console.error('[App] global_stats/main has invalid total_pixels_melted:', data);
-        setDataIntegrityError(`${GLOBAL_STATS_SCHEMA_ERROR_PREFIX} DECOMMISSION INDEX FROZEN.`);
+        setStatsSchemaError(`${GLOBAL_STATS_SCHEMA_ERROR_PREFIX} DECOMMISSION INDEX FROZEN.`);
         return;
       }
       setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
-      setDataIntegrityError((prev) => (
-        prev?.startsWith(GLOBAL_STATS_SCHEMA_ERROR_PREFIX) ? null : prev
-      ));
+      setStatsSchemaError(null);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'global_stats/main', setDataIntegrityError);
+      handleFirestoreError(error, OperationType.GET, 'global_stats/main', setStatsSchemaError);
     });
 
     // P0 queue uses server-maintained impact_score so this listener stays
@@ -97,15 +102,13 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       }
       if (schemaErrors > 0) {
         const incidentWord = schemaErrors === 1 ? 'incident' : 'incidents';
-        setDataIntegrityError(`${INCIDENT_SCHEMA_ERROR_PREFIX} ${schemaErrors} ${incidentWord} hidden from queue.`);
+        setIncidentSchemaError(`${INCIDENT_SCHEMA_ERROR_PREFIX} ${schemaErrors} ${incidentWord} hidden from queue.`);
       } else {
-        setDataIntegrityError((prev) => (
-          prev?.startsWith(INCIDENT_SCHEMA_ERROR_PREFIX) ? null : prev
-        ));
+        setIncidentSchemaError(null);
       }
       setRecentLogs(entries);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'incident_logs', setDataIntegrityError);
+      handleFirestoreError(error, OperationType.LIST, 'incident_logs', setIncidentSchemaError);
     });
 
     return () => { unsubStats(); unsubLogs(); };
@@ -399,12 +402,26 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
               )}
 
               {/* PixiJS Canvas — always mounted so idle animation runs immediately */}
-              <SmelterCanvas
-                ref={canvasRef}
-                onComplete={handleSmeltComplete}
-                onFlyInStart={() => flyInSound.play()}
-                onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
-              />
+              <Suspense fallback={
+                <div className="absolute inset-0 flex items-center justify-center bg-concrete/70">
+                  <div className="w-10 h-10 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                </div>
+              }>
+                <SmelterCanvas
+                  ref={canvasRef}
+                  onComplete={handleSmeltComplete}
+                  onFlyInStart={() => flyInSound.play()}
+                  onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
+                  onRenderFailure={(err) => {
+                    console.error('[App] SmelterCanvas render failure:', err);
+                    setWorkflowError('CANVAS RENDER HALTED. USE VIEW POSTMORTEM TO ACCESS YOUR INCIDENT.');
+                    if (analysisRef.current) {
+                      setIsComplete(true);
+                      setShowReport(true);
+                    }
+                  }}
+                />
+              </Suspense>
 
 
               {/* Analyzing overlay — shown while /api/analyze is in flight */}
@@ -439,18 +456,15 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
               )}
             </div>
 
-            {(dataIntegrityError || workflowError) && (
-              <div className="modern-card p-4" role="alert" aria-live="assertive">
-                {dataIntegrityError && (
-                  <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">
-                    {dataIntegrityError}
-                  </p>
-                )}
-                {workflowError && (
-                  <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide mt-2">
-                    {workflowError}
-                  </p>
-                )}
+            {(incidentSchemaError || statsSchemaError || workflowError) && (
+              <div className="modern-card p-4 space-y-2" role="alert" aria-live="assertive" aria-atomic="true">
+                {[incidentSchemaError, statsSchemaError, workflowError]
+                  .filter((msg): msg is string => !!msg)
+                  .map((msg) => (
+                    <p key={msg} className="text-hazard-amber font-mono text-xs uppercase tracking-wide">
+                      {msg}
+                    </p>
+                  ))}
               </div>
             )}
           </div>

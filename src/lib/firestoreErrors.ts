@@ -37,3 +37,26 @@ export function handleFirestoreError(
   console.error('Firestore Error:', JSON.stringify(errInfo));
   onError?.(`FIRESTORE ${operationType.toUpperCase()} FAILED. DATA MAY BE STALE.`);
 }
+
+/**
+ * Builds a consistent "<collection>/<docId> has invalid <field> (expected ...)"
+ * error for schema validation failures. Centralized here so parseSmeltLog and
+ * any future per-collection parsers share the same wording, and so anything
+ * that pattern-matches on these messages only needs to look in one place.
+ */
+export function schemaFieldError(
+  collection: string,
+  docId: string,
+  field: string,
+  expected: string,
+): Error {
+  return new Error(`${collection}/${docId} has invalid "${field}" (expected ${expected})`);
+}
+
+export function schemaPayloadError(
+  collection: string,
+  docId: string,
+  expected: string,
+): Error {
+  return new Error(`${collection}/${docId} has invalid payload (expected ${expected})`);
+}

@@ -1,40 +1,24 @@
 import { db, ensureAnonymousAuth, doc, runTransaction, increment, getDoc, serverTimestamp } from '../firebase';
 import { getAuth } from 'firebase/auth';
 import { IMPACT_WEIGHTS } from '../types';
+import { safeParseJsonFromStorage } from '../lib/storageJson';
 
 const STORAGE_KEY = 'escalated_incidents';
+const LOG_PREFIX = '[escalationService]';
 const inFlightEscalations = new Set<string>();
 
 function getEscalatedSet(): Set<string> {
-  let raw: string | null;
-  try {
-    raw = localStorage.getItem(STORAGE_KEY);
-  } catch (err) {
-    console.error('[escalationService] localStorage read failed:', err);
-    return new Set();
-  }
-  if (raw === null) return new Set();
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed) || !parsed.every((v): v is string => typeof v === 'string')) {
-      console.error('[escalationService] Corrupted escalations storage; clearing.');
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch (removeErr) {
-        console.error('[escalationService] Failed to clear corrupted storage:', removeErr);
+  return safeParseJsonFromStorage(
+    STORAGE_KEY,
+    LOG_PREFIX,
+    (parsed) => {
+      if (!Array.isArray(parsed) || !parsed.every((v): v is string => typeof v === 'string')) {
+        return null;
       }
-      return new Set();
-    }
-    return new Set(parsed);
-  } catch (err) {
-    console.error('[escalationService] Failed to parse escalations; clearing.', err);
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch (removeErr) {
-      console.error('[escalationService] Failed to clear invalid storage:', removeErr);
-    }
-    return new Set();
-  }
+      return new Set(parsed);
+    },
+    new Set<string>(),
+  );
 }
 
 function persistEscalatedSet(set: Set<string>): void {
@@ -42,7 +26,7 @@ function persistEscalatedSet(set: Set<string>): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
   } catch (err) {
     // Cache persistence is best-effort; Firestore is the source of truth.
-    console.error('[escalationService] localStorage write failed:', err);
+    console.error(`${LOG_PREFIX} localStorage write failed:`, err);
   }
 }
 

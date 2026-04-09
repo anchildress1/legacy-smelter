@@ -28,7 +28,10 @@ const LOCK_DOC_ID = 'sanction-incidents';
 const LOCK_TTL_MS = 8 * 60 * 1000;
 const RUN_ID = randomUUID();
 const SCHEMA_QUARANTINE_RATIONALE = 'Skipped by sanction job: invalid incident schema.';
+const MODEL_FAILURE_QUARANTINE_RATIONALE = 'Skipped by sanction job: model judgment repeatedly failed.';
 const MAX_SELECTION_ATTEMPTS = 2;
+const MAX_MODEL_FAILURES_PER_DOC = 3;
+const MAX_REQUERY_ITERATIONS = 3;
 const MIGRATION_COLLECTION = 'system_migrations';
 const MIGRATION_DOC_ID = 'voting-fields-v1';
 const MIGRATION_SCAN_PAGE_SIZE = 500;
@@ -285,10 +288,18 @@ async function run(): Promise<void> {
 
   const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
   let processedBatches = 0;
+  let requeryIterations = 0;
 
   try {
     // Keep processing full groups of 5 so sanctions do not lag during bursts.
     while (true) {
+      if (requeryIterations > MAX_REQUERY_ITERATIONS) {
+        console.error(
+          `[sanction-incidents] Re-query loop exceeded ${MAX_REQUERY_ITERATIONS} iterations ` +
+          `without a full candidate batch. Exiting to avoid pipeline stall.`
+        );
+        return;
+      }
       await refreshRunLock();
 
       const unjudgedSnap = await db
@@ -362,9 +373,15 @@ async function run(): Promise<void> {
 
       if (candidates.length < MIN_BATCH) {
         // Query limit is fixed to MIN_BATCH. If we quarantined malformed docs,
-        // this pass may no longer have a full valid candidate set. Re-query.
+        // this pass may no longer have a full valid candidate set. Re-query,
+        // but bound the loop so a persistent consistency lag or a stuck
+        // upstream cannot spin forever.
+        requeryIterations++;
         continue;
       }
+      // Reset on successful full batch — the counter bounds *consecutive*
+      // re-queries, not total across the run.
+      requeryIterations = 0;
 
       console.log('[sanction-incidents] Candidates:', candidates.map((c) => c.incident_id));
 
@@ -412,7 +429,56 @@ async function run(): Promise<void> {
         }
       }
 
+      // Map each parsed candidate back to its Firestore ref. Declared
+      // before the failure branch so the model-failure penalty path can
+      // also reuse it (iterating `candidates`, not `batch`, keeps the
+      // quarantine flow from clobbering malformed docs).
+      const candidateDocsById = new Map(batch.map((d) => [d.id, d]));
+
       if (!selection) {
+        // Model failed repeatedly for this batch. Increment a per-doc
+        // counter and quarantine any doc that has hit MAX_MODEL_FAILURES_PER_DOC
+        // so a fundamentally broken prompt cannot stall the entire pipeline
+        // forever on the same 5 docs.
+        console.error(
+          `[sanction-incidents] Model failed to produce a valid sanction selection after ${MAX_SELECTION_ATTEMPTS} attempt(s); ` +
+          `recording failure against ${candidates.length} candidate doc(s).`
+        );
+        const penaltyBatch = db.batch();
+        const toQuarantine: typeof batch = [];
+        for (const candidate of candidates) {
+          const d = candidateDocsById.get(candidate.incident_id);
+          if (!d) continue;
+          const data = d.data() as Record<string, unknown>;
+          const currentFailures = readFiniteNumber(data, 'sanction_model_failures');
+          const nextFailures = currentFailures + 1;
+          if (nextFailures >= MAX_MODEL_FAILURES_PER_DOC) {
+            toQuarantine.push(d);
+            const breachCount = readFiniteNumber(data, 'breach_count');
+            const escalationCount = readFiniteNumber(data, 'escalation_count');
+            penaltyBatch.update(d.ref, {
+              judged: true,
+              sanctioned: false,
+              sanction_count: 0,
+              sanction_rationale: MODEL_FAILURE_QUARANTINE_RATIONALE,
+              sanction_model_failures: nextFailures,
+              impact_score: computeImpactScore({
+                sanction_count: 0,
+                escalation_count: escalationCount,
+                breach_count: breachCount,
+              }),
+            });
+          } else {
+            penaltyBatch.update(d.ref, {
+              sanction_model_failures: nextFailures,
+            });
+          }
+        }
+        await penaltyBatch.commit();
+        console.error(
+          `[sanction-incidents] Recorded model failure on ${candidates.length} doc(s); ` +
+          `quarantined ${toQuarantine.length} doc(s) that hit the ${MAX_MODEL_FAILURES_PER_DOC}-failure threshold.`
+        );
         throw new Error(
           `[sanction-incidents] Model failed to produce a valid sanction selection after ${MAX_SELECTION_ATTEMPTS} attempt(s).`
         );
@@ -421,11 +487,6 @@ async function run(): Promise<void> {
       console.log(`[sanction-incidents] Sanctioned incident: ${selection.sanctioned_incident_id}`);
       console.log(`[sanction-incidents] Rationale: ${selection.sanction_rationale}`);
 
-      // Iterate `candidates` (not `batch`) so future changes to the
-      // quarantine flow or MIN_BATCH cannot accidentally clobber the
-      // quarantined docs' sanction_rationale. candidateDocsById maps each
-      // parsed candidate back to its Firestore ref for the write.
-      const candidateDocsById = new Map(batch.map((d) => [d.id, d]));
       const writeBatch = db.batch();
       for (const candidate of candidates) {
         const d = candidateDocsById.get(candidate.incident_id);

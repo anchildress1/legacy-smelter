@@ -1,20 +1,25 @@
 /**
  * One-time backfill: adds the voting/sanction fields to any incident_logs
- * documents that predate the field-strict schema.
+ * documents that predate the field-strict schema. Also recomputes
+ * `impact_score = 5×sanction_count + 3×escalation_count + 2×breach_count`
+ * and patches any doc whose stored value is missing, non-finite, or drifted
+ * from the formula.
  *
  * Run: npx tsx scripts/backfill-voting-fields.ts
  * Env: FIREBASE_PROJECT_ID, FIREBASE_FIRESTORE_DATABASE_ID,
  *      GOOGLE_APPLICATION_CREDENTIALS (or FIREBASE_SERVICE_ACCOUNT_JSON)
  *
- * Document writes are idempotent — only docs actually missing a field are
- * patched. NOTE: the migration marker at system_migrations/voting-fields-v1
- * is overwritten on every run with fresh completed_at / scanned_count /
- * patched_count values, so re-runs will replace the original audit trail.
+ * Document writes are idempotent — only docs actually missing a field (or
+ * with stale impact_score) are patched. The migration marker at
+ * system_migrations/voting-fields-v1 preserves its original `first_run_at`
+ * timestamp across re-runs, and every run appends an immutable entry to
+ * the `runs` subcollection so the audit trail is never destroyed.
  */
 
 import 'dotenv/config';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { DocumentData, QueryDocumentSnapshot } from 'firebase-admin/firestore';
+import { randomUUID } from 'node:crypto';
 import { db } from './lib/admin-init.js';
 import { computeImpactScore } from '../shared/impactScore.js';
 
@@ -22,6 +27,7 @@ const BATCH_LIMIT = 400;
 const READ_PAGE_SIZE = 500;
 const MIGRATION_COLLECTION = 'system_migrations';
 const MIGRATION_DOC_ID = 'voting-fields-v1';
+const RUN_ID = randomUUID();
 
 const REQUIRED_DEFAULTS = {
   breach_count: 0,
@@ -123,13 +129,35 @@ async function run(): Promise<void> {
     console.log(`[backfill] Patched ${patched} document(s) out of ${scanned}.`);
   }
 
-  await db.collection(MIGRATION_COLLECTION).doc(MIGRATION_DOC_ID).set({
-    completed_at: FieldValue.serverTimestamp(),
+  // Append an immutable run entry so the audit trail is preserved across
+  // re-runs. The top-level marker doc records `first_run_at` once and
+  // `last_run_at` on every run; the `runs` subcollection holds the full
+  // history keyed by RUN_ID.
+  const markerRef = db.collection(MIGRATION_COLLECTION).doc(MIGRATION_DOC_ID);
+  const runRef = markerRef.collection('runs').doc(RUN_ID);
+  const now = FieldValue.serverTimestamp();
+  await runRef.set({
+    run_id: RUN_ID,
+    completed_at: now,
     scanned_count: scanned,
     patched_count: patched,
     source: 'scripts/backfill-voting-fields.ts',
-  }, { merge: true });
-  console.log(`[backfill] Marked migration ${MIGRATION_COLLECTION}/${MIGRATION_DOC_ID} as complete.`);
+  });
+  // merge: true lets us initialize first_run_at on the first run and
+  // preserve it on subsequent runs. last_run_at always rolls forward.
+  const markerSnap = await markerRef.get();
+  const markerUpdate: Record<string, unknown> = {
+    last_run_at: now,
+    last_run_id: RUN_ID,
+    last_scanned_count: scanned,
+    last_patched_count: patched,
+  };
+  if (!markerSnap.exists || !markerSnap.data()?.first_run_at) {
+    markerUpdate.first_run_at = now;
+    markerUpdate.first_run_id = RUN_ID;
+  }
+  await markerRef.set(markerUpdate, { merge: true });
+  console.log(`[backfill] Marked migration ${MIGRATION_COLLECTION}/${MIGRATION_DOC_ID} run ${RUN_ID} as complete.`);
 }
 
 run().catch((err) => {

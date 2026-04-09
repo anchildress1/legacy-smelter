@@ -1,44 +1,27 @@
 import { db, ensureAnonymousAuth, doc, updateDoc, increment } from '../firebase';
 import { IMPACT_WEIGHTS } from '../types';
+import { safeParseJsonFromStorage } from '../lib/storageJson';
+import { isObject, isFiniteNumber } from '../lib/typeGuards';
 
 const COOLDOWN_MS = 7_000;
 const STORAGE_KEY = 'breach_cooldowns';
+const LOG_PREFIX = '[breachService]';
 const inFlightBreaches = new Set<string>();
 
 function getCooldowns(): Record<string, number> {
-  let raw: string | null;
-  try {
-    raw = localStorage.getItem(STORAGE_KEY);
-  } catch (err) {
-    console.error('[breachService] localStorage read failed:', err);
-    return {};
-  }
-  if (raw === null) return {};
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      console.error('[breachService] Corrupted cooldowns storage; clearing.');
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch (removeErr) {
-        console.error('[breachService] Failed to clear corrupted cooldowns storage:', removeErr);
+  return safeParseJsonFromStorage(
+    STORAGE_KEY,
+    LOG_PREFIX,
+    (parsed) => {
+      if (!isObject(parsed) || Array.isArray(parsed)) return null;
+      const result: Record<string, number> = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (isFiniteNumber(value)) result[key] = value;
       }
-      return {};
-    }
-    const result: Record<string, number> = {};
-    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof value === 'number' && Number.isFinite(value)) result[key] = value;
-    }
-    return result;
-  } catch (err) {
-    console.error('[breachService] Failed to parse cooldowns; clearing.', err);
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch (removeErr) {
-      console.error('[breachService] Failed to clear invalid cooldowns storage:', removeErr);
-    }
-    return {};
-  }
+      return result;
+    },
+    {},
+  );
 }
 
 function isOnCooldown(incidentId: string): boolean {
@@ -58,10 +41,24 @@ function setCooldown(incidentId: string): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cooldowns));
   } catch (err) {
     // Cooldown persistence is best-effort; write success has already happened.
-    console.error('[breachService] localStorage write failed:', err);
+    console.error(`${LOG_PREFIX} localStorage write failed:`, err);
   }
 }
 
+/**
+ * Outcome of a `recordBreach` call.
+ *
+ * - `ok: true` — the Firestore increment succeeded and the cooldown is now
+ *   set. The caller should render success state.
+ * - `ok: false` with `skipped: 'cooldown'` — the user hit the breach button
+ *   within COOLDOWN_MS of their previous successful hit. No-op; retryable
+ *   after the cooldown expires. This is NOT an error.
+ * - `ok: false` with `skipped: 'in_flight'` — another breach for this same
+ *   incident is already mid-request in the same tab. No-op; the user does
+ *   not need to be told.
+ * - `ok: false` with `error` set — the Firestore write actually failed and
+ *   the caller MUST surface it. `error` is the underlying error message.
+ */
 export interface BreachResult {
   readonly ok: boolean;
   readonly skipped?: 'cooldown' | 'in_flight';
@@ -96,7 +93,7 @@ export async function recordBreach(incidentId: string): Promise<BreachResult> {
     setCooldown(incidentId);
     return { ok: true };
   } catch (err) {
-    console.error('[breachService] Increment failed:', err);
+    console.error(`${LOG_PREFIX} Increment failed:`, err);
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   } finally {
     inFlightBreaches.delete(incidentId);

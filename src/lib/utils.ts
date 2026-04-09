@@ -33,7 +33,7 @@ export function formatPixels(pixels: number): { value: string, unit: string } {
   return { value: (pixels / 1_000_000_000_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'PETAPIXELS' };
 }
 
-export { FALLBACK_COLORS, getFiveDistinctColors } from '../../shared/colors.js';
+export { getFiveDistinctColors } from '../../shared/colors.js';
 
 const APP_BASE_URL_RAW = (import.meta.env.VITE_APP_URL ?? '').trim();
 if (!APP_BASE_URL_RAW) {
