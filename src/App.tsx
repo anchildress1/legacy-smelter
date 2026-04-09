@@ -42,7 +42,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
-  const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -52,6 +51,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const canvasRef = useRef<SmelterCanvasHandle>(null);
   const activeRequestIdRef = useRef(0);
   const analysisRef = useRef<SmeltAnalysis | null>(null);
+  const cameraAttachTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingCameraStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
@@ -104,12 +105,25 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     return () => { unsubStats(); unsubLogs(); };
   }, []);
 
+  const releaseCameraResources = () => {
+    if (cameraAttachTimerRef.current !== null) {
+      clearTimeout(cameraAttachTimerRef.current);
+      cameraAttachTimerRef.current = null;
+    }
+    if (pendingCameraStreamRef.current) {
+      pendingCameraStreamRef.current.getTracks().forEach((t) => t.stop());
+      pendingCameraStreamRef.current = null;
+    }
+    if (videoRef.current?.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+      videoRef.current.srcObject = null;
+    }
+  };
+
   // Release camera hardware if component unmounts mid-flow
   useEffect(() => {
     return () => {
-      if (videoRef.current?.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-      }
+      releaseCameraResources();
     };
   }, []);
 
@@ -141,12 +155,17 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
 
   const startCamera = async () => {
     try {
+      releaseCameraResources();
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      pendingCameraStreamRef.current = stream;
       setIsCameraActive(true);
-      setTimeout(() => {
+      cameraAttachTimerRef.current = setTimeout(() => {
+        cameraAttachTimerRef.current = null;
+        if (!videoRef.current || pendingCameraStreamRef.current !== stream) return;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play();
+          pendingCameraStreamRef.current = null;
+          void videoRef.current.play();
         }
       }, 100);
     } catch (err) {
@@ -162,11 +181,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   };
 
   const stopCamera = () => {
-    if (videoRef.current?.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
+    releaseCameraResources();
     setIsCameraActive(false);
   };
 
@@ -197,7 +212,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
 
     if (import.meta.env.DEV) console.log("Processing image...", mimeType);
     resetToIdle();
-    setCurrentImage(base64);
     setSelectedRecentLog(null);
     setAnalysisError(null);
     setIsAnalyzing(true);
@@ -213,7 +227,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       if (requestId !== activeRequestIdRef.current) return;
       console.error("Gemini analysis failed", error);
       setIsAnalyzing(false);
-      setCurrentImage(null);
       setAnalysisError('GEMINI ANALYSIS FAILED. RETRY IN A MOMENT.');
       return;
     }
@@ -230,7 +243,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       if (requestId !== activeRequestIdRef.current) return;
       console.error('[App] Canvas rendering failed:', error);
       resetToIdle();
-      setCurrentImage(null);
       setAnalysisError('CANVAS RENDER FAILED. TRY A DIFFERENT BROWSER OR ENABLE HARDWARE ACCELERATION.');
     }
   };
@@ -257,7 +269,10 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     fireSound.stop();
     purrSound.play();
     setIsPlaying(false);
-    if (analysisRef.current) setIsComplete(true);
+    if (analysisRef.current) {
+      setIsComplete(true);
+      setShowReport(true);
+    }
   };
 
   const resetToIdle = () => {
