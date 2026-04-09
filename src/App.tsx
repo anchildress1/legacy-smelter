@@ -41,8 +41,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
-  const [showPostSmeltSpinner, setShowPostSmeltSpinner] = useState(false);
-  const [buttonsDelayed, setButtonsDelayed] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
@@ -54,9 +52,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   const canvasRef = useRef<SmelterCanvasHandle>(null);
   const activeRequestIdRef = useRef(0);
   const analysisRef = useRef<SmeltAnalysis | null>(null);
-  const hasRevealedReportRef = useRef(false);
-  const smeltTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const postSmeltSpinnerDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
@@ -109,17 +104,9 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     return () => { unsubStats(); unsubLogs(); };
   }, []);
 
-  // Release camera hardware and pending timers if component unmounts mid-flow
+  // Release camera hardware if component unmounts mid-flow
   useEffect(() => {
     return () => {
-      if (smeltTimerRef.current !== null) {
-        clearTimeout(smeltTimerRef.current);
-        smeltTimerRef.current = null;
-      }
-      if (postSmeltSpinnerDelayRef.current !== null) {
-        clearTimeout(postSmeltSpinnerDelayRef.current);
-        postSmeltSpinnerDelayRef.current = null;
-      }
       if (videoRef.current?.srcObject) {
         (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
       }
@@ -270,52 +257,14 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     fireSound.stop();
     purrSound.play();
     setIsPlaying(false);
-
-    if (!analysisRef.current) return;
-
-    // Always delay buttons — works for both first smelt and replay
-    setButtonsDelayed(true);
-    setIsComplete(true);
-
-    // Let the dragon return to rest (1.2s) before covering the canvas
-    // with the COMPILING POSTMORTEM spinner, then reveal the report at 5s.
-    if (postSmeltSpinnerDelayRef.current !== null) {
-      clearTimeout(postSmeltSpinnerDelayRef.current);
-    }
-    if (!hasRevealedReportRef.current) {
-      postSmeltSpinnerDelayRef.current = setTimeout(() => {
-        postSmeltSpinnerDelayRef.current = null;
-        setShowPostSmeltSpinner(true);
-      }, 1200);
-    }
-
-    smeltTimerRef.current = setTimeout(() => {
-      smeltTimerRef.current = null;
-      setButtonsDelayed(false);
-      setShowPostSmeltSpinner(false);
-      if (!hasRevealedReportRef.current) {
-        hasRevealedReportRef.current = true;
-        setShowReport(true);
-      }
-    }, 5000);
+    if (analysisRef.current) setIsComplete(true);
   };
 
   const resetToIdle = () => {
-    if (smeltTimerRef.current !== null) {
-      clearTimeout(smeltTimerRef.current);
-      smeltTimerRef.current = null;
-    }
-    if (postSmeltSpinnerDelayRef.current !== null) {
-      clearTimeout(postSmeltSpinnerDelayRef.current);
-      postSmeltSpinnerDelayRef.current = null;
-    }
     setIsComplete(false);
     setShowReport(false);
-    setShowPostSmeltSpinner(false);
     setAnalysis(null);
     analysisRef.current = null;
-    hasRevealedReportRef.current = false;
-    setButtonsDelayed(false);
     setIsPlaying(false);
   };
 
@@ -435,22 +384,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
                 </div>
               )}
 
-              {/* Post-smelt spinner — covers the tail end of the animation
-                  delay so the report reveal doesn't look like an abrupt freeze
-                  frame. Delayed 1.2s so the dragon returns to rest first. */}
-              {showPostSmeltSpinner && !showReport && (
-                <div role="status" aria-live="polite" className="absolute inset-0 z-40 flex items-center justify-center">
-                  <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border flex items-center gap-3">
-                    <div className="w-4 h-4 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin shrink-0" />
-                    <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
-                      COMPILING INCIDENT POSTMORTEM // STAND BY
-                    </p>
-                  </div>
-                </div>
-              )}
-
               {/* Post-smelt controls — replay + view report */}
-              {isComplete && !buttonsDelayed && !isPlaying && (
+              {isComplete && !isPlaying && (
                 <div className="absolute inset-0 z-40 bg-concrete/70 backdrop-blur-sm flex items-center justify-center gap-3">
                   <button
                     onClick={handleReplay}
