@@ -408,21 +408,19 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto w-full flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-4 sm:px-6">
-          <div className="flex items-center gap-4">
-            <div>
-              <h1 className="text-2xl font-black font-mono tracking-tighter uppercase">
-                LEGACY <span className="text-hazard-amber">SMELTER</span>
-              </h1>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse shrink-0" />
-                <p className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">
-                  If a bug exists, apply Hotfix.
-                </p>
-              </div>
+        <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-x-3 sm:gap-x-4 px-4 py-4 sm:px-6">
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-2xl font-black font-mono tracking-tighter uppercase whitespace-nowrap">
+              LEGACY <span className="text-hazard-amber">SMELTER</span>
+            </h1>
+            <div className="hidden sm:flex items-center gap-1.5 mt-0.5">
+              <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse shrink-0" />
+              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">
+                If a bug exists, apply Hotfix.
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
             <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
             <button onClick={onNavigateManifest} className="nav-btn">
               ALL INCIDENTS
