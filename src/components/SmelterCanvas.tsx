@@ -13,7 +13,7 @@ interface SmelterCanvasProps {
   onFireStart?: () => void;
 }
 
-type AnimPhase = 'empty' | 'flying_in' | 'landing' | 'melting' | 'complete';
+type AnimPhase = 'empty' | 'flying_in' | 'landing' | 'melting' | 'settling' | 'complete';
 
 // Standard PixiJS v8 vertex shader for filters
 const FILTER_VERT = `
@@ -89,6 +89,7 @@ const DRAGON_TEX_H = 672;     // native pixel height of dragon sprite frames
 const ANIM_SPEED = 0.2;
 const FLY_SPEED = 0.005;
 const MELT_SPEED = 0.012;     // ~1.4s dissolve
+const SETTLE_FRAMES = 90;     // ~1.5s of post-fire dragon idle before completion
 
 // Layout ratios and reference dimensions
 const LAYOUT_REF_WIDTH = 900; // canvas width at which dragon renders at full scale
@@ -152,6 +153,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
     const phaseRef = useRef<AnimPhase>('empty');
     const meltProgressRef = useRef(0);
     const flyProgressRef = useRef(0);
+    const settleProgressRef = useRef(0);
     const cbRef = useRef({ onComplete, onFlyInStart, onFireStart });
     const readyResolveRef = useRef<() => void>(undefined);
     const readyRejectRef = useRef<(err: unknown) => void>(undefined);
@@ -178,6 +180,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
       phaseRef.current = 'flying_in';
       flyProgressRef.current = 0;
       meltProgressRef.current = 0;
+      settleProgressRef.current = 0;
       dragon.visible = true;
 
       cbRef.current.onFlyInStart?.();
@@ -479,8 +482,39 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
                 }
 
                 if (mp >= 1) {
-                  phaseRef.current = 'complete';
-                  cbRef.current.onComplete();
+                  phaseRef.current = 'settling';
+                  settleProgressRef.current = 0;
+                }
+                break;
+              }
+
+              case 'settling': {
+                // Let the dragon finish its flame animation and then play idle
+                // for SETTLE_FRAMES before firing onComplete. This prevents the
+                // post-smelt controls from appearing while the dragon is still
+                // mid-fire or hasn't had time to stand down.
+                dragon.x = dragonRestX;
+                dragon.y = dragonY;
+                dragon.scale.set(-baseScale, baseScale);
+
+                if (!dragon.playing && dragon.textures === textures.flame) {
+                  setDragonTex(textures.idle, true);
+                }
+                if (!dragon.playing) dragon.play();
+
+                if (!puddle.playing) puddle.play();
+                puddle.x = imageX;
+                puddle.y = puddleY;
+                puddle.scale.set((width * PUDDLE_WIDTH_RATIO) / PUDDLE_SPRITE_W);
+
+                // Only start counting idle frames once the dragon has actually
+                // switched back to idle (flame sequence finished).
+                if (dragon.textures === textures.idle) {
+                  settleProgressRef.current += ticker.deltaTime;
+                  if (settleProgressRef.current >= SETTLE_FRAMES) {
+                    phaseRef.current = 'complete';
+                    cbRef.current.onComplete();
+                  }
                 }
                 break;
               }
