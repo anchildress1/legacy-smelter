@@ -155,15 +155,11 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
       {/* Header */}
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
         <div className="max-w-5xl mx-auto w-full flex flex-col gap-3 px-4 py-4 sm:flex-row sm:justify-between sm:items-center sm:px-6">
-          <div className="flex items-center gap-4">
-            <button onClick={onNavigateHome} className="nav-btn">
-              <ArrowLeft size={14} />
-              RETURN TO SMELTER
-            </button>
-          </div>
-          <div className="flex items-center justify-between gap-3 w-full sm:w-auto sm:justify-end">
-            <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
-          </div>
+          <button onClick={onNavigateHome} className="nav-btn">
+            <ArrowLeft size={14} />
+            RETURN TO SMELTER
+          </button>
+          <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
         </div>
       </header>
 
