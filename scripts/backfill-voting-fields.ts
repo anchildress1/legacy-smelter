@@ -16,6 +16,7 @@ import 'dotenv/config';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { DocumentData, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { db } from './lib/admin-init.js';
+import { computeImpactScore } from '../shared/impactScore.js';
 
 const BATCH_LIMIT = 400;
 const READ_PAGE_SIZE = 500;
@@ -82,7 +83,11 @@ async function run(): Promise<void> {
       const breachCount = resolveFiniteNumber(data, updates, 'breach_count');
       const escalationCount = resolveFiniteNumber(data, updates, 'escalation_count');
       const sanctionCount = resolveFiniteNumber(data, updates, 'sanction_count');
-      const impactScore = (5 * sanctionCount) + (3 * escalationCount) + (2 * breachCount);
+      const impactScore = computeImpactScore({
+        sanction_count: sanctionCount,
+        escalation_count: escalationCount,
+        breach_count: breachCount,
+      });
       const currentImpact = data.impact_score;
       if (typeof currentImpact !== 'number' || !Number.isFinite(currentImpact) || currentImpact !== impactScore) {
         updates.impact_score = impactScore;

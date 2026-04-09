@@ -1,5 +1,6 @@
 import { db, ensureAnonymousAuth, doc, runTransaction, increment, getDoc, serverTimestamp } from '../firebase';
 import { getAuth } from 'firebase/auth';
+import { IMPACT_WEIGHTS } from '../types';
 
 const STORAGE_KEY = 'escalated_incidents';
 const inFlightEscalations = new Set<string>();
@@ -81,14 +82,14 @@ export async function toggleEscalation(incidentId: string): Promise<boolean> {
         tx.delete(escalationRef);
         tx.update(incidentRef, {
           escalation_count: increment(-1),
-          impact_score: increment(-3),
+          impact_score: increment(-IMPACT_WEIGHTS.escalation),
         });
         return false;
       } else {
         tx.set(escalationRef, { uid, timestamp: serverTimestamp() });
         tx.update(incidentRef, {
           escalation_count: increment(1),
-          impact_score: increment(3),
+          impact_score: increment(IMPACT_WEIGHTS.escalation),
         });
         return true;
       }

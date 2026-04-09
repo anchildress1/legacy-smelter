@@ -1,4 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
+import { IMPACT_WEIGHTS } from '../shared/impactScore.js';
+
+export { IMPACT_WEIGHTS } from '../shared/impactScore.js';
 
 export interface SmeltLog {
   id: string;
@@ -49,10 +52,14 @@ export interface GlobalStats {
  */
 export type ImpactCounts = Pick<SmeltLog, 'sanction_count' | 'escalation_count' | 'breach_count'>;
 
-/** Impact = (5 × sanctions) + (3 × escalations) + (2 × breaches), each clamped to 0 */
+/**
+ * Impact = (5 × sanctions) + (3 × escalations) + (2 × breaches), each clamped to 0.
+ * Weights are sourced from `shared/impactScore.js` and MUST stay in sync with
+ * `firestore.rules::impactScore`. See that file for the tamper-check equivalent.
+ */
 export function computeImpact(counts: ImpactCounts): number {
   const s = Math.max(0, counts.sanction_count);
   const e = Math.max(0, counts.escalation_count);
   const b = Math.max(0, counts.breach_count);
-  return 5 * s + 3 * e + 2 * b;
+  return IMPACT_WEIGHTS.sanction * s + IMPACT_WEIGHTS.escalation * e + IMPACT_WEIGHTS.breach * b;
 }

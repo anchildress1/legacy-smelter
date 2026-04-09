@@ -1,4 +1,5 @@
 import { db, ensureAnonymousAuth, doc, updateDoc, increment } from '../firebase';
+import { IMPACT_WEIGHTS } from '../types';
 
 const COOLDOWN_MS = 7_000;
 const STORAGE_KEY = 'breach_cooldowns';
@@ -90,7 +91,7 @@ export async function recordBreach(incidentId: string): Promise<BreachResult> {
     await ensureAnonymousAuth();
     await updateDoc(doc(db, 'incident_logs', incidentId), {
       breach_count: increment(1),
-      impact_score: increment(2),
+      impact_score: increment(IMPACT_WEIGHTS.breach),
     });
     setCooldown(incidentId);
     return { ok: true };

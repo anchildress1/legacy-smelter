@@ -18,6 +18,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { db } from './lib/admin-init.js';
+import { computeImpactScore } from '../shared/impactScore.js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MIN_BATCH = 5;
@@ -166,10 +167,6 @@ function hasValidVotingFields(data: Record<string, unknown>): boolean {
 function readFiniteNumber(data: Record<string, unknown>, key: string): number {
   const value = data[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
-
-function computeImpactScore(sanctionCount: number, escalationCount: number, breachCount: number): number {
-  return (5 * sanctionCount) + (3 * escalationCount) + (2 * breachCount);
 }
 
 async function ensureVotingFieldsMigration(): Promise<void> {
@@ -337,12 +334,24 @@ async function run(): Promise<void> {
           const data = d.data() as Record<string, unknown>;
           const breachCount = readFiniteNumber(data, 'breach_count');
           const escalationCount = readFiniteNumber(data, 'escalation_count');
+          // Normalize every strict-schema numeric/boolean field so the
+          // client-side parseSmeltLog can at least render the quarantined
+          // doc instead of hiding it forever. String fields that were
+          // malformed cannot be recovered automatically — those stay as-is
+          // and parseSmeltLog will still reject them, but at minimum the
+          // counter fields are now sane.
           quarantineBatch.update(d.ref, {
             judged: true,
             sanctioned: false,
+            breach_count: breachCount,
+            escalation_count: escalationCount,
             sanction_count: 0,
             sanction_rationale: SCHEMA_QUARANTINE_RATIONALE,
-            impact_score: computeImpactScore(0, escalationCount, breachCount),
+            impact_score: computeImpactScore({
+              sanction_count: 0,
+              escalation_count: escalationCount,
+              breach_count: breachCount,
+            }),
           });
         }
         await quarantineBatch.commit();
@@ -412,8 +421,15 @@ async function run(): Promise<void> {
       console.log(`[sanction-incidents] Sanctioned incident: ${selection.sanctioned_incident_id}`);
       console.log(`[sanction-incidents] Rationale: ${selection.sanction_rationale}`);
 
+      // Iterate `candidates` (not `batch`) so future changes to the
+      // quarantine flow or MIN_BATCH cannot accidentally clobber the
+      // quarantined docs' sanction_rationale. candidateDocsById maps each
+      // parsed candidate back to its Firestore ref for the write.
+      const candidateDocsById = new Map(batch.map((d) => [d.id, d]));
       const writeBatch = db.batch();
-      for (const d of batch) {
+      for (const candidate of candidates) {
+        const d = candidateDocsById.get(candidate.incident_id);
+        if (!d) continue;
         const isSanctioned = d.id === selection.sanctioned_incident_id;
         const data = d.data() as Record<string, unknown>;
         const breachCount = readFiniteNumber(data, 'breach_count');
@@ -424,7 +440,11 @@ async function run(): Promise<void> {
           sanctioned: isSanctioned,
           sanction_count: sanctionCount,
           sanction_rationale: isSanctioned ? selection.sanction_rationale : null,
-          impact_score: computeImpactScore(sanctionCount, escalationCount, breachCount),
+          impact_score: computeImpactScore({
+            sanction_count: sanctionCount,
+            escalation_count: escalationCount,
+            breach_count: breachCount,
+          }),
         });
       }
 
