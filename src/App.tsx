@@ -401,12 +401,12 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
               />
 
 
-              {/* Analyzing overlay */}
+              {/* Analyzing overlay — Gemini + Firestore write in flight */}
               {isAnalyzing && (
-                <div role="status" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
+                <div role="status" aria-live="polite" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
                   <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
-                  <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
-                    HOTFIX PROCESSING
+                  <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest animate-pulse">
+                    COMPILING INCIDENT POSTMORTEM // STAND BY
                   </p>
                 </div>
               )}
