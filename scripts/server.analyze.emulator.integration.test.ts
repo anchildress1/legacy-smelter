@@ -1,10 +1,55 @@
 // @vitest-environment node
+//
+// This suite is the integration-layer sibling of
+// `server.analyze.integration.test.ts`. It deliberately overlaps on
+// happy-path and failure-mode scenarios but runs against the real
+// Firestore emulator instead of an in-memory batch mock, so it catches
+// a class of regressions the mocked suite cannot:
+//
+//   1. Batch atomicity — if `persistIncident` is ever refactored to
+//      split the incident write from the `global_stats` increment (two
+//      separate commits, two separate transactions, an `await` between
+//      them), the mocked suite would still see "two batch.set calls and
+//      one commit" and pass. The emulator suite notices because a
+//      failure path that left an incident without a matching stats
+//      bump, or vice versa, would be observable as partial collection
+//      state after a rejected request.
+//
+//   2. Admin SDK wiring — `shared/admin-init.js` constructs the real
+//      `firebase-admin` client here (the mocked suite stubs `getDb`
+//      entirely), so any regression in init order, env parsing, or
+//      Firestore database-id selection shows up immediately instead of
+//      at the first real deploy.
+//
+//   3. Empty-query contract — after a rejected request (auth failure,
+//      Gemini failure) the tests assert `incident_logs` is EMPTY and
+//      `global_stats.total_pixels_melted` stays at 0. The mocked suite
+//      cannot assert a "did not write to Firestore" invariant because
+//      its Firestore does not exist.
+//
+// Do NOT treat scenarios shared between the two files as duplication.
+// If you add a new happy-path assertion to the mocked suite, leave the
+// corresponding emulator-suite assertion in place — they verify
+// different things at different layers.
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDb } from '../shared/admin-init.js';
 
 const ONE_BY_ONE_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO6mF7sAAAAASUVORK5CYII=';
+
+// `beforeAll` mutates these process.env values so the server module loads
+// with emulator-friendly defaults. Snapshot the originals so the suite
+// restores them on teardown and does not leak env into any other suite
+// sharing the same Vitest worker. The mocked analyze suite already does
+// this; without it here, a parallel test run could observe partial state.
+const ENV_KEYS_MUTATED = [
+  'FIREBASE_PROJECT_ID',
+  'FIREBASE_FIRESTORE_DATABASE_ID',
+  'VITE_APP_URL',
+  'GEMINI_API_KEY',
+] as const;
+const ENV_SNAPSHOT: Record<string, string | undefined> = {};
 
 const { state } = vi.hoisted(() => {
   const verifyIdToken = vi.fn(async () => ({ uid: 'user-1' }));
@@ -102,6 +147,10 @@ describe('POST /api/analyze against Firestore emulator', () => {
       throw new Error('FIRESTORE_EMULATOR_HOST must be set (run via firebase emulators:exec).');
     }
 
+    for (const key of ENV_KEYS_MUTATED) {
+      ENV_SNAPSHOT[key] = process.env[key];
+    }
+
     process.env.FIREBASE_PROJECT_ID = 'demo-legacy-smelter';
     process.env.FIREBASE_FIRESTORE_DATABASE_ID = 'legacy-smelter';
     process.env.VITE_APP_URL = 'https://legacy-smelter.test';
@@ -119,6 +168,19 @@ describe('POST /api/analyze against Firestore emulator', () => {
 
   afterAll(async () => {
     serverModule?.stopRateLimitCleanupIntervalForTests();
+
+    // Restore env exactly — setting values back, or deleting keys that
+    // were unset before this suite ran. Leaving `FIREBASE_PROJECT_ID`
+    // etc. behind after teardown leaks emulator-only values into any
+    // other suite that reads them.
+    for (const key of ENV_KEYS_MUTATED) {
+      const original = ENV_SNAPSHOT[key];
+      if (original === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = original;
+      }
+    }
   });
 
   it('persists incident + global stats with expected invariant fields', async () => {

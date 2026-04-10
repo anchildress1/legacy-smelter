@@ -217,7 +217,15 @@ function normalizeSeverity(value) {
 }
 
 const apiRateLimitBuckets = new Map();
-const API_RATE_LIMIT_MAX_BUCKETS = 10_000;
+// Configurable so the test suite can exercise the bucket-full 503 path
+// without forging 10k distinct client IPs. Production deploys leave this
+// unset and inherit the 10k default, which is large enough to tolerate
+// real-world client cardinality but small enough to cap memory growth
+// under a high-cardinality flood.
+const API_RATE_LIMIT_MAX_BUCKETS = parsePositiveInt(
+  process.env.API_RATE_LIMIT_MAX_BUCKETS,
+  10_000,
+);
 // NOTE: this interval is intentionally NOT .unref()'d. When server.js is the
 // Node entry point, unrefing this timer causes the process to exit ~100ms
 // after app.listen() despite the HTTP server holding an open socket. The
@@ -238,6 +246,13 @@ export function resetAnalyzeRateLimitStateForTests() {
 
 export function stopRateLimitCleanupIntervalForTests() {
   clearInterval(rateLimitCleanupInterval);
+}
+
+// Test-only seam: exposes the bucket map so the 503 "bucket full" path
+// can be exercised without forging distinct client IPs. Do NOT call this
+// from production code — the returned Map is the live mutable state.
+export function getRateLimitBucketsForTests() {
+  return apiRateLimitBuckets;
 }
 
 // Verify a Firebase ID token (anonymous or otherwise) on the Authorization

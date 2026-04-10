@@ -21,6 +21,7 @@ const ENV_KEYS_MUTATED = [
   'GEMINI_API_KEY',
   'API_RATE_LIMIT_WINDOW_MS',
   'API_RATE_LIMIT_MAX_REQUESTS',
+  'API_RATE_LIMIT_MAX_BUCKETS',
 ] as const;
 const ENV_SNAPSHOT: Record<string, string | undefined> = {};
 
@@ -123,6 +124,10 @@ interface ServerModule {
   app: import('express').Express;
   resetAnalyzeRateLimitStateForTests: () => void;
   stopRateLimitCleanupIntervalForTests: () => void;
+  getRateLimitBucketsForTests: () => Map<
+    string,
+    { windowStart: number; count: number }
+  >;
 }
 
 function buildGeminiResponseText() {
@@ -564,6 +569,149 @@ describe('POST /api/analyze integration', () => {
         subject_box_xmax: 1000,
       }),
     );
+  });
+
+  it('rejects Authorization headers that do not use the Bearer scheme with 401', async () => {
+    // `requireFirebaseAuth` checks `startsWith('Bearer ')` — a Basic auth
+    // header, a bare token, or any non-Bearer scheme must be rejected
+    // before touching the Firebase verifyIdToken path so that unauth'd
+    // probes cannot exercise the token verifier as an oracle.
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    const basicAuth = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Basic dXNlcjpwYXNz')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+
+    expect(basicAuth.status).toBe(401);
+    expect(basicAuth.body.error).toContain('Missing Authorization header');
+    expect(state.verifyIdToken).not.toHaveBeenCalled();
+    expect(state.generateContent).not.toHaveBeenCalled();
+  });
+
+  // NOTE: the `Empty bearer token` branch of requireFirebaseAuth is
+  // defensive code that cannot be reached via real HTTP transport.
+  // Per RFC 7230 §3.2.4, HTTP header field values are surrounded by
+  // OWS (optional whitespace) that MUST be stripped by any compliant
+  // client or server before the value is interpreted. Node's `http`
+  // module and supertest both strip trailing whitespace, so a test
+  // that sends `Authorization: Bearer ` arrives at the handler as
+  // `Bearer` (no trailing space), which fails the earlier
+  // `startsWith('Bearer ')` check and returns "Missing Authorization
+  // header" instead. The only way to exercise the "Empty bearer
+  // token" line is to call the middleware function directly with a
+  // hand-crafted req object — which would bypass every other layer
+  // of the Express stack and provide no additional integration
+  // signal. Leaving this branch uncovered is the correct trade-off:
+  // it cannot be reached by a real client and the surrounding code
+  // (the `startsWith` check) is exercised by the Basic-auth test
+  // above.
+
+  it('returns 400 when the JSON body is malformed via the entity.parse.failed middleware', async () => {
+    // The error middleware at the bottom of /api routes maps Express's
+    // `entity.parse.failed` to 400 "Malformed JSON body". This is the
+    // only place the API surfaces a parser error as a typed response —
+    // without it, the request would escape to the default 500 handler
+    // and leak internal error shape to clients.
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send('{ this is : not, json');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('Malformed JSON body');
+    expect(state.generateContent).not.toHaveBeenCalled();
+    expect(state.batchCalls).toHaveLength(0);
+  });
+
+  it('resets the rate-limit bucket after the window elapses', async () => {
+    // The limiter resets the bucket when `now - windowStart >= window`.
+    // Setting a tiny window and waiting past it must let a previously-
+    // capped client through again. A regression that left stale buckets
+    // in place would silently extend the 429 state past the advertised
+    // Retry-After.
+    state.generateContent.mockResolvedValue({ text: buildGeminiResponseText() });
+    serverModule = await importServer({
+      API_RATE_LIMIT_MAX_REQUESTS: '1',
+      API_RATE_LIMIT_WINDOW_MS: '50',
+    });
+
+    const first = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+    expect(first.status).toBe(200);
+
+    const second = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+    expect(second.status).toBe(429);
+
+    // Wait past the configured window so the limiter resets the bucket
+    // on the next request. Use a real delay (not fake timers) because
+    // the limiter reads `Date.now()` directly and we want to exercise
+    // the real code path.
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    const third = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+    expect(third.status).toBe(200);
+  });
+
+  it('returns 503 when the rate-limit bucket map is full and a new IP arrives', async () => {
+    // `API_RATE_LIMIT_MAX_BUCKETS` caps the number of concurrent
+    // rate-limit keys to prevent unbounded memory growth under a
+    // high-cardinality flood (e.g. a bot that rotates IPs on every
+    // request). With the cap pinned at 1 and a single foreign IP
+    // already seeded, the next distinct IP must be rejected with 503
+    // BEFORE reaching the main bucket counting logic.
+    //
+    // Production deploys leave `API_RATE_LIMIT_MAX_BUCKETS` unset and
+    // inherit the 10_000 default; the env override exists solely so
+    // this test can exercise the guard without forging 10k IPs.
+    state.generateContent.mockResolvedValue({ text: buildGeminiResponseText() });
+    serverModule = await importServer({
+      API_RATE_LIMIT_MAX_BUCKETS: '1',
+      API_RATE_LIMIT_MAX_REQUESTS: '100',
+    });
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // Seed a foreign IP into the bucket map directly so the supertest
+    // request from 127.0.0.1 presents as a NEW key and trips the
+    // capacity check at the top of `rateLimitAnalyzeRoute`.
+    const buckets = serverModule.getRateLimitBucketsForTests();
+    buckets.set('10.0.0.1', { windowStart: Date.now(), count: 1 });
+
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+
+    expect(response.status).toBe(503);
+    expect(response.body.error).toContain('Server busy');
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[server][ERR_RATE_LIMIT_BUCKET_FULL]'),
+      1,
+      expect.any(String),
+    );
+    // Auth and analysis must be short-circuited before they run.
+    expect(state.verifyIdToken).not.toHaveBeenCalled();
+    expect(state.generateContent).not.toHaveBeenCalled();
+
+    consoleWarnSpy.mockRestore();
   });
 
 });
