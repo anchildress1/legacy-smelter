@@ -485,16 +485,60 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         <div className="flex-1 overflow-y-auto">
           <div className="px-5 sm:px-8 py-5 sm:py-6 space-y-5">
 
-            {/* Title + severity */}
+            {/* Title + status + escalate action. Title is the first
+                visual anchor (left, full amber, largest type). The
+                severity badge and the Escalate button live in a
+                right-aligned action cluster, separated from each other
+                by a short vertical divider so they read as two distinct
+                units rather than a single oversized badge. Placing the
+                action at the top header/action zone keeps it adjacent
+                to the status it toggles on, and removes the big
+                mid-modal banner the button used to be. */}
             <div>
               <div className="flex justify-between items-start gap-3">
                 <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
                   {report.legacyInfraClass}
                 </p>
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold shrink-0">
-                  <AlertTriangle size={8} aria-hidden="true" />
-                  {report.severity}
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold">
+                    <AlertTriangle size={8} aria-hidden="true" />
+                    {report.severity}
+                  </span>
+                  {incidentId && (
+                    <>
+                      {/* Clear separation between status and action.
+                          `h-4` matches the badge height. */}
+                      <div className="w-px h-4 bg-concrete-border" aria-hidden="true" />
+                      {/* Escalate. Compact to fit the header row without
+                          competing with the title, but still a full
+                          labelled button (not icon-only) so the action
+                          is discoverable without hover. `py-1.5` gives
+                          a ~24px target height — the exact WCAG 2.5.8
+                          AA minimum (the parent uses `items-center` so
+                          the button and the shorter severity badge
+                          visually center-align). Idle border `#777` is
+                          4:1 against `#1a1a1a` (WCAG 1.4.11 UI
+                          component contrast). Escalated state deepens
+                          the border and fill. `transition-colors` only
+                          so `prefers-reduced-motion` users get no
+                          layout motion (WCAG 2.3.3). */}
+                      <button
+                        onClick={handleEscalate}
+                        disabled={isTogglingEscalation}
+                        className={`inline-flex items-center gap-1 rounded border px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                          escalated
+                            ? 'border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber'
+                            : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
+                        } ${isTogglingEscalation ? 'opacity-50' : ''}`}
+                        aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+                        aria-pressed={escalated}
+                      >
+                        <Siren size={10} aria-hidden="true" />
+                        {escalated ? 'Armed' : 'Escalate'}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               {counts.sanction > 0 && (
                 <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold">
@@ -535,35 +579,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 </div>
               ))}
             </div>
-
-            {/* Escalate. Narrower than full-width (`max-w-xs mx-auto`) and
-                drawn with a 2px border so it reads as an action, not
-                a banner spanning the content column. Idle border is
-                `#777` for a 4:1 contrast against the modal surface
-                (WCAG 1.4.11 needs ≥3:1 for UI components — the
-                pre-tuning `#333` failed at 1.43:1). Idle text sits at
-                `text-ash-white/80` (~10:1, passes 1.4.3). Escalated
-                state deepens the border and fill to communicate armed
-                state. Transition is color-only so
-                `prefers-reduced-motion` users get the same cue with
-                no layout motion (WCAG 2.3.3 compatible). */}
-            {incidentId && (
-              <div className="flex justify-center">
-                <button
-                  onClick={handleEscalate}
-                  disabled={isTogglingEscalation}
-                  className={`w-full max-w-xs flex items-center justify-center gap-2 rounded-md border-2 px-4 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
-                    escalated
-                      ? 'border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber'
-                      : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
-                  } ${isTogglingEscalation ? 'opacity-50' : ''}`}
-                  aria-label={escalated ? 'Remove escalation' : 'Escalate'}
-                >
-                  <Siren size={16} aria-hidden="true" />
-                  {escalated ? 'Escalation Armed' : 'Escalate Incident'}
-                </button>
-              </div>
-            )}
 
             {/* Disposition */}
             <section>
