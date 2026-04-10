@@ -1,5 +1,5 @@
 import { render, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type TickerFn = (ticker: { deltaTime: number }) => void;
 
@@ -101,6 +101,18 @@ vi.mock('pixi.js', () => ({
 import { SmelterCanvas } from './SmelterCanvas';
 
 describe('SmelterCanvas render failure handling', () => {
+  // Quiet the ticker error logs that the production code emits on each
+  // crash. They are expected output for these tests and would otherwise
+  // drown the test runner's stderr.
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    pixiState.lastApplication = null;
+  });
+
   it('disables ticker and emits onRenderFailure after 5 consecutive ticker crashes', async () => {
     const onRenderFailure = vi.fn();
 
@@ -128,8 +140,92 @@ describe('SmelterCanvas render failure handling', () => {
     expect(onRenderFailure).toHaveBeenCalledTimes(1);
     expect(onRenderFailure.mock.calls[0]?.[0]).toBeInstanceOf(Error);
     expect(app.ticker.removed).toHaveLength(1);
+    // Each pre-threshold crash logs an operator-visible error message so
+    // a stuck animation still leaves a breadcrumb even if onRenderFailure
+    // is absent. Exactly 5 error logs for the 5 crashes, plus the 6th
+    // "Ticker disabled" line published when the threshold fires.
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[SmelterCanvas] Ticker disabled after repeated failures.',
+    );
 
     app.ticker.tick();
     expect(onRenderFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets the consecutive-crash counter after a successful tick', async () => {
+    // Invariant: MAX_CONSECUTIVE_TICKER_ERRORS only counts runs of BACK-TO-BACK
+    // failures. A single successful tick must clear the counter so transient
+    // PIXI hiccups do not accumulate across unrelated crash windows.
+    const onRenderFailure = vi.fn();
+
+    render(
+      <SmelterCanvas
+        onComplete={() => {}}
+        onRenderFailure={onRenderFailure}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(pixiState.lastApplication).not.toBeNull();
+    });
+
+    const app = pixiState.lastApplication!;
+
+    // Four consecutive crashes — screen undefined, stepAnimation throws.
+    for (let i = 0; i < 4; i += 1) {
+      app.ticker.tick();
+    }
+    expect(onRenderFailure).not.toHaveBeenCalled();
+
+    // One successful tick by giving the app a valid screen shape. After
+    // this tick the consecutive counter must be back to zero.
+    app.screen = { width: 400, height: 300 };
+    app.ticker.tick();
+    expect(onRenderFailure).not.toHaveBeenCalled();
+
+    // Four MORE crashes — because the counter reset, these should NOT
+    // trigger the threshold (4 < 5). A regression that forgets to reset
+    // the counter on success would flip the threshold semantics and fail
+    // on the fourth crash here.
+    app.screen = undefined;
+    for (let i = 0; i < 4; i += 1) {
+      app.ticker.tick();
+    }
+    expect(onRenderFailure).not.toHaveBeenCalled();
+    expect(app.ticker.removed).toHaveLength(0);
+
+    // A fifth crash in this new window should trip the threshold.
+    app.ticker.tick();
+    expect(onRenderFailure).toHaveBeenCalledTimes(1);
+    expect(app.ticker.removed).toHaveLength(1);
+    // Symmetry with the first test: the callback must receive the wrapped
+    // Error from the 5th crash in the *new* window, not a stale error
+    // from the earlier crash run that was reset. A regression that cached
+    // the first error reference would pass the `.toHaveBeenCalledTimes(1)`
+    // check but fail this instanceof guard if the cached ref was stripped.
+    expect(onRenderFailure.mock.calls[0]?.[0]).toBeInstanceOf(Error);
+  });
+
+  it('does not throw when onRenderFailure is omitted from props', async () => {
+    // `onRenderFailure` is optional. If a caller doesn't supply it, the
+    // ticker catch path must silently no-op on the final callback rather
+    // than crashing because of an undefined function call.
+    render(<SmelterCanvas onComplete={() => {}} />);
+
+    await waitFor(() => {
+      expect(pixiState.lastApplication).not.toBeNull();
+    });
+
+    const app = pixiState.lastApplication!;
+
+    // Push past the threshold. The test simply asserts the component
+    // stays alive — `expect(...).not.toThrow` cannot be applied to the
+    // imperative tick calls below, so we rely on the absence of a
+    // rejection from the test runner.
+    for (let i = 0; i < 6; i += 1) {
+      app.ticker.tick();
+    }
+
+    expect(app.ticker.removed).toHaveLength(1);
   });
 });

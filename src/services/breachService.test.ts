@@ -120,4 +120,34 @@ describe('breachService', () => {
     expect(setItemSpy).toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
+
+  it('treats a cooldown entry exactly COOLDOWN_MS old as expired', async () => {
+    // Boundary case: the check is `Date.now() - last < COOLDOWN_MS` (strict
+    // less-than), so an entry exactly 7000ms old must be treated as expired
+    // and the new write must go through. Pinning this keeps a future
+    // refactor from silently flipping the comparator to `<=`.
+    localStorage.setItem('breach_cooldowns', JSON.stringify({ 'inc-boundary': 993_000 }));
+    const { recordBreach } = await loadService();
+
+    await expect(recordBreach('inc-boundary')).resolves.toEqual({ ok: true });
+    expect(mockUpdateDoc).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows a follow-up breach on the same incident after the in-flight call completes and cooldown expires', async () => {
+    // The in-flight dedup guard must release after the first call finishes,
+    // and the follow-up call (once past the cooldown window) must proceed
+    // normally. A regression that leaked the in-flight entry would block
+    // every subsequent breach for this incident for the rest of the
+    // session.
+    const { recordBreach } = await loadService();
+
+    await expect(recordBreach('inc-retry')).resolves.toEqual({ ok: true });
+
+    // Advance clock past the cooldown window so the follow-up is not
+    // short-circuited by the cooldown gate.
+    vi.spyOn(Date, 'now').mockReturnValue(1_000_000 + 8_000);
+
+    await expect(recordBreach('inc-retry')).resolves.toEqual({ ok: true });
+    expect(mockUpdateDoc).toHaveBeenCalledTimes(2);
+  });
 });

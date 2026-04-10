@@ -1,9 +1,28 @@
 // @vitest-environment node
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const ONE_BY_ONE_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO6mF7sAAAAASUVORK5CYII=';
+
+// Hoisted once so the oversize-payload test below does not allocate a
+// ~9MB string on every run. `MAX_BASE64_LENGTH` is fixed at 9 * 1024 * 1024
+// in server.js; the `+ 4` pads just past the boundary so the handler's
+// `> MAX_BASE64_LENGTH` check fires.
+const OVERSIZE_BASE64 = 'A'.repeat(9 * 1024 * 1024 + 4);
+
+// Tests below mutate process.env — API_RATE_LIMIT_WINDOW_MS,
+// API_RATE_LIMIT_MAX_REQUESTS, GEMINI_API_KEY, VITE_APP_URL. Without a
+// snapshot/restore, other suites that share a Vitest worker can read
+// these values and behave unexpectedly. Capture the original values once
+// so the `afterAll` can put the environment back exactly how it started.
+const ENV_KEYS_MUTATED = [
+  'VITE_APP_URL',
+  'GEMINI_API_KEY',
+  'API_RATE_LIMIT_WINDOW_MS',
+  'API_RATE_LIMIT_MAX_REQUESTS',
+] as const;
+const ENV_SNAPSHOT: Record<string, string | undefined> = {};
 
 type BatchCall = {
   ref: { path: string; id?: string };
@@ -127,16 +146,48 @@ function buildGeminiResponseText() {
   });
 }
 
-async function importServer(): Promise<ServerModule> {
+async function importServer(overrides: Record<string, string | undefined> = {}): Promise<ServerModule> {
   vi.resetModules();
   process.env.VITE_APP_URL = 'https://legacy-smelter.test';
   process.env.GEMINI_API_KEY = 'test-key';
+  // Default the rate-limit window wide enough that tests can hit the
+  // cap without racing the clock; individual tests can shrink or enlarge
+  // the cap via overrides.
+  process.env.API_RATE_LIMIT_WINDOW_MS = '600000';
+  process.env.API_RATE_LIMIT_MAX_REQUESTS = '12';
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
   // @ts-expect-error server.js is intentionally plain JS runtime code.
   return import('../server.js') as Promise<ServerModule>;
 }
 
 describe('POST /api/analyze integration', () => {
   let serverModule: ServerModule | null = null;
+
+  beforeAll(() => {
+    for (const key of ENV_KEYS_MUTATED) {
+      ENV_SNAPSHOT[key] = process.env[key];
+    }
+  });
+
+  afterAll(() => {
+    // Restore env exactly — set values back, or delete keys that were
+    // unset before this suite ran. Leaving mutated values behind leaks
+    // into other suites sharing the same Vitest worker.
+    for (const key of ENV_KEYS_MUTATED) {
+      const original = ENV_SNAPSHOT[key];
+      if (original === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = original;
+      }
+    }
+  });
 
   beforeEach(() => {
     state.reset();
@@ -233,4 +284,286 @@ describe('POST /api/analyze integration', () => {
     expect(state.batchCalls).toHaveLength(2);
     expect(response.body.incidentId).toBeUndefined();
   });
+
+  it('returns 429 with Retry-After once per-IP rate limit is exceeded', async () => {
+    // Build a server with a tiny cap so the test can hit the threshold
+    // without the per-request overhead of the default 12. Both env vars
+    // are pinned explicitly so the upper-bound assertion on Retry-After
+    // below is computed against a known window size.
+    const WINDOW_MS = 600_000;
+    const WINDOW_SECONDS = WINDOW_MS / 1000;
+    state.generateContent.mockResolvedValue({ text: buildGeminiResponseText() });
+    serverModule = await importServer({
+      API_RATE_LIMIT_MAX_REQUESTS: '2',
+      API_RATE_LIMIT_WINDOW_MS: String(WINDOW_MS),
+    });
+    // IMPORTANT: the three requests below intentionally share a single
+    // rate-limit bucket. Do NOT call `resetAnalyzeRateLimitStateForTests`
+    // between them — that is the exact shim that masks the limiter in
+    // other tests. The server module is imported once per `it` block
+    // via `importServer`, so the bucket is fresh at the start of this
+    // test but carries state across the three calls within it.
+
+    const makeRequest = () =>
+      request(serverModule!.app)
+        .post('/api/analyze')
+        .set('Authorization', 'Bearer good-token')
+        .set('Content-Type', 'application/json')
+        .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+
+    const first = await makeRequest();
+    expect(first.status).toBe(200);
+
+    const second = await makeRequest();
+    expect(second.status).toBe(200);
+
+    const third = await makeRequest();
+    expect(third.status).toBe(429);
+    expect(third.body.error).toContain('Rate limit exceeded');
+    expect(third.headers['retry-after']).toBeDefined();
+    const retryAfter = Number.parseInt(third.headers['retry-after'], 10);
+    expect(retryAfter).toBeGreaterThanOrEqual(1);
+    // Upper bound: Retry-After must never exceed the configured window.
+    // A bogus header (e.g. NaN floor, negative-then-coerced, window in ms
+    // instead of seconds) would trip this assertion before a real client
+    // wasted minutes waiting for a reset that never comes.
+    expect(retryAfter).toBeLessThanOrEqual(WINDOW_SECONDS);
+    // The limiter short-circuits before auth or analysis so the Gemini
+    // client is never invoked on the 429 path.
+    expect(state.generateContent).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects missing Authorization header before touching Gemini or Firestore', async () => {
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toContain('Missing Authorization header');
+    expect(state.generateContent).not.toHaveBeenCalled();
+    expect(state.batchCalls).toHaveLength(0);
+  });
+
+  it('rejects requests missing required body fields (image, mimeType) with 400', async () => {
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    const missingMimeType = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64 });
+
+    expect(missingMimeType.status).toBe(400);
+    expect(missingMimeType.body.error).toContain('Request must include');
+
+    const missingImage = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ mimeType: 'image/png' });
+
+    expect(missingImage.status).toBe(400);
+
+    const wrongTypes = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: 42, mimeType: 99 });
+
+    expect(wrongTypes.status).toBe(400);
+
+    expect(state.generateContent).not.toHaveBeenCalled();
+    expect(state.batchCalls).toHaveLength(0);
+  });
+
+  it('rejects unsupported mime types with 400', async () => {
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/bmp' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('Unsupported image type');
+    expect(state.generateContent).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized base64 payloads with 413', async () => {
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    // OVERSIZE_BASE64 is hoisted to module scope (9MB + 4 bytes) so the
+    // string is allocated once for the whole suite instead of on every
+    // test run. It is a valid base64 "A" repeat larger than
+    // MAX_BASE64_LENGTH (9 * 1024 * 1024) but inside the 10MB JSON body
+    // parser limit, so the handler rejects it at the length check before
+    // decoding.
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: OVERSIZE_BASE64, mimeType: 'image/png' });
+
+    expect(response.status).toBe(413);
+    expect(response.body.error).toContain('Image too large');
+    expect(state.generateContent).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-JSON content types on /api routes with 415', async () => {
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'text/plain')
+      .send('raw body');
+
+    expect(response.status).toBe(415);
+    expect(response.body.error).toContain('Content-Type must be application/json');
+  });
+
+  it('returns 400 when the image payload fails dimension parsing', async () => {
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    // 'AAAA' decodes to 3 null bytes — valid base64, not a valid image.
+    // `imageSize` throws, and the handler surfaces 400 "Invalid image payload".
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: 'AAAA', mimeType: 'image/png' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('Invalid image payload');
+    expect(state.generateContent).not.toHaveBeenCalled();
+  });
+
+  it('returns 502 when Gemini throws during analysis', async () => {
+    state.generateContent.mockRejectedValue(new Error('gemini network down'));
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+
+    expect(response.status).toBe(502);
+    expect(response.body.error).toContain('Analysis failed');
+    expect(state.batchCalls).toHaveLength(0);
+  });
+
+  it('returns 502 when Gemini returns an empty response', async () => {
+    state.generateContent.mockResolvedValue({ text: '' });
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+
+    expect(response.status).toBe(502);
+    expect(response.body.error).toContain('Analysis failed');
+    expect(state.batchCalls).toHaveLength(0);
+  });
+
+  it('returns 502 when Gemini returns malformed JSON', async () => {
+    state.generateContent.mockResolvedValue({ text: 'not json at all' });
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+
+    expect(response.status).toBe(502);
+    expect(response.body.error).toContain('Analysis failed');
+    expect(state.batchCalls).toHaveLength(0);
+  });
+
+  it('returns 502 when Gemini response is missing required fields', async () => {
+    const partial = JSON.parse(buildGeminiResponseText()) as Record<string, unknown>;
+    delete partial.legacy_infra_class;
+    state.generateContent.mockResolvedValue({ text: JSON.stringify(partial) });
+
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+
+    expect(response.status).toBe(502);
+    expect(response.body.error).toContain('Analysis failed');
+    expect(state.batchCalls).toHaveLength(0);
+  });
+
+  it('returns 502 when Gemini subject_box is not a 4-number array', async () => {
+    const wrongBox = JSON.parse(buildGeminiResponseText()) as Record<string, unknown>;
+    wrongBox.subject_box = [0, 0, 'nope', 100];
+    state.generateContent.mockResolvedValue({ text: JSON.stringify(wrongBox) });
+
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+
+    expect(response.status).toBe(502);
+    expect(response.body.error).toContain('Analysis failed');
+    expect(state.batchCalls).toHaveLength(0);
+  });
+
+  it('accepts finite non-integer floats in subject_box and persists them verbatim', async () => {
+    // The positive path only asserted integer box coordinates. Gemini is
+    // free to return any finite numbers, so a parser that silently
+    // coerced to ints (Math.floor, |0, parseInt) would drop precision
+    // with no signal. Pin the invariant that finite floats flow through
+    // unchanged.
+    const floatBox = JSON.parse(buildGeminiResponseText()) as Record<string, unknown>;
+    floatBox.subject_box = [0.5, 0.25, 999.75, 1000];
+    state.generateContent.mockResolvedValue({ text: JSON.stringify(floatBox) });
+
+    serverModule = await importServer();
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    const response = await request(serverModule.app)
+      .post('/api/analyze')
+      .set('Authorization', 'Bearer good-token')
+      .set('Content-Type', 'application/json')
+      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+
+    expect(response.status).toBe(200);
+    expect(state.batchCalls).toHaveLength(2);
+
+    expect(state.batchCalls[0]?.payload).toEqual(
+      expect.objectContaining({
+        subject_box_ymin: 0.5,
+        subject_box_xmin: 0.25,
+        subject_box_ymax: 999.75,
+        subject_box_xmax: 1000,
+      }),
+    );
+  });
+
 });

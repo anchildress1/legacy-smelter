@@ -383,13 +383,22 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-x-3 sm:gap-x-4 px-4 py-4 sm:px-6">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="text-base sm:text-2xl font-black font-mono tracking-tighter uppercase whitespace-nowrap">
               LEGACY <span className="text-hazard-amber">SMELTER</span>
             </h1>
-            <div className="hidden sm:flex items-center gap-1.5 mt-0.5">
+            {/* Tagline is visible at every breakpoint — the mobile
+                screenshot previously hid it via `hidden sm:flex`, which
+                dropped the product's voice from the mobile header. The
+                `min-w-0` + `truncate` on the paragraph guards against
+                overflow on ≤320px viewports where the right-side nav
+                pinches the title column. */}
+            <div
+              data-testid="site-tagline"
+              className="flex items-center gap-1.5 mt-0.5 min-w-0"
+            >
               <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse shrink-0" />
-              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">
+              <p className="text-stone-gray font-mono text-[9px] sm:text-[10px] uppercase tracking-wide sm:tracking-widest truncate min-w-0">
                 If a bug exists, apply Hotfix.
               </p>
             </div>
@@ -397,8 +406,13 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
             <DataHealthIndicator issues={activeIssues} />
             <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
-            <button onClick={onNavigateManifest} className="nav-btn">
-              ALL INCIDENTS
+            <button onClick={onNavigateManifest} className="nav-btn" aria-label="All incidents">
+              {/* On mobile the word "INCIDENTS" is dropped to free up
+                  horizontal room for the tagline and the Decommission
+                  Index; the aria-label above keeps screen readers on the
+                  full label. */}
+              <span className="hidden sm:inline">ALL INCIDENTS</span>
+              <span className="sm:hidden">ALL</span>
               <ArrowRight size={14} />
             </button>
           </div>
@@ -410,21 +424,31 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
 
           {/* Left Column: Smelter Area */}
           <div className="lg:col-span-7 space-y-4">
-            {/* Controls */}
-            <div className="flex flex-col gap-3 sm:flex-row">
+            {/* Controls — Process/Deploy buttons sit side-by-side at
+                every breakpoint. They previously stacked (`flex-col`)
+                on mobile, which ate vertical rhythm and pushed the
+                smelter canvas below the fold. Mobile variant uses
+                tighter padding, a smaller text size, and a trimmed gap
+                so both buttons fit comfortably inside a 375px-wide
+                content column without truncating either label. */}
+            <div data-testid="smelter-controls" className="flex flex-row gap-2 sm:gap-3">
               <button
                 onClick={handleProcessArtifactClick}
-                className="modern-button flex-1 flex items-center justify-center gap-3 px-5 py-3"
+                className="modern-button flex-1 flex items-center justify-center gap-2 sm:gap-3 px-3 sm:px-5 py-2.5 sm:py-3"
               >
-                <Upload size={18} />
-                <span className="text-sm font-black uppercase tracking-[0.16em]">Process Artifact</span>
+                <Upload size={18} className="shrink-0" />
+                <span className="text-[11px] sm:text-sm font-black uppercase tracking-wider sm:tracking-[0.16em]">
+                  Process Artifact
+                </span>
               </button>
               <button
                 onClick={handleDeployScannerClick}
-                className="modern-button flex-1 flex items-center justify-center gap-3 bg-concrete-mid px-5 py-3 text-ash-white border border-concrete-border hover:brightness-110"
+                className="modern-button flex-1 flex items-center justify-center gap-2 sm:gap-3 bg-concrete-mid px-3 sm:px-5 py-2.5 sm:py-3 text-ash-white border border-concrete-border hover:brightness-110"
               >
-                <Camera size={18} />
-                <span className="text-sm font-black uppercase tracking-[0.16em]">Deploy Scanner</span>
+                <Camera size={18} className="shrink-0" />
+                <span className="text-[11px] sm:text-sm font-black uppercase tracking-wider sm:tracking-[0.16em]">
+                  Deploy Scanner
+                </span>
               </button>
             </div>
 

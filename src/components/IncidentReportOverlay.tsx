@@ -310,6 +310,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const {
     escalated,
     isToggling: isTogglingEscalation,
+    toggleError: escalationError,
     toggle: toggleEscalate,
   } = useEscalation(incidentId ?? null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -373,8 +374,12 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   };
 
   const handleEscalate = () => {
+    // `toggleEscalate` swallows its own errors into `escalationError` for
+    // UI display — callers just fire-and-forget the promise. The unused
+    // `.catch` guard here is a safety net in case the hook's contract
+    // regresses to re-throwing.
     toggleEscalate().catch((err: unknown) => {
-      console.error('[IncidentReportOverlay] toggleEscalate failed:', err);
+      console.error('[IncidentReportOverlay] toggleEscalate unexpectedly threw:', err);
     });
   };
 
@@ -519,19 +524,29 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
             {/* Escalate */}
             {incidentId && (
-              <button
-                onClick={handleEscalate}
-                disabled={isTogglingEscalation}
-                className={`w-full flex items-center justify-center gap-2 rounded-md border py-2 font-mono text-[11px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
-                  escalated
-                    ? 'border-hazard-amber/30 bg-hazard-amber/10 text-hazard-amber'
-                    : 'border-[#333] text-stone-gray hover:text-ash-white hover:border-[#444]'
-                } ${isTogglingEscalation ? 'opacity-50' : ''}`}
-                aria-label={escalated ? 'Remove escalation' : 'Escalate'}
-              >
-                <Siren size={16} aria-hidden="true" />
-                {escalated ? 'Escalation Armed' : 'Escalate Incident'}
-              </button>
+              <div>
+                <button
+                  onClick={handleEscalate}
+                  disabled={isTogglingEscalation}
+                  className={`w-full flex items-center justify-center gap-2 rounded-md border py-2 font-mono text-[11px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                    escalated
+                      ? 'border-hazard-amber/30 bg-hazard-amber/10 text-hazard-amber'
+                      : 'border-[#333] text-stone-gray hover:text-ash-white hover:border-[#444]'
+                  } ${isTogglingEscalation ? 'opacity-50' : ''}`}
+                  aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+                >
+                  <Siren size={16} aria-hidden="true" />
+                  {escalated ? 'Escalation Armed' : 'Escalate Incident'}
+                </button>
+                {escalationError && (
+                  <p
+                    role="alert"
+                    className="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
+                  >
+                    Escalation failed: {escalationError.message}
+                  </p>
+                )}
+              </div>
             )}
 
             {/* Disposition */}

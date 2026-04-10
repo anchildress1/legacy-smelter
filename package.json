@@ -12,8 +12,9 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:api": "vitest run scripts/server.analyze.integration.test.ts",
+    "test:api:emulator": "firebase emulators:exec --only firestore --project demo-legacy-smelter --config firebase.test.json \"vitest run --config vitest.api-emulator.config.ts\"",
     "test:rules": "firebase emulators:exec --only firestore --project demo-legacy-smelter --config firebase.test.json \"vitest run --config vitest.rules.config.ts\"",
-    "test:proof": "npm run lint && npm run test:run && npm run test:rules",
+    "test:proof": "npm run lint && npm run test:run && npm run test:api:emulator && npm run test:rules",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p scripts/tsconfig.json",
     "sanction-incidents": "tsx scripts/sanction-incidents.ts"

@@ -9,7 +9,10 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
-    exclude: ['scripts/firestore.rules.integration.test.ts'],
+    exclude: [
+      'scripts/firestore.rules.integration.test.ts',
+      'scripts/server.analyze.emulator.integration.test.ts',
+    ],
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     clearMocks: true,

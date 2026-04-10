@@ -12,9 +12,15 @@ export interface UseEscalationResult {
   readonly escalated: boolean;
   /** True while a toggle request is in flight — use to disable the button. */
   readonly isToggling: boolean;
+  /** The most recent toggle error, or `null` if the last call succeeded or
+   *  no toggle has been attempted. Callers should surface this via UI so
+   *  the user knows the optimistic flip was rolled back. The error is
+   *  cleared on the next successful (or in-flight) toggle. */
+  readonly toggleError: Error | null;
   /** Flip the escalation state. Optimistically updates and rolls back on
-   *  failure. Failures are logged to the console only — there is no
-   *  user-facing error surface. */
+   *  failure. The hook exposes `toggleError` so callers can render the
+   *  failure to the user — relying on console-only logging silently hides
+   *  write failures from the person clicking the button. */
   readonly toggle: () => Promise<void>;
 }
 
@@ -23,23 +29,30 @@ export interface UseEscalationResult {
  * anonymous user. On mount it reads the localStorage cache synchronously
  * (so the UI paints immediately) and then kicks off a Firestore sync to
  * replace that value with the authoritative state from the
- * `incident_logs/{id}/escalations/{uid}` subcollection. Both the sync and
- * the toggle log failures to the console only — there is no user-facing
- * error display.
+ * `incident_logs/{id}/escalations/{uid}` subcollection. Sync failures are
+ * logged to the console (the stale cache is still shown); toggle failures
+ * are surfaced via `toggleError` so the UI can render the rollback.
  */
 export function useEscalation(incidentId: string | null): UseEscalationResult {
   const [escalated, setEscalated] = useState(() => incidentId ? hasEscalated(incidentId) : false);
   const [isToggling, setIsToggling] = useState(false);
+  const [toggleError, setToggleError] = useState<Error | null>(null);
   const localMutationEpochRef = useRef(0);
+  const activeToggleRequestRef = useRef(0);
 
   useEffect(() => {
+    // Any incident switch invalidates stale async completions from the previous
+    // incident. This includes toggles still in-flight.
+    localMutationEpochRef.current += 1;
+    activeToggleRequestRef.current += 1;
+    setIsToggling(false);
+    setToggleError(null);
+
     if (!incidentId) {
       setEscalated(false);
       return;
     }
-    // Bump epoch on incident change so in-flight sync from the previous incident
-    // can never be applied to the new one.
-    localMutationEpochRef.current += 1;
+
     const syncEpoch = localMutationEpochRef.current;
     setEscalated(hasEscalated(incidentId));
     let cancelled = false;
@@ -71,20 +84,30 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
   const toggle = async () => {
     if (!incidentId || isToggling) return;
     setIsToggling(true);
+    setToggleError(null);
     localMutationEpochRef.current += 1;
+    activeToggleRequestRef.current += 1;
+    const toggleRequestId = activeToggleRequestRef.current;
+    const toggleEpoch = localMutationEpochRef.current;
     const previous = escalated;
     const optimistic = !previous;
     setEscalated(optimistic);
     try {
       const actual = await toggleEscalation(incidentId);
+      if (localMutationEpochRef.current !== toggleEpoch) return;
       if (actual !== optimistic) setEscalated(actual);
     } catch (err) {
+      if (localMutationEpochRef.current !== toggleEpoch) return;
       setEscalated(previous);
-      console.error('[useEscalation] Toggle failed:', err);
+      const wrapped = err instanceof Error ? err : new Error(String(err));
+      setToggleError(wrapped);
+      console.error('[useEscalation] Toggle failed:', wrapped);
     } finally {
-      setIsToggling(false);
+      if (activeToggleRequestRef.current === toggleRequestId) {
+        setIsToggling(false);
+      }
     }
   };
 
-  return { escalated, isToggling, toggle };
+  return { escalated, isToggling, toggleError, toggle };
 }

@@ -67,7 +67,7 @@ export interface SanctionSelection {
 export interface SanctionBatchDoc {
   id: string;
   data: () => Record<string, unknown>;
-  ref: unknown;
+  ref: DocumentReference<DocumentData>;
 }
 
 
@@ -178,6 +178,37 @@ export function hasValidVotingFields(data: Record<string, unknown>): boolean {
 export function readFiniteNumber(data: Record<string, unknown>, key: string): number {
   const value = data[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Reads a required non-negative finite counter off a candidate doc and throws
+ * if the value is missing, non-numeric, non-finite, or negative. Used by
+ * `prepareSanctionUpdate` so a corrupt counter (e.g. `'x'`, `NaN`, `-3`) can
+ * never be silently coerced to zero and written back as a bogus
+ * `impact_score`. The migration preflight (`hasValidVotingFields`) already
+ * refuses to run when the corpus has drifted counters, but a doc mutated
+ * between the preflight scan and the sanction write would otherwise slip
+ * through. Crash loudly instead — this matches the `parseIncidentDoc`
+ * philosophy and the AGENTS.md invariant that the script never papers over
+ * corrupt data.
+ */
+export function requireNonNegativeCounter(
+  data: Record<string, unknown>,
+  key: string,
+  incidentId: string,
+): number {
+  const value = data[key];
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(
+      `[sanction-incidents] incident_logs/${incidentId} has non-finite "${key}" (${String(value)}); refusing to write impact_score.`,
+    );
+  }
+  if (value < 0) {
+    throw new Error(
+      `[sanction-incidents] incident_logs/${incidentId} has negative "${key}" (${value}); refusing to write impact_score.`,
+    );
+  }
+  return value;
 }
 
 async function ensureVotingFieldsMigration(): Promise<void> {
@@ -304,8 +335,8 @@ export function prepareSanctionUpdate(
   }
 
   const selectedData = selectedDoc.data();
-  const breachCount = readFiniteNumber(selectedData, 'breach_count');
-  const escalationCount = readFiniteNumber(selectedData, 'escalation_count');
+  const breachCount = requireNonNegativeCounter(selectedData, 'breach_count', selectedDoc.id);
+  const escalationCount = requireNonNegativeCounter(selectedData, 'escalation_count', selectedDoc.id);
 
   return {
     selectedDoc,
@@ -331,10 +362,14 @@ export async function runSanctionIncidents(): Promise<void> {
     return;
   }
 
-  const ai = new GoogleGenAI({ apiKey: requireGeminiApiKey() });
   let processedBatches = 0;
 
   try {
+    // Build the Gemini client inside the try so that a missing/misconfigured
+    // API key still reaches the releaseRunLock path in `finally`. Otherwise a
+    // config error would leave the run lock held for the full TTL.
+    const ai = new GoogleGenAI({ apiKey: requireGeminiApiKey() });
+
     // Keep processing full groups of 5 so sanctions do not lag during bursts.
     while (true) {
       await refreshRunLock();
@@ -444,7 +479,7 @@ export async function runSanctionIncidents(): Promise<void> {
       // competing fresh against the next batch of incidents.
       const { selectedDoc, updatePayload } = prepareSanctionUpdate(batch, selection);
       const writeBatch = db.batch();
-      writeBatch.update(selectedDoc.ref as DocumentReference<DocumentData>, updatePayload);
+      writeBatch.update(selectedDoc.ref, updatePayload);
 
       await writeBatch.commit();
       processedBatches += 1;
@@ -452,11 +487,30 @@ export async function runSanctionIncidents(): Promise<void> {
 
       console.log(`[sanction-incidents] Batch ${processedBatches} committed.`);
     }
+  } catch (err) {
+    // Record where the run got before surfacing the underlying error so the
+    // operator can match a partial run against Firestore state on retry.
+    console.error(
+      `[sanction-incidents] Aborting after ${processedBatches} committed batch(es).`
+    );
+    throw err;
   } finally {
+    // If lock release fails (e.g. `run_id` mismatch, transient Firestore
+    // error), the next scheduled run will see `Another run is in progress`
+    // and no-op silently — which looks like success but actually blocks
+    // sanctions for the full TTL. Re-throw so the caller's exit code
+    // reflects the stuck lock.
+    //
+    // If the body already threw, Node's spec-mandated behavior preserves the
+    // original exception when the `finally` completes normally; only a throw
+    // inside `finally` can replace it. We accept that trade-off: a stuck lock
+    // after a body error is strictly worse than losing the body error, since
+    // the former also blocks recovery. Log both so neither is lost.
     try {
       await releaseRunLock();
     } catch (releaseErr) {
-      console.warn('[sanction-incidents] Failed to release run lock:', releaseErr);
+      console.error('[sanction-incidents] Failed to release run lock:', releaseErr);
+      throw releaseErr;
     }
   }
 }
