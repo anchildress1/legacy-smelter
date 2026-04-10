@@ -33,10 +33,10 @@ Failure mode: committing a rules edit without deploying produces 403 `permission
 
 - Refuses to run without `system_migrations/voting-fields-v1` marker. Created by `backfill-voting-fields.ts`.
 - Run lock at `system_locks/sanction-incidents` with TTL. Concurrent runs cannot double-sanction.
-- "Unevaluated" is identified by `sanction_rationale === null`. Once the job touches a doc it always sets a non-null rationale: the AI rationale for the sanctioned doc, `NOT_SELECTED_RATIONALE` for the four that were reviewed and passed over, or `SCHEMA_QUARANTINE_RATIONALE` for malformed docs. There is no separate `judged` boolean.
-- `MAX_REQUERY_ITERATIONS = 3`: bounds the loop that re-queries after quarantining malformed docs.
-- Iterates `candidates`, not `batch`, for the sanction write. `candidateDocsById` map keys parsed candidates back to their Firestore refs.
-- On model failure (no valid selection after `MAX_SELECTION_ATTEMPTS`): throws. Nothing is mutated, so re-running picks the same batch back up. There is no per-doc failure quarantine — without `judged` there is no field left to carry that signal.
+- `sanctioned` is the single source of truth. Query: `where('sanctioned', '==', false).orderBy('timestamp', 'asc').limit(5)`. There is no separate "judged" / "evaluated" state.
+- Each batch picks exactly one of 5 to sanction. Only the selected doc is mutated (`sanctioned: true`, rationale, score). The other four stay `sanctioned: false` and re-enter the query on the next run, competing fresh against the next batch. Same doc can lose multiple batches and eventually win.
+- On model failure (no valid selection after `MAX_SELECTION_ATTEMPTS`): throws. Nothing is mutated, so re-running picks the same batch back up.
+- Malformed docs are NOT quarantined — without a "skip me" marker they cannot be safely excluded from future queries. The script crashes loudly on parse failure so the operator can fix the offending doc by hand.
 
 ## scripts/backfill-voting-fields.ts
 

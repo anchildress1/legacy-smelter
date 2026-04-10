@@ -1,16 +1,12 @@
 /**
  * AI sanction script.
  *
- * Every full batch of 5 unevaluated incidents is sent to Gemini. Gemini
- * selects exactly one incident to receive a sanction; the other four are
- * marked "reviewed but not selected" so they won't be re-queried in future
- * runs.
- *
- * "Unevaluated" is identified by `sanction_rationale === null`. Once the
- * sanction job touches a doc, it always sets a non-null rationale: either
- * Gemini's actual rationale (when sanctioned), the not-selected marker
- * (when reviewed and passed over), or the schema-quarantine marker (when
- * malformed).
+ * Pulls batches of 5 not-yet-sanctioned incidents and asks Gemini to pick
+ * exactly one to sanction. The selected doc flips to `sanctioned: true`
+ * with a rationale; the other four stay `sanctioned: false` and become
+ * eligible for the next run's batch (re-competing against fresh
+ * incidents). There is no "evaluated but not selected" middle state —
+ * `sanctioned` is the single source of truth.
  *
  * Run: npx tsx scripts/sanction-incidents.ts
  * Env: GEMINI_API_KEY, FIREBASE_PROJECT_ID, FIREBASE_FIRESTORE_DATABASE_ID,
@@ -35,10 +31,7 @@ const LOCK_COLLECTION = 'system_locks';
 const LOCK_DOC_ID = 'sanction-incidents';
 const LOCK_TTL_MS = 8 * 60 * 1000;
 const RUN_ID = randomUUID();
-const SCHEMA_QUARANTINE_RATIONALE = 'Skipped by sanction job: invalid incident schema.';
-const NOT_SELECTED_RATIONALE = 'Reviewed by sanction job: not selected for sanction.';
 const MAX_SELECTION_ATTEMPTS = 2;
-const MAX_REQUERY_ITERATIONS = 3;
 const MIGRATION_COLLECTION = 'system_migrations';
 const MIGRATION_DOC_ID = 'voting-fields-v1';
 const MIGRATION_SCAN_PAGE_SIZE = 500;
@@ -293,44 +286,35 @@ async function run(): Promise<void> {
 
   const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
   let processedBatches = 0;
-  let requeryIterations = 0;
 
   try {
     // Keep processing full groups of 5 so sanctions do not lag during bursts.
     while (true) {
-      if (requeryIterations > MAX_REQUERY_ITERATIONS) {
-        console.error(
-          `[sanction-incidents] Re-query loop exceeded ${MAX_REQUERY_ITERATIONS} iterations ` +
-          `without a full candidate batch. Exiting to avoid pipeline stall.`
-        );
-        return;
-      }
       await refreshRunLock();
 
-      // Unevaluated docs are identified by sanction_rationale === null.
-      // Once the job touches a doc it always sets a non-null rationale, so
-      // this query naturally excludes anything we've already processed.
-      const unevaluatedSnap = await db
+      // Pull the oldest 5 not-yet-sanctioned incidents. Non-selected docs
+      // from previous runs stay sanctioned: false and re-enter this query
+      // until they either win a batch or never do.
+      const unsanctionedSnap = await db
         .collection('incident_logs')
-        .where('sanction_rationale', '==', null)
+        .where('sanctioned', '==', false)
         .orderBy('timestamp', 'asc')
         .limit(MIN_BATCH)
         .get();
 
-      console.log(`[sanction-incidents] ${unevaluatedSnap.size} unevaluated incident(s) (limit ${MIN_BATCH})`);
+      console.log(`[sanction-incidents] ${unsanctionedSnap.size} unsanctioned incident(s) (limit ${MIN_BATCH})`);
 
-      if (unevaluatedSnap.size < MIN_BATCH) {
+      if (unsanctionedSnap.size < MIN_BATCH) {
         if (processedBatches === 0) {
-          console.log(`[sanction-incidents] < ${MIN_BATCH} unevaluated — skipping, will retry next run.`);
+          console.log(`[sanction-incidents] < ${MIN_BATCH} unsanctioned — skipping, will retry next run.`);
         } else {
           console.log(`[sanction-incidents] Completed ${processedBatches} batch(es); waiting for the next 5 incidents.`);
         }
         return;
       }
 
-      const batch = unevaluatedSnap.docs;
+      const batch = unsanctionedSnap.docs;
       const candidates: Candidate[] = [];
-      const malformedDocs: typeof batch = [];
 
       for (const d of batch) {
         try {
@@ -339,57 +323,17 @@ async function run(): Promise<void> {
             incident_id: d.id,
           });
         } catch (err) {
-          malformedDocs.push(d);
-          console.error(
-            `[sanction-incidents] Quarantining malformed incident_logs/${d.id}:`,
-            err
+          // Malformed docs cannot be silently quarantined any more —
+          // there is no "evaluated but not selected" marker without
+          // `judged`. Crash loudly so the operator can fix the offending
+          // doc instead of having the script paper over corrupt data.
+          throw new Error(
+            `[sanction-incidents] incident_logs/${d.id} failed to parse: ${
+              err instanceof Error ? err.message : String(err)
+            }`
           );
         }
       }
-
-      if (malformedDocs.length > 0) {
-        const quarantineBatch = db.batch();
-        for (const d of malformedDocs) {
-          const data = d.data() as Record<string, unknown>;
-          const breachCount = readFiniteNumber(data, 'breach_count');
-          const escalationCount = readFiniteNumber(data, 'escalation_count');
-          // Normalize every strict-schema numeric/boolean field so the
-          // client-side parseSmeltLog can at least render the quarantined
-          // doc instead of hiding it forever. String fields that were
-          // malformed cannot be recovered automatically — those stay as-is
-          // and parseSmeltLog will still reject them, but at minimum the
-          // counter fields are now sane. The non-null sanction_rationale
-          // marker also excludes the doc from future unevaluated queries.
-          quarantineBatch.update(d.ref, {
-            sanctioned: false,
-            breach_count: breachCount,
-            escalation_count: escalationCount,
-            sanction_count: 0,
-            sanction_rationale: SCHEMA_QUARANTINE_RATIONALE,
-            impact_score: computeImpactScore({
-              sanction_count: 0,
-              escalation_count: escalationCount,
-              breach_count: breachCount,
-            }),
-          });
-        }
-        await quarantineBatch.commit();
-        console.warn(
-          `[sanction-incidents] Quarantined ${malformedDocs.length} malformed incident(s); continuing run.`
-        );
-      }
-
-      if (candidates.length < MIN_BATCH) {
-        // Query limit is fixed to MIN_BATCH. If we quarantined malformed docs,
-        // this pass may no longer have a full valid candidate set. Re-query,
-        // but bound the loop so a persistent consistency lag or a stuck
-        // upstream cannot spin forever.
-        requeryIterations++;
-        continue;
-      }
-      // Reset on successful full batch — the counter bounds *consecutive*
-      // re-queries, not total across the run.
-      requeryIterations = 0;
 
       console.log('[sanction-incidents] Candidates:', candidates.map((c) => c.incident_id));
 
@@ -437,14 +381,8 @@ async function run(): Promise<void> {
         }
       }
 
-      const candidateDocsById = new Map(batch.map((d) => [d.id, d]));
-
       if (!selection) {
-        // The script no longer marks individual docs as "permanently
-        // failed" — without the old `judged` flag there is no field left
-        // to carry that signal without polluting the rationale text.
-        // Instead we throw and let the operator investigate. Re-running
-        // the job picks the same batch back up because nothing was
+        // Re-running picks the same batch back up because nothing was
         // mutated.
         throw new Error(
           `[sanction-incidents] Model failed to produce a valid sanction selection after ${MAX_SELECTION_ATTEMPTS} attempt(s).`
@@ -454,31 +392,29 @@ async function run(): Promise<void> {
       console.log(`[sanction-incidents] Sanctioned incident: ${selection.sanctioned_incident_id}`);
       console.log(`[sanction-incidents] Rationale: ${selection.sanction_rationale}`);
 
-      // Every doc in the batch gets a non-null sanction_rationale: the AI
-      // rationale for the sanctioned doc, or NOT_SELECTED_RATIONALE for
-      // the four that were reviewed and passed over. This excludes them
-      // from future unevaluated queries — there is no separate "judged"
-      // boolean anymore.
-      const writeBatch = db.batch();
-      for (const candidate of candidates) {
-        const d = candidateDocsById.get(candidate.incident_id);
-        if (!d) continue;
-        const isSanctioned = d.id === selection.sanctioned_incident_id;
-        const data = d.data() as Record<string, unknown>;
-        const breachCount = readFiniteNumber(data, 'breach_count');
-        const escalationCount = readFiniteNumber(data, 'escalation_count');
-        const sanctionCount = isSanctioned ? 1 : 0;
-        writeBatch.update(d.ref, {
-          sanctioned: isSanctioned,
-          sanction_count: sanctionCount,
-          sanction_rationale: isSanctioned ? selection.sanction_rationale : NOT_SELECTED_RATIONALE,
-          impact_score: computeImpactScore({
-            sanction_count: sanctionCount,
-            escalation_count: escalationCount,
-            breach_count: breachCount,
-          }),
-        });
+      // Only the selected doc is mutated. The other four stay
+      // sanctioned: false and re-enter the query on the next run,
+      // competing fresh against the next batch of incidents.
+      const selectedDoc = batch.find((d) => d.id === selection.sanctioned_incident_id);
+      if (!selectedDoc) {
+        throw new Error(
+          `[sanction-incidents] Selected incident ${selection.sanctioned_incident_id} is not in the candidate batch.`
+        );
       }
+      const selectedData = selectedDoc.data() as Record<string, unknown>;
+      const breachCount = readFiniteNumber(selectedData, 'breach_count');
+      const escalationCount = readFiniteNumber(selectedData, 'escalation_count');
+      const writeBatch = db.batch();
+      writeBatch.update(selectedDoc.ref, {
+        sanctioned: true,
+        sanction_count: 1,
+        sanction_rationale: selection.sanction_rationale,
+        impact_score: computeImpactScore({
+          sanction_count: 1,
+          escalation_count: escalationCount,
+          breach_count: breachCount,
+        }),
+      });
 
       await writeBatch.commit();
       processedBatches += 1;

@@ -4,7 +4,7 @@
       "collectionGroup": "incident_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "sanction_rationale", "order": "ASCENDING" },
+        { "fieldPath": "sanctioned", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "ASCENDING" }
       ]
     },
