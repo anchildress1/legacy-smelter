@@ -20,7 +20,7 @@ import { parseSmeltLog } from '../lib/smeltLogSchema';
 
 const PAGE_SIZE = 20;
 const MANIFEST_FETCH_LIMIT = 500;
-type ManifestFilter = 'all' | 'needs_ruling' | 'escalated' | 'sanctioned';
+type ManifestFilter = 'all' | 'escalated' | 'sanctioned';
 type ManifestSort = 'impact' | 'newest' | 'breaches' | 'escalations';
 
 interface IncidentManifestProps {
@@ -95,7 +95,6 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
   const manifestCounts = useMemo(() => ({
     all: allLogs.length,
-    needs_ruling: allLogs.filter((log) => !log.judged).length,
     escalated: allLogs.filter((log) => log.escalation_count > 0).length,
     sanctioned: allLogs.filter((log) => log.sanctioned).length,
   }), [allLogs]);
@@ -103,8 +102,6 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   const sortedLogs = useMemo(() => {
     const filtered = allLogs.filter((log) => {
       switch (filterMode) {
-        case 'needs_ruling':
-          return !log.judged;
         case 'escalated':
           return log.escalation_count > 0;
         case 'sanctioned':
@@ -184,7 +181,6 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         <div className="mb-5 flex flex-wrap items-center gap-2">
           {([
             ['all', 'All'],
-            ['needs_ruling', 'Needs Ruling'],
             ['escalated', 'Escalated'],
             ['sanctioned', 'Sanctioned'],
           ] as [ManifestFilter, string][]).map(([value, label]) => (
@@ -236,7 +232,6 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
               <Flame size={28} className="text-hazard-amber mx-auto mb-2" />
               <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
                 {filterMode === 'all' && 'Furnace idle. Awaiting condemned infrastructure.'}
-                {filterMode === 'needs_ruling' && 'All incidents have been ruled on.'}
                 {filterMode === 'escalated' && 'No escalated incidents on record.'}
                 {filterMode === 'sanctioned' && 'No sanctions issued yet.'}
               </p>

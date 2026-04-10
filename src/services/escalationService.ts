@@ -141,6 +141,5 @@ export async function syncEscalationState(incidentId: string): Promise<boolean> 
     set.delete(incidentId);
   }
   persistEscalatedSet(set);
-  emitEscalationStateChange({ incidentId, escalated: exists });
   return exists;
 }

@@ -488,7 +488,6 @@ app.post('/api/analyze', requireFirebaseAuth, rateLimitAnalyzeRoute, async (req,
       sanction_count: 0,
       impact_score: 0,
       sanctioned: false,
-      judged: false,
       sanction_rationale: null,
     });
     writeBatch.set(

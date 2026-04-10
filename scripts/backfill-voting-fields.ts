@@ -34,7 +34,6 @@ const REQUIRED_DEFAULTS = {
   escalation_count: 0,
   sanction_count: 0,
   sanctioned: false,
-  judged: false,
   sanction_rationale: null,
 } as const;
 

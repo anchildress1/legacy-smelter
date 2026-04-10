@@ -92,7 +92,6 @@ export function parseSmeltLog(docId: string, raw: unknown): SmeltLog {
     breach_count: expectNumber(raw, 'breach_count', docId),
     escalation_count: expectNumber(raw, 'escalation_count', docId),
     sanction_count: expectNumber(raw, 'sanction_count', docId),
-    judged: expectBoolean(raw, 'judged', docId),
     sanctioned: expectBoolean(raw, 'sanctioned', docId),
     sanction_rationale: expectNullableString(raw, 'sanction_rationale', docId),
   };

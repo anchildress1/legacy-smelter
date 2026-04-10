@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   toggleEscalation,
   hasEscalated,
@@ -30,16 +30,26 @@ export interface UseEscalationResult {
 export function useEscalation(incidentId: string | null): UseEscalationResult {
   const [escalated, setEscalated] = useState(() => incidentId ? hasEscalated(incidentId) : false);
   const [isToggling, setIsToggling] = useState(false);
+  const localMutationEpochRef = useRef(0);
 
   useEffect(() => {
     if (!incidentId) {
       setEscalated(false);
       return;
     }
+    // Bump epoch on incident change so in-flight sync from the previous incident
+    // can never be applied to the new one.
+    localMutationEpochRef.current += 1;
+    const syncEpoch = localMutationEpochRef.current;
     setEscalated(hasEscalated(incidentId));
     let cancelled = false;
     syncEscalationState(incidentId)
-      .then((state) => { if (!cancelled) setEscalated(state); })
+      .then((state) => {
+        if (cancelled) return;
+        // Ignore stale sync responses if a local toggle happened after this sync started.
+        if (localMutationEpochRef.current !== syncEpoch) return;
+        setEscalated(state);
+      })
       .catch((err) => {
         if (cancelled) return;
         console.error('[useEscalation] syncEscalationState failed:', err);
@@ -57,6 +67,7 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
   const toggle = async () => {
     if (!incidentId || isToggling) return;
     setIsToggling(true);
+    localMutationEpochRef.current += 1;
     const previous = escalated;
     const optimistic = !previous;
     setEscalated(optimistic);

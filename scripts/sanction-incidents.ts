@@ -1,8 +1,16 @@
 /**
- * AI sanction cron script.
+ * AI sanction script.
  *
- * Every full batch of 5 unjudged incidents is sent to Gemini.
- * Gemini selects exactly one incident to receive a sanction.
+ * Every full batch of 5 unevaluated incidents is sent to Gemini. Gemini
+ * selects exactly one incident to receive a sanction; the other four are
+ * marked "reviewed but not selected" so they won't be re-queried in future
+ * runs.
+ *
+ * "Unevaluated" is identified by `sanction_rationale === null`. Once the
+ * sanction job touches a doc, it always sets a non-null rationale: either
+ * Gemini's actual rationale (when sanctioned), the not-selected marker
+ * (when reviewed and passed over), or the schema-quarantine marker (when
+ * malformed).
  *
  * Run: npx tsx scripts/sanction-incidents.ts
  * Env: GEMINI_API_KEY, FIREBASE_PROJECT_ID, FIREBASE_FIRESTORE_DATABASE_ID,
@@ -28,9 +36,8 @@ const LOCK_DOC_ID = 'sanction-incidents';
 const LOCK_TTL_MS = 8 * 60 * 1000;
 const RUN_ID = randomUUID();
 const SCHEMA_QUARANTINE_RATIONALE = 'Skipped by sanction job: invalid incident schema.';
-const MODEL_FAILURE_QUARANTINE_RATIONALE = 'Skipped by sanction job: model judgment repeatedly failed.';
+const NOT_SELECTED_RATIONALE = 'Reviewed by sanction job: not selected for sanction.';
 const MAX_SELECTION_ATTEMPTS = 2;
-const MAX_MODEL_FAILURES_PER_DOC = 3;
 const MAX_REQUERY_ITERATIONS = 3;
 const MIGRATION_COLLECTION = 'system_migrations';
 const MIGRATION_DOC_ID = 'voting-fields-v1';
@@ -162,7 +169,6 @@ function hasValidVotingFields(data: Record<string, unknown>): boolean {
     typeof data.sanction_count === 'number' &&
     Number.isFinite(data.sanction_count) &&
     typeof data.sanctioned === 'boolean' &&
-    typeof data.judged === 'boolean' &&
     (data.sanction_rationale === null || typeof data.sanction_rationale === 'string')
   );
 }
@@ -194,7 +200,6 @@ async function ensureVotingFieldsMigration(): Promise<void> {
         'escalation_count',
         'sanction_count',
         'sanctioned',
-        'judged',
         'sanction_rationale'
       )
       .limit(MIGRATION_SCAN_PAGE_SIZE);
@@ -302,25 +307,28 @@ async function run(): Promise<void> {
       }
       await refreshRunLock();
 
-      const unjudgedSnap = await db
+      // Unevaluated docs are identified by sanction_rationale === null.
+      // Once the job touches a doc it always sets a non-null rationale, so
+      // this query naturally excludes anything we've already processed.
+      const unevaluatedSnap = await db
         .collection('incident_logs')
-        .where('judged', '==', false)
+        .where('sanction_rationale', '==', null)
         .orderBy('timestamp', 'asc')
         .limit(MIN_BATCH)
         .get();
 
-      console.log(`[sanction-incidents] ${unjudgedSnap.size} unjudged incident(s) (limit ${MIN_BATCH})`);
+      console.log(`[sanction-incidents] ${unevaluatedSnap.size} unevaluated incident(s) (limit ${MIN_BATCH})`);
 
-      if (unjudgedSnap.size < MIN_BATCH) {
+      if (unevaluatedSnap.size < MIN_BATCH) {
         if (processedBatches === 0) {
-          console.log(`[sanction-incidents] < ${MIN_BATCH} unjudged — skipping, will retry next run.`);
+          console.log(`[sanction-incidents] < ${MIN_BATCH} unevaluated — skipping, will retry next run.`);
         } else {
           console.log(`[sanction-incidents] Completed ${processedBatches} batch(es); waiting for the next 5 incidents.`);
         }
         return;
       }
 
-      const batch = unjudgedSnap.docs;
+      const batch = unevaluatedSnap.docs;
       const candidates: Candidate[] = [];
       const malformedDocs: typeof batch = [];
 
@@ -350,9 +358,9 @@ async function run(): Promise<void> {
           // doc instead of hiding it forever. String fields that were
           // malformed cannot be recovered automatically — those stay as-is
           // and parseSmeltLog will still reject them, but at minimum the
-          // counter fields are now sane.
+          // counter fields are now sane. The non-null sanction_rationale
+          // marker also excludes the doc from future unevaluated queries.
           quarantineBatch.update(d.ref, {
-            judged: true,
             sanctioned: false,
             breach_count: breachCount,
             escalation_count: escalationCount,
@@ -429,56 +437,15 @@ async function run(): Promise<void> {
         }
       }
 
-      // Map each parsed candidate back to its Firestore ref. Declared
-      // before the failure branch so the model-failure penalty path can
-      // also reuse it (iterating `candidates`, not `batch`, keeps the
-      // quarantine flow from clobbering malformed docs).
       const candidateDocsById = new Map(batch.map((d) => [d.id, d]));
 
       if (!selection) {
-        // Model failed repeatedly for this batch. Increment a per-doc
-        // counter and quarantine any doc that has hit MAX_MODEL_FAILURES_PER_DOC
-        // so a fundamentally broken prompt cannot stall the entire pipeline
-        // forever on the same 5 docs.
-        console.error(
-          `[sanction-incidents] Model failed to produce a valid sanction selection after ${MAX_SELECTION_ATTEMPTS} attempt(s); ` +
-          `recording failure against ${candidates.length} candidate doc(s).`
-        );
-        const penaltyBatch = db.batch();
-        const toQuarantine: typeof batch = [];
-        for (const candidate of candidates) {
-          const d = candidateDocsById.get(candidate.incident_id);
-          if (!d) continue;
-          const data = d.data() as Record<string, unknown>;
-          const currentFailures = readFiniteNumber(data, 'sanction_model_failures');
-          const nextFailures = currentFailures + 1;
-          if (nextFailures >= MAX_MODEL_FAILURES_PER_DOC) {
-            toQuarantine.push(d);
-            const breachCount = readFiniteNumber(data, 'breach_count');
-            const escalationCount = readFiniteNumber(data, 'escalation_count');
-            penaltyBatch.update(d.ref, {
-              judged: true,
-              sanctioned: false,
-              sanction_count: 0,
-              sanction_rationale: MODEL_FAILURE_QUARANTINE_RATIONALE,
-              sanction_model_failures: nextFailures,
-              impact_score: computeImpactScore({
-                sanction_count: 0,
-                escalation_count: escalationCount,
-                breach_count: breachCount,
-              }),
-            });
-          } else {
-            penaltyBatch.update(d.ref, {
-              sanction_model_failures: nextFailures,
-            });
-          }
-        }
-        await penaltyBatch.commit();
-        console.error(
-          `[sanction-incidents] Recorded model failure on ${candidates.length} doc(s); ` +
-          `quarantined ${toQuarantine.length} doc(s) that hit the ${MAX_MODEL_FAILURES_PER_DOC}-failure threshold.`
-        );
+        // The script no longer marks individual docs as "permanently
+        // failed" — without the old `judged` flag there is no field left
+        // to carry that signal without polluting the rationale text.
+        // Instead we throw and let the operator investigate. Re-running
+        // the job picks the same batch back up because nothing was
+        // mutated.
         throw new Error(
           `[sanction-incidents] Model failed to produce a valid sanction selection after ${MAX_SELECTION_ATTEMPTS} attempt(s).`
         );
@@ -487,6 +454,11 @@ async function run(): Promise<void> {
       console.log(`[sanction-incidents] Sanctioned incident: ${selection.sanctioned_incident_id}`);
       console.log(`[sanction-incidents] Rationale: ${selection.sanction_rationale}`);
 
+      // Every doc in the batch gets a non-null sanction_rationale: the AI
+      // rationale for the sanctioned doc, or NOT_SELECTED_RATIONALE for
+      // the four that were reviewed and passed over. This excludes them
+      // from future unevaluated queries — there is no separate "judged"
+      // boolean anymore.
       const writeBatch = db.batch();
       for (const candidate of candidates) {
         const d = candidateDocsById.get(candidate.incident_id);
@@ -497,10 +469,9 @@ async function run(): Promise<void> {
         const escalationCount = readFiniteNumber(data, 'escalation_count');
         const sanctionCount = isSanctioned ? 1 : 0;
         writeBatch.update(d.ref, {
-          judged: true,
           sanctioned: isSanctioned,
           sanction_count: sanctionCount,
-          sanction_rationale: isSanctioned ? selection.sanction_rationale : null,
+          sanction_rationale: isSanctioned ? selection.sanction_rationale : NOT_SELECTED_RATIONALE,
           impact_score: computeImpactScore({
             sanction_count: sanctionCount,
             escalation_count: escalationCount,

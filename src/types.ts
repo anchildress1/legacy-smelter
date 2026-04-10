@@ -35,7 +35,6 @@ export interface SmeltLog {
   breach_count: number;
   escalation_count: number;
   sanction_count: number;
-  judged: boolean;
   sanctioned: boolean;
   sanction_rationale: string | null;
 }
