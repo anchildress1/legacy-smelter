@@ -218,14 +218,18 @@ describe('SmelterCanvas render failure handling', () => {
 
     const app = pixiState.lastApplication!;
 
-    // Push past the threshold. The test simply asserts the component
-    // stays alive — `expect(...).not.toThrow` cannot be applied to the
-    // imperative tick calls below, so we rely on the absence of a
-    // rejection from the test runner.
-    for (let i = 0; i < 6; i += 1) {
-      app.ticker.tick();
-    }
+    // Wrap the tick loop in an explicit `not.toThrow` so a regression that
+    // made the catch path rethrow (or let an undefined-callback invocation
+    // escape) fails this test directly, instead of a silent pass where the
+    // only signal was the absence of a runner rejection.
+    expect(() => {
+      for (let i = 0; i < 6; i += 1) {
+        app.ticker.tick();
+      }
+    }).not.toThrow();
 
+    // Belt-and-braces: the ticker-disable path must still have fired, so
+    // the test pins the threshold behaviour even without a callback.
     expect(app.ticker.removed).toHaveLength(1);
   });
 });

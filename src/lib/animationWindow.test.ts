@@ -63,4 +63,23 @@ describe('advanceAnimationWindow', () => {
       isComplete: true,
     });
   });
+
+  it('stays complete when currentProgress is already past requiredFrames', () => {
+    // The SmelterCanvas settling phase feeds `settleProgressRef.current` back
+    // in each tick without clamping post-completion. A non-resetting replay
+    // or a stale ref read could therefore pass a `currentProgress` that is
+    // already `>= requiredFrames`. The window must keep reporting `isComplete`
+    // in that re-entry, not flip back to `false` because of a subtractive
+    // off-by-one — which `nextProgress >= requiredFrames` correctly handles,
+    // and which this test pins so a future refactor that clamps or
+    // normalizes progress cannot silently break the contract.
+    expect(advanceAnimationWindow(50, 10, 40)).toEqual({
+      nextProgress: 60,
+      isComplete: true,
+    });
+    expect(advanceAnimationWindow(40, 0, 40)).toEqual({
+      nextProgress: 40,
+      isComplete: true,
+    });
+  });
 });
