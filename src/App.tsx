@@ -20,13 +20,16 @@ import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 import { DecommissionIndex } from './components/DecommissionIndex';
 import { SiteFooter } from './components/SiteFooter';
-import { parseSmeltLog } from './lib/smeltLogSchema';
+import { DataHealthIndicator } from './components/DataHealthIndicator';
+import { parseSmeltLog, parseSmeltLogBatch } from './lib/smeltLogSchema';
 
 // Audio
 const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false, volume: 0.5 });
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
 const CANVAS_READY_TIMEOUT_MS = 8_000;
+const QUEUE_SCHEMA_ISSUE_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
+const STATS_SCHEMA_ISSUE = 'GLOBAL STATS DATA SCHEMA VIOLATION. DECOMMISSION INDEX FROZEN.';
 const SmelterCanvas = lazy(async () => {
   const module = await import('./components/SmelterCanvas');
   return { default: module.SmelterCanvas };
@@ -42,6 +45,8 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
   const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
   const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [statsIssue, setStatsIssue] = useState<string | null>(null);
+  const [queueIssue, setQueueIssue] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -105,11 +110,13 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       const data = snapshot.data();
       if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
         console.error('[App] global_stats/main has invalid total_pixels_melted:', data);
+        setStatsIssue(STATS_SCHEMA_ISSUE);
         return;
       }
       setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
+      setStatsIssue(null);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'global_stats/main');
+      handleFirestoreError(error, OperationType.GET, 'global_stats/main', setStatsIssue);
     });
 
     // P0 queue uses server-maintained impact_score so this listener stays
@@ -121,17 +128,18 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       limit(3)
     );
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
-      const entries: SmeltLog[] = [];
-      for (const d of snapshot.docs) {
-        try {
-          entries.push(parseSmeltLog(d.id, d.data()));
-        } catch (error) {
-          console.error('[App] Skipping malformed incident_logs doc:', error);
-        }
-      }
+      const { entries, invalidCount } = parseSmeltLogBatch(snapshot.docs, { source: 'App' });
       setRecentLogs(entries);
+      if (invalidCount > 0) {
+        const noun = invalidCount === 1 ? 'incident' : 'incidents';
+        setQueueIssue(
+          `${QUEUE_SCHEMA_ISSUE_PREFIX} ${invalidCount} ${noun} hidden from queue due to invalid schema.`
+        );
+      } else {
+        setQueueIssue(null);
+      }
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'incident_logs');
+      handleFirestoreError(error, OperationType.LIST, 'incident_logs', setQueueIssue);
     });
 
     return () => { unsubStats(); unsubLogs(); };
@@ -350,6 +358,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
         buildIncidentUrl(analysis.incidentId)
       )
     : [];
+  const activeIssues = [statsIssue, queueIssue].filter((message): message is string => !!message);
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
@@ -367,6 +376,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+            <DataHealthIndicator issues={activeIssues} />
             <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
             <button onClick={onNavigateManifest} className="nav-btn">
               ALL INCIDENTS

@@ -56,7 +56,11 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
       });
     const unsubscribe = subscribeEscalationStateChange(({ incidentId: changedIncidentId, escalated: nextState }) => {
       if (changedIncidentId !== incidentId) return;
-      if (!cancelled) setEscalated(nextState);
+      if (cancelled) return;
+      // Invalidate any in-flight sync started before this event so stale
+      // responses cannot overwrite a newer user-driven state.
+      localMutationEpochRef.current += 1;
+      setEscalated(nextState);
     });
     return () => {
       cancelled = true;

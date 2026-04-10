@@ -15,13 +15,16 @@ import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
 import { IncidentReportOverlay } from './IncidentReportOverlay';
 import { DecommissionIndex } from './DecommissionIndex';
 import { SiteFooter } from './SiteFooter';
+import { DataHealthIndicator } from './DataHealthIndicator';
 import { Flame, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
-import { parseSmeltLog } from '../lib/smeltLogSchema';
+import { parseSmeltLogBatch } from '../lib/smeltLogSchema';
 
 const PAGE_SIZE = 20;
 const MANIFEST_FETCH_LIMIT = 500;
 type ManifestFilter = 'all' | 'escalated' | 'sanctioned';
 type ManifestSort = 'impact' | 'newest' | 'breaches' | 'escalations';
+const MANIFEST_SCHEMA_ISSUE_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
+const STATS_SCHEMA_ISSUE = 'GLOBAL STATS DATA SCHEMA VIOLATION. DECOMMISSION INDEX FROZEN.';
 
 interface IncidentManifestProps {
   onNavigateHome: () => void;
@@ -35,6 +38,8 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   const [filterMode, setFilterMode] = useState<ManifestFilter>('all');
   const [sortMode, setSortMode] = useState<ManifestSort>('impact');
   const [isLoading, setIsLoading] = useState(true);
+  const [statsIssue, setStatsIssue] = useState<string | null>(null);
+  const [manifestIssue, setManifestIssue] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubStats = onSnapshot(doc(db, 'global_stats', 'main'), (snap) => {
@@ -42,10 +47,12 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
       const data = snap.data();
       if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
         console.error('[IncidentManifest] global_stats/main has invalid total_pixels_melted:', data);
+        setStatsIssue(STATS_SCHEMA_ISSUE);
         return;
       }
       setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'global_stats/main'));
+      setStatsIssue(null);
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'global_stats/main', setStatsIssue));
 
     return () => { unsubStats(); };
   }, []);
@@ -69,23 +76,25 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     })();
 
     setIsLoading(true);
+    setManifestIssue(null);
     let gotFirst = false;
     const unsubLogs = onSnapshot(q, (snap) => {
-      const entries: SmeltLog[] = [];
-      for (const d of snap.docs) {
-        try {
-          entries.push(parseSmeltLog(d.id, d.data()));
-        } catch (parseErr) {
-          console.error('[IncidentManifest] Skipping malformed doc:', parseErr);
-        }
-      }
+      const { entries, invalidCount } = parseSmeltLogBatch(snap.docs, { source: 'IncidentManifest' });
       setAllLogs(entries);
+      if (invalidCount > 0) {
+        const noun = invalidCount === 1 ? 'incident' : 'incidents';
+        setManifestIssue(
+          `${MANIFEST_SCHEMA_ISSUE_PREFIX} ${invalidCount} ${noun} hidden from manifest due to invalid schema.`
+        );
+      } else {
+        setManifestIssue(null);
+      }
       if (!gotFirst) {
         gotFirst = true;
         setIsLoading(false);
       }
     }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'incident_logs');
+      handleFirestoreError(err, OperationType.LIST, 'incident_logs', setManifestIssue);
       setAllLogs([]);
       setIsLoading(false);
     });
@@ -132,6 +141,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
   const totalPages = Math.max(1, Math.ceil(sortedLogs.length / PAGE_SIZE));
   const isWindowTruncated = allLogs.length === MANIFEST_FETCH_LIMIT;
+  const activeIssues = [statsIssue, manifestIssue].filter((message): message is string => !!message);
   // Clamp page if the dataset shrinks (e.g. docs deleted) while user is on a later page
   const safePage = Math.min(currentPage, totalPages - 1);
   const pageStart = safePage * PAGE_SIZE;
@@ -159,7 +169,10 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             <ArrowLeft size={14} />
             RETURN TO SMELTER
           </button>
-          <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
+          <div className="flex items-center gap-2 sm:gap-4">
+            <DataHealthIndicator issues={activeIssues} />
+            <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
+          </div>
         </div>
       </header>
 

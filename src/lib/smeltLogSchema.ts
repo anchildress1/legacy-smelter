@@ -96,3 +96,50 @@ export function parseSmeltLog(docId: string, raw: unknown): SmeltLog {
     sanction_rationale: expectNullableString(raw, 'sanction_rationale', docId),
   };
 }
+
+interface SmeltLogDocLike {
+  id: string;
+  data(): unknown;
+}
+
+export interface ParseSmeltLogBatchResult {
+  readonly entries: SmeltLog[];
+  readonly invalidCount: number;
+}
+
+interface ParseSmeltLogBatchOptions {
+  readonly source: string;
+  readonly maxLoggedErrors?: number;
+}
+
+/**
+ * Strictly parses a batch of incident logs while keeping stream consumers
+ * resilient: malformed docs are counted and omitted, but never crash the
+ * whole snapshot handler.
+ */
+export function parseSmeltLogBatch(
+  docs: readonly SmeltLogDocLike[],
+  { source, maxLoggedErrors = 3 }: ParseSmeltLogBatchOptions,
+): ParseSmeltLogBatchResult {
+  const entries: SmeltLog[] = [];
+  let invalidCount = 0;
+
+  for (const d of docs) {
+    try {
+      entries.push(parseSmeltLog(d.id, d.data()));
+    } catch (error) {
+      invalidCount += 1;
+      if (invalidCount <= maxLoggedErrors) {
+        console.error(`[${source}] Skipping malformed incident_logs/${d.id}:`, error);
+      }
+    }
+  }
+
+  if (invalidCount > maxLoggedErrors) {
+    console.error(
+      `[${source}] Skipped ${invalidCount - maxLoggedErrors} additional malformed incident(s).`
+    );
+  }
+
+  return { entries, invalidCount };
+}
