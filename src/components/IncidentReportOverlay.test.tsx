@@ -263,7 +263,7 @@ describe('IncidentReportOverlay escalation error surface', () => {
     // The stats row DOM stays seeded from the initial analysis → no
     // NaN leaks into the rendered impact cell.
     const statsRow = screen.getByTestId('incident-stats-row');
-    expect(statsRow.getAttribute('data-live-stale')).toBe('schema');
+    expect(statsRow.dataset.liveStale).toBe('schema');
     expect(statsRow.textContent).not.toContain('NaN');
 
     consoleErrorSpy.mockRestore();
@@ -295,7 +295,7 @@ describe('IncidentReportOverlay escalation error surface', () => {
 
     const indicator = screen.getByTestId('incident-stale-indicator');
     expect(indicator.textContent).toMatch(/schema drift/i);
-    expect(screen.getByTestId('incident-stats-row').getAttribute('data-live-stale')).toBe('schema');
+    expect(screen.getByTestId('incident-stats-row').dataset.liveStale).toBe('schema');
     expect(screen.getByTestId('incident-stats-row').textContent).not.toContain('NaN');
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining('invalid counter fields'),
@@ -328,9 +328,7 @@ describe('IncidentReportOverlay escalation error surface', () => {
 
     const indicator = screen.getByTestId('incident-stale-indicator');
     expect(indicator.textContent).toMatch(/incident removed from archive/i);
-    expect(screen.getByTestId('incident-stats-row').getAttribute('data-live-stale')).toBe(
-      'removed',
-    );
+    expect(screen.getByTestId('incident-stats-row').dataset.liveStale).toBe('removed');
     consoleErrorSpy.mockRestore();
   });
 
@@ -350,9 +348,7 @@ describe('IncidentReportOverlay escalation error surface', () => {
 
     const indicator = screen.getByTestId('incident-stale-indicator');
     expect(indicator.textContent).toMatch(/subscription errored/i);
-    expect(screen.getByTestId('incident-stats-row').getAttribute('data-live-stale')).toBe(
-      'subscription',
-    );
+    expect(screen.getByTestId('incident-stats-row').dataset.liveStale).toBe('subscription');
     consoleErrorSpy.mockRestore();
   });
 

@@ -410,6 +410,10 @@ async function analyzeImage(base64Image, mimeType) {
 
 export const app = express();
 
+// Suppress the default `X-Powered-By: Express` header so the framework
+// does not advertise its identity/version to crawlers or attackers.
+app.disable('x-powered-by');
+
 // Trust one upstream proxy hop only when running behind Cloud Run's frontend.
 const isCloudRun = Boolean(process.env.K_SERVICE);
 app.set('trust proxy', isCloudRun ? 1 : false);

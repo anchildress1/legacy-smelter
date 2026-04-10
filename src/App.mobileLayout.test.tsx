@@ -118,8 +118,8 @@ describe('App mobile header layout', () => {
     // during their own mount effects even though we've stubbed them.
     // Provide a minimal shim so the render never reaches an undefined
     // property access.
-    if (typeof window.matchMedia !== 'function') {
-      window.matchMedia = vi.fn(() => ({
+    if (typeof globalThis.matchMedia !== 'function') {
+      globalThis.matchMedia = vi.fn(() => ({
         matches: false,
         media: '',
         onchange: null,
@@ -128,7 +128,7 @@ describe('App mobile header layout', () => {
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
         dispatchEvent: vi.fn(() => false),
-      })) as unknown as typeof window.matchMedia;
+      })) as unknown as typeof globalThis.matchMedia;
     }
   });
 

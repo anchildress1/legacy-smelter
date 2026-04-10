@@ -57,7 +57,7 @@ describe('escalationService', () => {
     const listener = vi.fn();
     const unsubscribe = subscribeEscalationStateChange(listener);
 
-    window.dispatchEvent(
+    globalThis.dispatchEvent(
       new CustomEvent('legacy-smelter:escalation-state-changed', {
         detail: { incidentId: 'inc-1', escalated: true },
       }),
@@ -67,7 +67,7 @@ describe('escalationService', () => {
 
     unsubscribe();
 
-    window.dispatchEvent(
+    globalThis.dispatchEvent(
       new CustomEvent('legacy-smelter:escalation-state-changed', {
         detail: { incidentId: 'inc-1', escalated: false },
       }),

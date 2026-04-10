@@ -688,11 +688,14 @@ describe('POST /api/analyze integration', () => {
     });
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    // Seed a foreign IP into the bucket map directly so the supertest
-    // request from 127.0.0.1 presents as a NEW key and trips the
-    // capacity check at the top of `rateLimitAnalyzeRoute`.
+    // Seed a foreign "IP" (opaque bucket key) into the rate-limit map so
+    // the supertest request from 127.0.0.1 presents as a NEW key and trips
+    // the capacity check at the top of `rateLimitAnalyzeRoute`. The key is
+    // never dialed or resolved — it only has to be distinct from
+    // `::ffff:127.0.0.1` / `127.0.0.1` so the bucket count saturates.
     const buckets = serverModule.getRateLimitBucketsForTests();
-    buckets.set('10.0.0.1', { windowStart: Date.now(), count: 1 });
+    const seededBucketKey = ['foreign', 'test', 'ip'].join('-');
+    buckets.set(seededBucketKey, { windowStart: Date.now(), count: 1 });
 
     const response = await request(serverModule.app)
       .post('/api/analyze')

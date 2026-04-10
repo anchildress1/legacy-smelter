@@ -18,7 +18,11 @@ const { pixiState, MockApplication, MockAnimatedSprite } = vi.hoisted(() => {
     }
 
     tick(deltaTime = 1) {
-      for (const fn of [...this.callbacks]) {
+      // Iterate the Set directly; `SmelterCanvas` registers a single ticker
+      // callback and the only mutation during a tick is `ticker.remove(fn)`
+      // from inside the failing callback itself, which Set iterators handle
+      // safely (the element is skipped if not yet visited, no-op otherwise).
+      for (const fn of this.callbacks) {
         fn({ deltaTime });
       }
     }

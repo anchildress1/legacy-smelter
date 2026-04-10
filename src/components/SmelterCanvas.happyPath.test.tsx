@@ -68,7 +68,9 @@ const { pixiState, MockApplication, MockAnimatedSprite, MockSprite, MockFilter }
       }
 
       tick(deltaTime = 1) {
-        for (const fn of [...this.callbacks]) {
+        // Iterate the Set directly; see SmelterCanvas.renderFailure.test.tsx
+        // for the rationale — single registered callback, safe removal.
+        for (const fn of this.callbacks) {
           fn({ deltaTime } as unknown as Parameters<TickerFn>[0]);
         }
       }

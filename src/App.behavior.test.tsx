@@ -109,10 +109,57 @@ vi.mock('./components/DataHealthIndicator', () => ({
 
 import App from './App';
 
+// Scoped helpers (hoisted to module scope so Sonar S7721 is happy and each
+// describe-block does not re-create them on every render).
+function stubFileReaderSuccess(payload: string): void {
+  class MockFileReader {
+    public onload: ((event: { target: { result: string } }) => void) | null = null;
+    public onerror: (() => void) | null = null;
+    public error: DOMException | null = null;
+    readAsDataURL() {
+      queueMicrotask(() => {
+        this.onload?.({ target: { result: `data:image/png;base64,${payload}` } });
+      });
+    }
+  }
+  vi.stubGlobal('FileReader', MockFileReader as unknown as typeof FileReader);
+}
+
+function stubFileReaderFailure(): void {
+  class MockFileReader {
+    public onload: ((event: { target: { result: string } }) => void) | null = null;
+    public onerror: (() => void) | null = null;
+    public error: DOMException | null = new DOMException('corrupt');
+    readAsDataURL() {
+      queueMicrotask(() => {
+        this.onerror?.();
+      });
+    }
+  }
+  vi.stubGlobal('FileReader', MockFileReader as unknown as typeof FileReader);
+}
+
+async function triggerFilePicker(file: File) {
+  const input = document.querySelector('input[accept="image/*"]') as HTMLInputElement;
+  // Simulate the ChangeEvent React produces. We bypass `fireEvent.change`
+  // here so the mocked FileList is attached directly to the input element.
+  Object.defineProperty(input, 'files', {
+    value: [file],
+    configurable: true,
+  });
+  await act(async () => {
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    // Allow the microtask queue to drain: FileReader.onload is queued in a
+    // microtask so React's state updates settle here.
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 describe('App state transitions', () => {
   beforeAll(() => {
-    if (typeof window.matchMedia !== 'function') {
-      window.matchMedia = vi.fn(() => ({
+    if (typeof globalThis.matchMedia !== 'function') {
+      globalThis.matchMedia = vi.fn(() => ({
         matches: false,
         media: '',
         onchange: null,
@@ -121,7 +168,7 @@ describe('App state transitions', () => {
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
         dispatchEvent: vi.fn(() => false),
-      })) as unknown as typeof window.matchMedia;
+      })) as unknown as typeof globalThis.matchMedia;
     }
   });
 
@@ -154,7 +201,7 @@ describe('App state transitions', () => {
       await waitFor(() => {
         const overlay = screen.queryByTestId('incident-report-overlay');
         expect(overlay).not.toBeNull();
-        expect(overlay?.getAttribute('data-incident-id')).toBe('inc-deeplink');
+        expect((overlay as HTMLElement | null)?.dataset.incidentId).toBe('inc-deeplink');
       });
     });
 
@@ -205,59 +252,12 @@ describe('App state transitions', () => {
   });
 
   describe('analyze-issue UI surface', () => {
-    // These tests exercise the code path inside `processImage` that
-    // runs the analyzer and routes an AnalysisError → a
-    // user-visible category message. Because `processImage` is not
-    // exported, we drive it through its actual call site: the file
-    // picker → FileReader → processImage flow. FileReader is stubbed
-    // so the onload handler fires synchronously with a base64 payload.
-
-    function stubFileReaderSuccess(payload: string): void {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      class MockFileReader {
-        public onload: ((event: { target: { result: string } }) => void) | null = null;
-        public onerror: (() => void) | null = null;
-        public error: DOMException | null = null;
-        readAsDataURL() {
-          queueMicrotask(() => {
-            this.onload?.({ target: { result: `data:image/png;base64,${payload}` } });
-          });
-        }
-      }
-      vi.stubGlobal('FileReader', MockFileReader as unknown as typeof FileReader);
-    }
-
-    function stubFileReaderFailure(): void {
-      class MockFileReader {
-        public onload: ((event: { target: { result: string } }) => void) | null = null;
-        public onerror: (() => void) | null = null;
-        public error: DOMException | null = new DOMException('corrupt');
-        readAsDataURL() {
-          queueMicrotask(() => {
-            this.onerror?.();
-          });
-        }
-      }
-      vi.stubGlobal('FileReader', MockFileReader as unknown as typeof FileReader);
-    }
-
-    async function triggerFilePicker(file: File) {
-      const input = document.querySelector('input[accept="image/*"]') as HTMLInputElement;
-      // Simulate the ChangeEvent React produces. We bypass
-      // `fireEvent.change` here so the mocked FileList is attached
-      // directly to the input element.
-      Object.defineProperty(input, 'files', {
-        value: [file],
-        configurable: true,
-      });
-      await act(async () => {
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        // Allow the microtask queue to drain: FileReader.onload is
-        // queued in a microtask so React's state updates settle here.
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-    }
+    // These tests exercise the code path inside `processImage` that runs the
+    // analyzer and routes an AnalysisError → a user-visible category
+    // message. Because `processImage` is not exported, we drive it through
+    // its actual call site: the file picker → FileReader → processImage
+    // flow. The `stubFileReader*` and `triggerFilePicker` helpers are
+    // defined at module scope above.
 
     it('shows a category-specific issue message when analyzer throws a 429 AnalysisError', async () => {
       const { AnalysisError } = await import('./services/geminiService');

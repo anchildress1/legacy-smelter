@@ -582,17 +582,18 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
             {/* Live-count staleness indicator. Mirrors the DataHealthIndicator
                 pattern from App.tsx so a user reading frozen counter values
-                gets a compact warning pill, not a silent stale view. `role=
-                status` (not `alert`) because this is passive information —
-                the user isn't blocked from dismissing the overlay. */}
+                gets a compact warning pill, not a silent stale view. Rendered
+                as a native `<output>` element (implicit `role="status"`) for
+                consistent accessibility across assistive technologies — some
+                screen readers fail to announce explicit `role="status"` on a
+                non-`<output>` element. */}
             {staleMessage && (
-              <p
-                role="status"
+              <output
                 data-testid="incident-stale-indicator"
-                className="text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
+                className="block text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
               >
                 {staleMessage}
-              </p>
+              </output>
             )}
 
             {/* Escalate */}

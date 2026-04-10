@@ -194,12 +194,12 @@ export function requireNonNegativeCounter(
 ): number {
   const value = data[key];
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(
+    throw new TypeError(
       `[sanction-incidents] incident_logs/${incidentId} has non-finite "${key}" (${String(value)}); refusing to write impact_score.`,
     );
   }
   if (value < 0) {
-    throw new Error(
+    throw new RangeError(
       `[sanction-incidents] incident_logs/${incidentId} has negative "${key}" (${value}); refusing to write impact_score.`,
     );
   }
@@ -348,6 +348,152 @@ export function prepareSanctionUpdate(
   };
 }
 
+/**
+ * Parse a Firestore batch of incident docs into Candidate[], rethrowing any
+ * `parseIncidentDoc` failure with a per-doc prefix so the operator can tell
+ * which doc crashed the batch. Malformed docs cannot be silently quarantined
+ * — there is no "evaluated but not selected" marker without `judged`.
+ * Crash loudly so the operator can fix the offending doc by hand.
+ */
+function buildCandidatesFromBatch(batch: readonly SanctionBatchDoc[]): Candidate[] {
+  const candidates: Candidate[] = [];
+  for (const d of batch) {
+    try {
+      candidates.push({
+        ...parseIncidentDoc(d.data(), d.id),
+        incident_id: d.id,
+      });
+    } catch (err) {
+      throw new Error(
+        `[sanction-incidents] incident_logs/${d.id} failed to parse: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
+  }
+  return candidates;
+}
+
+/**
+ * Run one Gemini judging attempt and return a normalized selection, or
+ * `null` if the attempt should be retried. The loop-termination condition
+ * (model failure vs. parse failure vs. invalid selection) is indistinguishable
+ * to the caller on purpose — all three should just retry up to
+ * `MAX_SELECTION_ATTEMPTS`.
+ */
+async function tryGeminiSelection(
+  ai: GoogleGenAI,
+  prompt: string,
+  candidates: Candidate[],
+  attempt: number,
+): Promise<SanctionSelection | null> {
+  try {
+    const response = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [{ parts: [{ text: prompt }] }],
+      config: { responseMimeType: 'application/json' },
+    });
+    const responseText = response.text?.trim();
+    if (!responseText) {
+      console.error(
+        `[sanction-incidents] Empty Gemini response (attempt ${attempt}/${MAX_SELECTION_ATTEMPTS}).`
+      );
+      return null;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(responseText);
+    } catch (parseErr) {
+      console.error(
+        `[sanction-incidents] Failed to parse Gemini response (attempt ${attempt}/${MAX_SELECTION_ATTEMPTS}):`,
+        parseErr
+      );
+      return null;
+    }
+
+    try {
+      return normalizeSelection(parsed, candidates);
+    } catch (selectionErr) {
+      console.error(
+        `[sanction-incidents] Invalid Gemini selection (attempt ${attempt}/${MAX_SELECTION_ATTEMPTS}):`,
+        selectionErr
+      );
+      return null;
+    }
+  } catch (modelErr) {
+    console.error(
+      `[sanction-incidents] Gemini call failed (attempt ${attempt}/${MAX_SELECTION_ATTEMPTS}):`,
+      modelErr
+    );
+    return null;
+  }
+}
+
+/**
+ * Ask Gemini for a sanction selection, retrying up to
+ * `MAX_SELECTION_ATTEMPTS` times. Throws if every attempt fails — the caller
+ * leaves the batch unmutated so the next run picks it up unchanged.
+ */
+async function selectSanctionCandidate(
+  ai: GoogleGenAI,
+  candidates: Candidate[],
+): Promise<SanctionSelection> {
+  const prompt = `${JUDGING_PROMPT}\n\n## Incidents\n\n${JSON.stringify(candidates, null, 2)}`;
+
+  for (let attempt = 1; attempt <= MAX_SELECTION_ATTEMPTS; attempt++) {
+    const selection = await tryGeminiSelection(ai, prompt, candidates, attempt);
+    if (selection) return selection;
+  }
+
+  // Re-running picks the same batch back up because nothing was mutated.
+  throw new Error(
+    `[sanction-incidents] Model failed to produce a valid sanction selection after ${MAX_SELECTION_ATTEMPTS} attempt(s).`
+  );
+}
+
+/**
+ * Process a single sanction batch: query the oldest 5 unsanctioned incidents,
+ * invoke Gemini, and commit the write. Returns `true` if a batch was
+ * committed; `false` if fewer than `MIN_BATCH` incidents remained (signal to
+ * exit the main loop).
+ */
+async function processSanctionBatch(ai: GoogleGenAI): Promise<boolean> {
+  // Pull the oldest 5 not-yet-sanctioned incidents. Non-selected docs from
+  // previous runs stay sanctioned: false and re-enter this query until they
+  // either win a batch or never do.
+  const unsanctionedSnap = await db
+    .collection('incident_logs')
+    .where('sanctioned', '==', false)
+    .orderBy('timestamp', 'asc')
+    .limit(MIN_BATCH)
+    .get();
+
+  console.log(`[sanction-incidents] ${unsanctionedSnap.size} unsanctioned incident(s) (limit ${MIN_BATCH})`);
+
+  if (unsanctionedSnap.size < MIN_BATCH) return false;
+
+  const batch = unsanctionedSnap.docs;
+  const candidates = buildCandidatesFromBatch(batch);
+
+  console.log('[sanction-incidents] Candidates:', candidates.map((c) => c.incident_id));
+
+  const selection = await selectSanctionCandidate(ai, candidates);
+
+  console.log(`[sanction-incidents] Sanctioned incident: ${selection.sanctioned_incident_id}`);
+  console.log(`[sanction-incidents] Rationale: ${selection.sanction_rationale}`);
+
+  // Only the selected doc is mutated. The other four stay sanctioned: false
+  // and re-enter the query on the next run, competing fresh against the next
+  // batch of incidents.
+  const { selectedDoc, updatePayload } = prepareSanctionUpdate(batch, selection);
+  const writeBatch = db.batch();
+  writeBatch.update(selectedDoc.ref, updatePayload);
+
+  await writeBatch.commit();
+  return true;
+}
+
 export async function runSanctionIncidents(): Promise<void> {
   console.log('[sanction-incidents] Starting run...');
   await ensureVotingFieldsMigration();
@@ -358,161 +504,58 @@ export async function runSanctionIncidents(): Promise<void> {
   }
 
   let processedBatches = 0;
+  let runError: unknown;
 
   try {
     // Build the Gemini client inside the try so that a missing/misconfigured
-    // API key still reaches the releaseRunLock path in `finally`. Otherwise a
+    // API key still reaches the releaseRunLock path below. Otherwise a
     // config error would leave the run lock held for the full TTL.
     const ai = new GoogleGenAI({ apiKey: requireGeminiApiKey() });
 
     // Keep processing full groups of 5 so sanctions do not lag during bursts.
     while (true) {
       await refreshRunLock();
-
-      // Pull the oldest 5 not-yet-sanctioned incidents. Non-selected docs
-      // from previous runs stay sanctioned: false and re-enter this query
-      // until they either win a batch or never do.
-      const unsanctionedSnap = await db
-        .collection('incident_logs')
-        .where('sanctioned', '==', false)
-        .orderBy('timestamp', 'asc')
-        .limit(MIN_BATCH)
-        .get();
-
-      console.log(`[sanction-incidents] ${unsanctionedSnap.size} unsanctioned incident(s) (limit ${MIN_BATCH})`);
-
-      if (unsanctionedSnap.size < MIN_BATCH) {
+      const committed = await processSanctionBatch(ai);
+      if (!committed) {
         if (processedBatches === 0) {
           console.log(`[sanction-incidents] < ${MIN_BATCH} unsanctioned — skipping, will retry next run.`);
         } else {
           console.log(`[sanction-incidents] Completed ${processedBatches} batch(es); waiting for the next 5 incidents.`);
         }
-        return;
+        break;
       }
-
-      const batch = unsanctionedSnap.docs;
-      const candidates: Candidate[] = [];
-
-      for (const d of batch) {
-        try {
-          candidates.push({
-            ...parseIncidentDoc(d.data(), d.id),
-            incident_id: d.id,
-          });
-        } catch (err) {
-          // Malformed docs cannot be silently quarantined any more —
-          // there is no "evaluated but not selected" marker without
-          // `judged`. Crash loudly so the operator can fix the offending
-          // doc instead of having the script paper over corrupt data.
-          throw new Error(
-            `[sanction-incidents] incident_logs/${d.id} failed to parse: ${
-              err instanceof Error ? err.message : String(err)
-            }`
-          );
-        }
-      }
-
-      console.log('[sanction-incidents] Candidates:', candidates.map((c) => c.incident_id));
-
-      const prompt = `${JUDGING_PROMPT}\n\n## Incidents\n\n${JSON.stringify(candidates, null, 2)}`;
-      let selection: SanctionSelection | null = null;
-      for (let attempt = 1; attempt <= MAX_SELECTION_ATTEMPTS && !selection; attempt++) {
-        try {
-          const response = await ai.models.generateContent({
-            model: GEMINI_MODEL,
-            contents: [{ parts: [{ text: prompt }] }],
-            config: { responseMimeType: 'application/json' },
-          });
-          const responseText = response.text?.trim();
-          if (!responseText) {
-            console.error(
-              `[sanction-incidents] Empty Gemini response (attempt ${attempt}/${MAX_SELECTION_ATTEMPTS}).`
-            );
-            continue;
-          }
-
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(responseText);
-          } catch (parseErr) {
-            console.error(
-              `[sanction-incidents] Failed to parse Gemini response (attempt ${attempt}/${MAX_SELECTION_ATTEMPTS}):`,
-              parseErr
-            );
-            continue;
-          }
-
-          try {
-            selection = normalizeSelection(parsed, candidates);
-          } catch (selectionErr) {
-            console.error(
-              `[sanction-incidents] Invalid Gemini selection (attempt ${attempt}/${MAX_SELECTION_ATTEMPTS}):`,
-              selectionErr
-            );
-          }
-        } catch (modelErr) {
-          console.error(
-            `[sanction-incidents] Gemini call failed (attempt ${attempt}/${MAX_SELECTION_ATTEMPTS}):`,
-            modelErr
-          );
-        }
-      }
-
-      if (!selection) {
-        // Re-running picks the same batch back up because nothing was
-        // mutated.
-        throw new Error(
-          `[sanction-incidents] Model failed to produce a valid sanction selection after ${MAX_SELECTION_ATTEMPTS} attempt(s).`
-        );
-      }
-
-      console.log(`[sanction-incidents] Sanctioned incident: ${selection.sanctioned_incident_id}`);
-      console.log(`[sanction-incidents] Rationale: ${selection.sanction_rationale}`);
-
-      // Only the selected doc is mutated. The other four stay
-      // sanctioned: false and re-enter the query on the next run,
-      // competing fresh against the next batch of incidents.
-      const { selectedDoc, updatePayload } = prepareSanctionUpdate(batch, selection);
-      const writeBatch = db.batch();
-      writeBatch.update(selectedDoc.ref, updatePayload);
-
-      await writeBatch.commit();
       processedBatches += 1;
       await refreshRunLock();
-
       console.log(`[sanction-incidents] Batch ${processedBatches} committed.`);
     }
   } catch (err) {
     // Record where the run got AND the underlying error so the operator can
-    // match a partial run against Firestore state on retry. The error object
-    // must be logged here because the `finally` below re-throws `releaseErr`
-    // on lock-release failure, which replaces `err` at the process boundary;
-    // without this log, the original crash evidence (stack, message, batch
-    // context) is permanently lost in the stuck-lock recovery scenario.
+    // match a partial run against Firestore state on retry. The error is
+    // captured here rather than thrown immediately so the releaseRunLock
+    // step below runs unconditionally — a naked `throw` in a `finally` is
+    // Sonar S1143 (and actually replaces the body error at the process
+    // boundary, losing the crash evidence).
     console.error(
       `[sanction-incidents] Aborting after ${processedBatches} committed batch(es):`,
       err
     );
-    throw err;
-  } finally {
-    // If lock release fails (e.g. `run_id` mismatch, transient Firestore
-    // error), the next scheduled run will see `Another run is in progress`
-    // and no-op silently — which looks like success but actually blocks
-    // sanctions for the full TTL. Re-throw so the caller's exit code
-    // reflects the stuck lock.
-    //
-    // If the body already threw, Node's spec-mandated behavior preserves the
-    // original exception when the `finally` completes normally; only a throw
-    // inside `finally` can replace it. We accept that trade-off: a stuck lock
-    // after a body error is strictly worse than losing the body error, since
-    // the former also blocks recovery. Log both so neither is lost.
-    try {
-      await releaseRunLock();
-    } catch (releaseErr) {
-      console.error('[sanction-incidents] Failed to release run lock:', releaseErr);
-      throw releaseErr;
-    }
+    runError = err;
   }
+
+  // Best-effort lock release. Runs whether the body succeeded or threw.
+  try {
+    await releaseRunLock();
+  } catch (releaseErr) {
+    console.error('[sanction-incidents] Failed to release run lock:', releaseErr);
+    // Only escalate the release failure when the body itself ran cleanly —
+    // otherwise the original crash evidence is strictly more valuable than
+    // the lock-release error. The 8-minute TTL bounds the stuck-lock blast
+    // radius; the next scheduled run will overwrite an expired lock via
+    // `acquireRunLock`.
+    if (runError === undefined) throw releaseErr;
+  }
+
+  if (runError !== undefined) throw runError;
 }
 
 const isMainModule = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

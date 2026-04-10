@@ -72,7 +72,7 @@ describe('useEscalation', () => {
     const { result } = renderHook(() => useEscalation('inc-2'));
 
     await act(async () => {
-      void result.current.toggle();
+      result.current.toggle().catch(() => {});
     });
     await waitFor(() => {
       expect(result.current.escalated).toBe(true);
@@ -110,7 +110,7 @@ describe('useEscalation', () => {
     // Trigger the toggle without awaiting — the promise is still pending
     // so the optimistic state should be observable before rollback.
     await act(async () => {
-      void result.current.toggle();
+      result.current.toggle().catch(() => {});
     });
     await waitFor(() => {
       expect(result.current.isToggling).toBe(true);
@@ -193,7 +193,7 @@ describe('useEscalation', () => {
     // Fire the second toggle without settling it — the hook must clear
     // the error and flip isToggling synchronously.
     await act(async () => {
-      void result.current.toggle();
+      result.current.toggle().catch(() => {});
     });
 
     await waitFor(() => {
@@ -260,7 +260,7 @@ describe('useEscalation', () => {
     );
 
     await act(async () => {
-      void result.current.toggle();
+      result.current.toggle().catch(() => {});
     });
 
     await waitFor(() => {

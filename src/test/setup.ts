@@ -12,7 +12,7 @@ function makeStorage(): Storage {
       map.clear();
     },
     getItem(key: string) {
-      return map.has(key) ? map.get(key)! : null;
+      return map.get(key) ?? null;
     },
     key(index: number) {
       return Array.from(map.keys())[index] ?? null;
@@ -41,13 +41,13 @@ beforeEach(() => {
     writable: true,
   });
 
-  if (typeof window !== 'undefined') {
-    Object.defineProperty(window, 'localStorage', {
+  if (typeof globalThis.window !== 'undefined') {
+    Object.defineProperty(globalThis.window, 'localStorage', {
       value: local,
       configurable: true,
       writable: true,
     });
-    Object.defineProperty(window, 'sessionStorage', {
+    Object.defineProperty(globalThis.window, 'sessionStorage', {
       value: session,
       configurable: true,
       writable: true,
