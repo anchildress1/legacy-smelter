@@ -1,25 +1,32 @@
-import { StrictMode, useState, useEffect, useCallback } from 'react';
+import { StrictMode, useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App.tsx';
-import { IncidentManifest } from './components/IncidentManifest.tsx';
 import './index.css';
+
+const App = lazy(() => import('./App.tsx'));
+const IncidentManifest = lazy(async () => {
+  const module = await import('./components/IncidentManifest.tsx');
+  return { default: module.IncidentManifest };
+});
 
 type Page = 'smelter' | 'manifest';
 
+const DEEP_LINK_PATH_RE = /\/s\/([^/?#]+)$/;
+
 function getPageFromHash(): Page {
-  try {
-    return window.location.hash === '#manifest' ? 'manifest' : 'smelter';
-  } catch {
-    return 'smelter';
-  }
+  return globalThis.location.hash === '#manifest' ? 'manifest' : 'smelter';
 }
 
 // Read the incident ID from /s/:id on initial load — deep link to a specific incident.
 function getDeepLinkId(): string | null {
+  const match = DEEP_LINK_PATH_RE.exec(globalThis.location.pathname);
+  if (!match) return null;
   try {
-    const match = window.location.pathname.match(/\/s\/([^/?#]+)$/);
-    return match ? decodeURIComponent(match[1]) : null;
-  } catch {
+    return decodeURIComponent(match[1]);
+  } catch (err) {
+    // decodeURIComponent throws URIError on malformed percent-encoding
+    // (e.g. /s/%E0%A4%A or bare "%" characters). Treat as no deep link
+    // rather than crashing the initial render.
+    console.error('[main] Invalid deep-link incident id encoding:', err);
     return null;
   }
 }
@@ -36,36 +43,52 @@ function Root() {
   // Preserve non-root base paths (e.g. /app/s/:id -> /app).
   useEffect(() => {
     if (!deepLinkId) return;
-    const cleanedPath = window.location.pathname.replace(/\/s\/[^/?#]+$/, '') || '/';
-    history.replaceState(null, '', `${cleanedPath}${window.location.search}${window.location.hash}`);
+    const cleanedPath = globalThis.location.pathname.replace(DEEP_LINK_PATH_RE, '') || '/';
+    globalThis.history.replaceState(null, '', `${cleanedPath}${globalThis.location.search}${globalThis.location.hash}`);
   }, [deepLinkId]);
 
   useEffect(() => {
     const sync = () => setPage(getPageFromHash());
-    window.addEventListener('hashchange', sync);
-    window.addEventListener('popstate', sync);
+    globalThis.addEventListener('hashchange', sync);
+    globalThis.addEventListener('popstate', sync);
     return () => {
-      window.removeEventListener('hashchange', sync);
-      window.removeEventListener('popstate', sync);
+      globalThis.removeEventListener('hashchange', sync);
+      globalThis.removeEventListener('popstate', sync);
     };
   }, []);
 
   const navigateTo = useCallback((p: Page) => {
     const url = p === 'smelter'
-      ? window.location.pathname + window.location.search
+      ? globalThis.location.pathname + globalThis.location.search
       : '#' + p;
-    history.pushState(null, '', url);
+    globalThis.history.pushState(null, '', url);
     setPage(p);
-    window.scrollTo(0, 0);
+    globalThis.scrollTo(0, 0);
   }, []);
 
+  const routeFallback = (
+    <div className="min-h-screen bg-concrete text-ash-white flex items-center justify-center">
+      <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+    </div>
+  );
+
   if (page === 'manifest') {
-    return <IncidentManifest onNavigateHome={() => navigateTo('smelter')} />;
+    return (
+      <Suspense fallback={routeFallback}>
+        <IncidentManifest onNavigateHome={() => navigateTo('smelter')} />
+      </Suspense>
+    );
   }
-  return <App onNavigateManifest={() => navigateTo('manifest')} deepLinkId={deepLinkId} />;
+  return (
+    <Suspense fallback={routeFallback}>
+      <App onNavigateManifest={() => navigateTo('manifest')} deepLinkId={deepLinkId} />
+    </Suspense>
+  );
 }
 
-createRoot(document.getElementById('root')!).render(
+const rootEl = document.getElementById('root');
+if (!rootEl) throw new Error('Root element #root not found');
+createRoot(rootEl).render(
   <StrictMode>
     <Root />
   </StrictMode>,

@@ -1,30 +1,43 @@
 /**
  * Legacy Smelter — API + OG pre-render server
  *
- * POST /api/analyze — proxies image analysis requests to Gemini, keeping the
- * API key server-side. In Cloud Run the key is injected from Google Secret
- * Manager via the GEMINI_API_KEY env var.
+ * POST /api/analyze — analyzes image with Gemini, writes the incident log to
+ * Firestore, and returns the analysis plus the new document ID. The client
+ * then plays the smelt animation and opens the overlay with a fully-persisted
+ * document (timestamp already resolved, no split-brain write path).
  *
  * GET /s/:id — injects incident-specific Open Graph meta tags into the HTML
  * so Slack and other platform crawlers receive meaningful unfurl data without
  * executing JS.
  *
- * Firestore data is fetched via the public REST API (no admin SDK required).
- * The client-side SPA then reads `/s/:id` and opens the incident overlay normally.
+ * Firestore OG lookups use the public REST API; incident writes use the
+ * firebase-admin SDK initialized in shared/admin-init.js.
  */
 
 import express from 'express';
-import { readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { GoogleGenAI, Type } from '@google/genai';
+import { FieldValue } from 'firebase-admin/firestore';
+import { imageSize } from 'image-size';
+import { getFiveDistinctColors } from './shared/colors.js';
+import { getDb, getAdminAuth } from './shared/admin-init.js';
 import 'dotenv/config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, 'dist');
 const PORT = process.env.PORT || 8080;
-const DEFAULT_APP_URL = 'https://hotfix.anchildress1.dev';
-const APP_URL = (process.env.VITE_APP_URL || DEFAULT_APP_URL).replace(/\/$/, '');
+const APP_URL_RAW = (process.env.VITE_APP_URL || '').trim();
+if (!APP_URL_RAW) {
+  throw new Error('[server] Missing required VITE_APP_URL (canonical share URL).');
+}
+let APP_URL = '';
+try {
+  APP_URL = new URL(APP_URL_RAW).toString().replace(/\/$/, '');
+} catch {
+  throw new Error(`[server] VITE_APP_URL must be an absolute URL. Received: "${APP_URL_RAW}"`);
+}
 
 function parsePositiveInt(rawValue, fallbackValue) {
   const parsed = Number.parseInt(rawValue ?? '', 10);
@@ -36,7 +49,7 @@ const API_RATE_LIMIT_MAX_REQUESTS = parsePositiveInt(process.env.API_RATE_LIMIT_
 
 const FIREBASE_API_KEY = process.env.VITE_FIREBASE_API_KEY;
 const FIREBASE_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID;
-const FIREBASE_DB_ID = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'legacy-smelter';
+const FIREBASE_DB_ID = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID;
 
 // GitHub banner used as the og:image for all incident shares
 const OG_IMAGE = 'https://repository-images.githubusercontent.com/1201373945/f2802097-2afe-4c31-848f-a94cc13ca0b1';
@@ -45,10 +58,10 @@ const OG_IMAGE_HEIGHT = '688';
 
 function esc(str) {
   return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
 }
 
 async function fetchIncident(docId) {
@@ -56,11 +69,16 @@ async function fetchIncident(docId) {
   const encodedDocId = encodeURIComponent(docId);
   const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_PROJECT_ID)}/databases/${encodedDb}/documents/incident_logs/${encodedDocId}?key=${FIREBASE_API_KEY}`;
   const res = await fetch(url);
-  if (!res.ok) return null;
+  if (res.status === 404) return { notFound: true };
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Firestore REST ${res.status}: ${body.slice(0, 200)}`);
+  }
   const data = await res.json();
-  if (!data.fields) return null;
+  if (!data.fields) throw new Error(`Firestore REST returned no fields for ${docId}`);
   const str = (k) => data.fields[k]?.stringValue ?? '';
   return {
+    notFound: false,
     og_headline: str('og_headline'),
     incident_feed_summary: str('incident_feed_summary'),
     severity: str('severity'),
@@ -68,9 +86,17 @@ async function fetchIncident(docId) {
   };
 }
 
-let _spaHtmlCache = null;
+// Read index.html once at startup so a missing build fails the server
+// immediately with an actionable error instead of the first request returning
+// a generic 500.
+let _spaHtmlCache;
+try {
+  _spaHtmlCache = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  throw new Error(`[server] Cannot read ${DIST}/index.html. Run "npm run build" first. Cause: ${msg}`);
+}
 function getSpaHtml() {
-  if (!_spaHtmlCache) _spaHtmlCache = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
   return _spaHtmlCache;
 }
 
@@ -102,18 +128,6 @@ function injectIncidentOg(html, incident, canonicalUrl) {
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 
-const FALLBACK_COLORS = ['#ffff00', '#00c3f5', '#4db542', '#fb0094', '#fc9103'];
-
-function getFiveDistinctColors(colors) {
-  const hexRegex = /^#([0-9a-f]{6})$/i;
-  const validColors = (colors || [])
-    .filter(c => typeof c === 'string')
-    .map(c => c.toLowerCase().trim())
-    .filter(c => hexRegex.test(c));
-  const uniqueSrc = Array.from(new Set(validColors));
-  const combined = Array.from(new Set([...uniqueSrc, ...FALLBACK_COLORS]));
-  return combined.slice(0, 5);
-}
 
 const GEMINI_PROMPT = `You are the incident analysis engine for Legacy Smelter. You analyze uploaded images and classify them as condemned technical artifacts requiring thermal decommission.
 
@@ -204,7 +218,12 @@ function normalizeSeverity(value) {
 
 const apiRateLimitBuckets = new Map();
 const API_RATE_LIMIT_MAX_BUCKETS = 10_000;
-const apiRateLimitSweep = setInterval(() => {
+// NOTE: this interval is intentionally NOT .unref()'d. When server.js is the
+// Node entry point, unrefing this timer causes the process to exit ~100ms
+// after app.listen() despite the HTTP server holding an open socket. The
+// interval is cheap (a Map sweep every 60s) and there's no graceful shutdown
+// path that would benefit from it being unref'd.
+setInterval(() => {
   const now = Date.now();
   for (const [key, bucket] of apiRateLimitBuckets.entries()) {
     if (now - bucket.windowStart >= API_RATE_LIMIT_WINDOW_MS) {
@@ -213,8 +232,28 @@ const apiRateLimitSweep = setInterval(() => {
   }
 }, Math.max(API_RATE_LIMIT_WINDOW_MS, 60_000));
 
-// Prevent the timer from keeping the process alive during shutdown.
-apiRateLimitSweep.unref();
+// Verify a Firebase ID token (anonymous or otherwise) on the Authorization
+// header. Rejects if missing/invalid. Attaches the decoded uid to req.authUid.
+async function requireFirebaseAuth(req, res, next) {
+  const header = req.headers.authorization;
+  if (typeof header !== 'string' || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing Authorization header.' });
+  }
+  const idToken = header.slice('Bearer '.length).trim();
+  if (!idToken) {
+    return res.status(401).json({ error: 'Empty bearer token.' });
+  }
+  try {
+    const decoded = await getAdminAuth().verifyIdToken(idToken);
+    req.authUid = decoded.uid;
+    return next();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+    console.error('[server][ERR_AUTH_TOKEN_INVALID] ip=%s: %s', clientIp, msg);
+    return res.status(401).json({ error: 'Invalid or expired ID token.' });
+  }
+}
 
 function rateLimitAnalyzeRoute(req, res, next) {
   const now = Date.now();
@@ -223,11 +262,16 @@ function rateLimitAnalyzeRoute(req, res, next) {
   // Reject when the bucket map is full and this is a new IP — prevents
   // unbounded memory growth from high-cardinality traffic.
   if (!apiRateLimitBuckets.has(clientIp) && apiRateLimitBuckets.size >= API_RATE_LIMIT_MAX_BUCKETS) {
+    console.warn(
+      '[server][ERR_RATE_LIMIT_BUCKET_FULL] bucket map at capacity (%d); rejecting %s',
+      API_RATE_LIMIT_MAX_BUCKETS,
+      clientIp
+    );
     return res.status(503).json({ error: 'Server busy. Try again shortly.' });
   }
 
   const currentBucket = apiRateLimitBuckets.get(clientIp);
-  const withinWindow = currentBucket && (now - currentBucket.windowStart) < API_RATE_LIMIT_WINDOW_MS;
+  const withinWindow = (now - currentBucket?.windowStart) < API_RATE_LIMIT_WINDOW_MS;
   const bucket = withinWindow
     ? { windowStart: currentBucket.windowStart, count: currentBucket.count + 1 }
     : { windowStart: now, count: 1 };
@@ -251,11 +295,30 @@ function rateLimitAnalyzeRoute(req, res, next) {
 
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif']);
 const MAX_BASE64_LENGTH = 9 * 1024 * 1024; // ~6.75 MB decoded
+const MAX_PIXEL_COUNT = 200_000_000; // 200 MP hard cap to prevent poisoned stats input
 
 let _aiClient = null;
 function getAiClient() {
   if (!_aiClient) _aiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
   return _aiClient;
+}
+
+function derivePixelCount(base64Image) {
+  const imageBytes = Buffer.from(base64Image, 'base64');
+  if (!imageBytes.length) {
+    throw new Error('Image payload is empty after base64 decode.');
+  }
+  const dimensions = imageSize(imageBytes);
+  const width = dimensions.width;
+  const height = dimensions.height;
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
+    throw new Error('Could not determine valid image dimensions.');
+  }
+  const pixelCount = width * height;
+  if (!Number.isSafeInteger(pixelCount) || pixelCount <= 0) {
+    throw new Error('Computed pixel count is invalid.');
+  }
+  return pixelCount;
 }
 
 async function analyzeImage(base64Image, mimeType) {
@@ -283,27 +346,42 @@ async function analyzeImage(base64Image, mimeType) {
   }
 
   const result = JSON.parse(responseText);
-  const rawColors = Array.isArray(result.dominant_hex_colors) ? result.dominant_hex_colors : [];
+
+  const requiredStringFields = [
+    'legacy_infra_class', 'diagnosis', 'chromatic_profile', 'system_dx',
+    'severity', 'primary_contamination', 'contributing_factor', 'failure_origin',
+    'disposition', 'incident_feed_summary', 'archive_note', 'og_headline',
+    'share_quote', 'anon_handle',
+  ];
+  for (const field of requiredStringFields) {
+    if (typeof result[field] !== 'string' || !result[field]) {
+      throw new Error(`Gemini response missing or empty required field: ${field}`);
+    }
+  }
+  if (!Array.isArray(result.dominant_hex_colors) || result.dominant_hex_colors.length === 0) {
+    throw new Error('Gemini response missing dominant_hex_colors array');
+  }
+  if (!Array.isArray(result.subject_box) || result.subject_box.length !== 4 || !result.subject_box.every(v => typeof v === 'number')) {
+    throw new Error('Gemini response has invalid subject_box (expected 4-number array)');
+  }
 
   return {
-    legacyInfraClass: String(result.legacy_infra_class || 'Unclassified Legacy Artifact'),
-    diagnosis: String(result.diagnosis || 'Artifact integrity compromised. Classification pending.'),
-    dominantColors: getFiveDistinctColors(rawColors),
-    chromaticProfile: String(result.chromatic_profile || 'Standard Slag Spectrum'),
-    systemDx: String(result.system_dx || 'Chronic Legacy Retention Syndrome'),
+    legacyInfraClass: result.legacy_infra_class,
+    diagnosis: result.diagnosis,
+    dominantColors: getFiveDistinctColors(result.dominant_hex_colors),
+    chromaticProfile: result.chromatic_profile,
+    systemDx: result.system_dx,
     severity: normalizeSeverity(result.severity),
-    primaryContamination: String(result.primary_contamination || 'unresolved dependencies'),
-    contributingFactor: String(result.contributing_factor || 'ambient technical debt'),
-    failureOrigin: String(result.failure_origin || 'Unauthorized backwards compatibility. Also, the architecture.'),
-    disposition: String(result.disposition || 'Critical. Immediate smelting required.'),
-    incidentFeedSummary: String(result.incident_feed_summary || 'Legacy artifact processed. Output: molten slag.'),
-    archiveNote: String(result.archive_note || 'Artifact of uncertain provenance. Thermal decommission complete. Incident archived.'),
-    ogHeadline: String(result.og_headline || 'Legacy artifact thermally decommissioned'),
-    shareQuote: String(result.share_quote || 'Hotfix deployed. Output: molten slag.'),
-    anonHandle: String(result.anon_handle || 'IncidentClerk_404'),
-    subjectBox: (Array.isArray(result.subject_box) && result.subject_box.length === 4 && result.subject_box.every(v => typeof v === 'number')
-      ? result.subject_box
-      : [100, 100, 900, 900]),
+    primaryContamination: result.primary_contamination,
+    contributingFactor: result.contributing_factor,
+    failureOrigin: result.failure_origin,
+    disposition: result.disposition,
+    incidentFeedSummary: result.incident_feed_summary,
+    archiveNote: result.archive_note,
+    ogHeadline: result.og_headline,
+    shareQuote: result.share_quote,
+    anonHandle: result.anon_handle,
+    subjectBox: result.subject_box,
   };
 }
 
@@ -324,32 +402,132 @@ app.use('/api', (req, res, next) => {
 // JSON body parsing — 10 MB limit for base64-encoded images
 app.use('/api', express.json({ limit: '10mb' }));
 
-// POST /api/analyze — accepts { image, mimeType } and returns SmeltAnalysis.
-// The Gemini API key stays server-side; the client never sees it.
-app.post('/api/analyze', rateLimitAnalyzeRoute, async (req, res) => {
+// Validates the POST /api/analyze body and normalizes it into
+// { image, mimeType }. Returns a `{ status, error }` tuple when the
+// payload is rejected so the handler can respond without nesting its
+// own try/catch around the validation branch.
+function validateAnalyzeRequestBody(body) {
+  const source = body && typeof body === 'object' ? body : {};
+  const { image, mimeType } = source;
+  if (typeof image !== 'string' || typeof mimeType !== 'string' || !image || !mimeType) {
+    return { status: 400, error: 'Request must include "image" (base64) and "mimeType".' };
+  }
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+    return { status: 400, error: 'Unsupported image type.' };
+  }
+  if (image.length > MAX_BASE64_LENGTH) {
+    return { status: 413, error: 'Image too large.' };
+  }
+  return { image, mimeType };
+}
+
+// Builds the Firestore admin-write batch for a successful analysis and
+// commits it. Kept separate from the route handler so the handler only
+// describes the request/response flow and doesn't include the ~40 lines
+// of field mapping that push it over the cognitive-complexity ceiling.
+async function persistIncident(analysis, pixelCount, authUid) {
+  const adminDb = getDb();
+  const logRef = adminDb.collection('incident_logs').doc();
+  const statsRef = adminDb.collection('global_stats').doc('main');
+  const [ymin, xmin, ymax, xmax] = analysis.subjectBox;
+  const writeBatch = adminDb.batch();
+  writeBatch.set(logRef, {
+    pixel_count: pixelCount,
+    incident_feed_summary: analysis.incidentFeedSummary,
+    color_1: analysis.dominantColors[0],
+    color_2: analysis.dominantColors[1],
+    color_3: analysis.dominantColors[2],
+    color_4: analysis.dominantColors[3],
+    color_5: analysis.dominantColors[4],
+    subject_box_ymin: ymin,
+    subject_box_xmin: xmin,
+    subject_box_ymax: ymax,
+    subject_box_xmax: xmax,
+    legacy_infra_class: analysis.legacyInfraClass,
+    diagnosis: analysis.diagnosis,
+    chromatic_profile: analysis.chromaticProfile,
+    system_dx: analysis.systemDx,
+    severity: analysis.severity,
+    primary_contamination: analysis.primaryContamination,
+    contributing_factor: analysis.contributingFactor,
+    failure_origin: analysis.failureOrigin,
+    disposition: analysis.disposition,
+    archive_note: analysis.archiveNote,
+    og_headline: analysis.ogHeadline,
+    share_quote: analysis.shareQuote,
+    anon_handle: analysis.anonHandle,
+    timestamp: FieldValue.serverTimestamp(),
+    uid: authUid,
+    breach_count: 0,
+    escalation_count: 0,
+    sanction_count: 0,
+    impact_score: 0,
+    sanctioned: false,
+    sanction_rationale: null,
+  });
+  writeBatch.set(
+    statsRef,
+    { total_pixels_melted: FieldValue.increment(pixelCount) },
+    { merge: true },
+  );
+  await writeBatch.commit();
+  return logRef.id;
+}
+
+// POST /api/analyze — accepts { image, mimeType } from an authenticated
+// Firebase user (anonymous is fine) via a Bearer ID token in the
+// Authorization header. Derives pixelCount from the image bytes, calls
+// Gemini, writes the incident_log and bumps global_stats in an atomic
+// batch, and returns SmeltAnalysis + { incidentId, pixelCount }.
+// The Gemini API key stays server-side; Firestore writes use the admin SDK
+// (which bypasses security rules), so auth is what protects global_stats
+// from being poisoned by anonymous bots.
+//
+// Middleware order (IMPORTANT): rate limiting runs BEFORE auth so that
+// unauthenticated floods — and malformed/expired token probes — cannot
+// exhaust the Firebase token verification path. CodeQL `js/missing-rate-limiting`
+// also requires the rate limiter to dominate the authorization check.
+app.post('/api/analyze', rateLimitAnalyzeRoute, requireFirebaseAuth, async (req, res) => {
   if (!GEMINI_API_KEY) {
     return res.status(500).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
   }
 
-  const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const { image, mimeType } = body;
-  if (typeof image !== 'string' || typeof mimeType !== 'string' || !image || !mimeType) {
-    return res.status(400).json({ error: 'Request must include "image" (base64) and "mimeType".' });
+  const validated = validateAnalyzeRequestBody(req.body);
+  if (validated.error) {
+    return res.status(validated.status).json({ error: validated.error });
   }
-  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-    return res.status(400).json({ error: 'Unsupported image type.' });
+  const { image, mimeType } = validated;
+
+  let pixelCount;
+  try {
+    pixelCount = derivePixelCount(image);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[server] Image dimension parse failed:', msg);
+    return res.status(400).json({ error: 'Invalid image payload.' });
   }
-  if (image.length > MAX_BASE64_LENGTH) {
-    return res.status(413).json({ error: 'Image too large.' });
+  if (pixelCount > MAX_PIXEL_COUNT) {
+    return res.status(413).json({ error: `Image dimensions exceed max pixel count (${MAX_PIXEL_COUNT}).` });
   }
 
+  let analysis;
   try {
-    const analysis = await analyzeImage(image, mimeType);
-    return res.json(analysis);
+    analysis = await analyzeImage(image, mimeType);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[server] Gemini analysis failed:', msg);
     return res.status(502).json({ error: 'Analysis failed. Try again shortly.' });
+  }
+
+  // Persist the incident log and bump the global pixel counter.
+  // Write is required — if Firestore rejects, return 502 and the client retries.
+  try {
+    const incidentId = await persistIncident(analysis, pixelCount, req.authUid);
+    return res.json({ ...analysis, incidentId, pixelCount });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[server] Firestore write failed:', msg);
+    return res.status(502).json({ error: 'Archive write failed. Try again shortly.' });
   }
 });
 
@@ -376,34 +554,63 @@ app.use('/api', (err, _req, res, _next) => {
   });
 });
 
+// Firestore auto-IDs are 20-char URL-safe alphanumerics. Rejecting anything
+// outside that alphabet short-circuits path traversal probes, log-injection
+// attempts (CRLF in the URL), and the Firestore REST call for garbage IDs
+// that would certainly 404. Applied at the route boundary so every downstream
+// consumer (logs, canonical URL, fetchIncident) can treat `id` as trusted.
+const VALID_INCIDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
 // Incident share URLs: /s/:id
 // Injects incident-specific OG meta tags so Slack, X, LinkedIn etc. unfurl correctly.
 // Crawlers stop at the meta tags; browsers get the full SPA and the React app
 // reads window.location.pathname to open the incident overlay.
 app.get('/s/:id', async (req, res, next) => {
   const { id } = req.params;
-  if (!FIREBASE_API_KEY || !FIREBASE_PROJECT_ID) return next();
-
-  try {
-    const incident = await fetchIncident(id);
-    if (!incident?.og_headline) return next();
-
-    const canonicalUrl = `${APP_URL}/s/${encodeURIComponent(id)}`;
-    const html = injectIncidentOg(getSpaHtml(), incident, canonicalUrl);
-    res.setHeader('Content-Type', 'text/html');
-    // CDN caches for 24h; browsers revalidate after 1h.
-    // Incident data is immutable after write, so long CDN TTL is safe.
-    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
-    return res.send(html);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[server] OG render failed for id=%s: %s', id, msg);
+  if (!FIREBASE_API_KEY || !FIREBASE_PROJECT_ID || !FIREBASE_DB_ID) {
+    console.warn('[server] OG route misconfigured (missing env); falling through to SPA');
     return next();
   }
+
+  // Anything that doesn't match the Firestore auto-ID shape can't resolve to
+  // a real document and shouldn't reach Firestore or the log pipeline at all.
+  // Falling through to the SPA matches the existing "not found" UX.
+  if (!VALID_INCIDENT_ID_PATTERN.test(id)) {
+    return next();
+  }
+
+  let incident;
+  try {
+    incident = await fetchIncident(id);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[server][ERR_OG_FETCH_FAILED] id=%s: %s', id, msg);
+    // Fallback to the generic SPA, but do NOT cache — a transient Firestore
+    // error should not poison the CDN for hours.
+    res.setHeader('Cache-Control', 'no-store');
+    return next();
+  }
+
+  if (incident.notFound) return next();
+  if (!incident.og_headline) {
+    console.error('[server][ERR_OG_EMPTY_HEADLINE] id=%s', id);
+    res.setHeader('Cache-Control', 'no-store');
+    return next();
+  }
+
+  const canonicalUrl = `${APP_URL}/s/${encodeURIComponent(id)}`;
+  const html = injectIncidentOg(getSpaHtml(), incident, canonicalUrl);
+  res.setHeader('Content-Type', 'text/html');
+  // OG fields (og_headline, incident_feed_summary, severity, legacy_infra_class)
+  // are never mutated after the initial server-side write in POST /api/analyze,
+  // so long CDN TTL is safe. If that ever changes, this cache must be
+  // shortened.
+  res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+  return res.send(html);
 });
 
 // Vite hashes all asset filenames — safe to cache for 1 year.
-// index.html is excluded: it must stay fresh so app updates propagate.
+// index.html is overridden to no-store below so app updates propagate.
 app.use(express.static(DIST, {
   maxAge: '1y',
   immutable: true,

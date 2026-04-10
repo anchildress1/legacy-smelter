@@ -4,8 +4,32 @@
       "collectionGroup": "incident_logs",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "judged", "order": "ASCENDING" },
+        { "fieldPath": "sanctioned", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incident_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "impact_score", "order": "DESCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incident_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "breach_count", "order": "DESCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "incident_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "escalation_count", "order": "DESCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
       ]
     }
   ],

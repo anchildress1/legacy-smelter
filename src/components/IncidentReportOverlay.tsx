@@ -1,13 +1,12 @@
 import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
-import { SmeltLog, Severity, computeImpact, withVotingDefaults } from '../types';
+import { SmeltLog, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
 import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
-import { toggleEscalation, hasEscalated, syncEscalationState } from '../services/escalationService';
+import { useEscalation } from '../hooks/useEscalation';
 import { db, doc, onSnapshot } from '../firebase';
 
-// analysis and log are mutually exclusive — exactly one should be non-null per call site
 interface OverlayProps {
   analysis?: SmeltAnalysis | null;
   log?: SmeltLog | null;
@@ -19,13 +18,15 @@ interface OverlayProps {
 interface NormalisedReport {
   legacyInfraClass: string;
   incidentFeedSummary: string;
-  severity: Severity;
+  severity: string;
+  diagnosis: string;
   failureOrigin: string;
   primaryContamination: string;
   contributingFactor: string;
   systemDx: string;
   disposition: string;
   archiveNote: string;
+  shareQuote: string;
   anonHandle: string;
   chromaticProfile: string;
   dominantColors: string[];
@@ -37,41 +38,38 @@ interface NormalisedReport {
   timestamp: Date | null;
 }
 
-const FOCUSABLE_SELECTOR = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled]):not([type="hidden"])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])'
-].join(',');
-
-function getFocusableElements(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-    .filter((el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
-}
-
 function buildMarkdown(
   report: NormalisedReport,
   liveBreachCount: number,
   liveEscalationCount: number,
-  liveSanctionCount: number
+  liveSanctionCount: number,
+  liveTimestamp: Date | null
 ): string {
-  const impact = computeImpact(liveSanctionCount, liveEscalationCount, liveBreachCount);
+  const liveCounts = { sanction_count: liveSanctionCount, escalation_count: liveEscalationCount, breach_count: liveBreachCount };
+  const impact = computeImpact(liveCounts);
   const lines: string[] = [
     `# ${report.legacyInfraClass}`,
     '',
     report.incidentFeedSummary,
+    '',
+    `**Diagnosis:** ${report.diagnosis}`,
+  ];
+
+  if (report.shareQuote) {
+    lines.push('', `> ${report.shareQuote}`);
+  }
+
+  lines.push(
     '',
     `**Severity:** ${report.severity}`,
     `**Impact:** ${impact}`,
     `**Sanctions:** ${liveSanctionCount}`,
     `**Escalations:** ${liveEscalationCount}`,
     `**Containment Breaches:** ${liveBreachCount}`,
-  ];
+  );
 
-  if (report.timestamp) {
-    lines.push(`**Filed:** ${formatTimestamp(report.timestamp)}`);
+  if (liveTimestamp) {
+    lines.push(`**Filed:** ${formatTimestamp(liveTimestamp)}`);
   }
 
   const telemetry = [
@@ -105,12 +103,14 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       legacyInfraClass: a.legacyInfraClass,
       incidentFeedSummary: a.incidentFeedSummary,
       severity: a.severity,
+      diagnosis: a.diagnosis,
       failureOrigin: a.failureOrigin,
       primaryContamination: a.primaryContamination,
       contributingFactor: a.contributingFactor,
       systemDx: a.systemDx,
       disposition: a.disposition,
       archiveNote: a.archiveNote,
+      shareQuote: a.shareQuote,
       anonHandle: a.anonHandle,
       chromaticProfile: a.chromaticProfile,
       dominantColors: a.dominantColors,
@@ -123,26 +123,27 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
     };
   }
   if (l) {
-    const n = withVotingDefaults(l);
     return {
-      legacyInfraClass: n.legacy_infra_class,
-      incidentFeedSummary: n.incident_feed_summary,
-      severity: n.severity,
-      failureOrigin: n.failure_origin,
-      primaryContamination: n.primary_contamination,
-      contributingFactor: n.contributing_factor,
-      systemDx: n.system_dx,
-      disposition: n.disposition,
-      archiveNote: n.archive_note,
-      anonHandle: n.anon_handle,
-      chromaticProfile: n.chromatic_profile,
-      dominantColors: getFiveDistinctColors([n.color_1, n.color_2, n.color_3, n.color_4, n.color_5]),
-      sanctionCount: n.sanction_count,
-      breachCount: n.breach_count,
-      escalationCount: n.escalation_count,
-      sanctioned: n.sanctioned,
-      sanctionRationale: n.sanction_rationale ?? null,
-      timestamp: n.timestamp?.toDate?.() ?? null,
+      legacyInfraClass: l.legacy_infra_class,
+      incidentFeedSummary: l.incident_feed_summary,
+      severity: l.severity,
+      diagnosis: l.diagnosis,
+      failureOrigin: l.failure_origin,
+      primaryContamination: l.primary_contamination,
+      contributingFactor: l.contributing_factor,
+      systemDx: l.system_dx,
+      disposition: l.disposition,
+      archiveNote: l.archive_note,
+      shareQuote: l.share_quote,
+      anonHandle: l.anon_handle,
+      chromaticProfile: l.chromatic_profile,
+      dominantColors: getFiveDistinctColors([l.color_1, l.color_2, l.color_3, l.color_4, l.color_5]),
+      sanctionCount: l.sanction_count,
+      breachCount: l.breach_count,
+      escalationCount: l.escalation_count,
+      sanctioned: l.sanctioned,
+      sanctionRationale: l.sanction_rationale,
+      timestamp: l.timestamp.toDate(),
     };
   }
   return null;
@@ -183,46 +184,137 @@ const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> =
   },
 };
 
-export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose }) => {
-  const report = normalise(analysis, log);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const lastActiveElementRef = useRef<HTMLElement | null>(null);
-  const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
-  const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
-  const [liveSanctionCount, setLiveSanctionCount] = useState<number>(report?.sanctionCount ?? 0);
-  const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
-  const [liveEscalationCount, setLiveEscalationCount] = useState<number>(report?.escalationCount ?? 0);
-  const [escalated, setEscalated] = useState<boolean>(() => incidentId ? hasEscalated(incidentId) : false);
-  const [isTogglingEscalation, setIsTogglingEscalation] = useState(false);
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const headingId = useId();
+function assertOverlayInputs(
+  analysis: SmeltAnalysis | null | undefined,
+  log: SmeltLog | null | undefined,
+  incidentId: string | null | undefined,
+): void {
+  if (!import.meta.env.DEV) return;
+  if (analysis && log) {
+    throw new Error('IncidentReportOverlay: pass `analysis` OR `log`, never both.');
+  }
+  if ((analysis || log) && !incidentId) {
+    console.warn('IncidentReportOverlay: `incidentId` should be set when analysis or log is provided.');
+  }
+}
 
-  // Sync escalation state with Firestore on mount
+interface LiveCounts {
+  sanction: number;
+  breach: number;
+  escalation: number;
+  timestamp: Date | null;
+}
+
+function useLiveIncidentCounts(
+  incidentId: string | null | undefined,
+  seed: NormalisedReport | null,
+): [LiveCounts, React.Dispatch<React.SetStateAction<LiveCounts>>] {
+  const [counts, setCounts] = useState<LiveCounts>(() => ({
+    sanction: seed?.sanctionCount ?? 0,
+    breach: seed?.breachCount ?? 0,
+    escalation: seed?.escalationCount ?? 0,
+    timestamp: seed?.timestamp ?? null,
+  }));
+
+  // Re-seed from the report whenever the incident changes. Keeping the
+  // local seed behind an effect (instead of inside render) prevents a
+  // stale overlay reopen from rendering the previous incident's counts
+  // for a frame.
   useEffect(() => {
-    if (!incidentId) return;
-    let cancelled = false;
-    syncEscalationState(incidentId)
-      .then((state) => { if (!cancelled) setEscalated(state); })
-      .catch((err) => { console.error('[IncidentReportOverlay] syncEscalationState failed:', err); });
-    return () => { cancelled = true; };
+    setCounts({
+      sanction: seed?.sanctionCount ?? 0,
+      breach: seed?.breachCount ?? 0,
+      escalation: seed?.escalationCount ?? 0,
+      timestamp: seed?.timestamp ?? null,
+    });
+    // Re-run only when the incident itself changes. `seed` is a fresh
+    // object every render so including it would cause a re-seed loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incidentId]);
 
-  // Live-subscribe to counter fields while overlay is open
   useEffect(() => {
     if (!incidentId) return;
     return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
-      if (snap.exists()) {
-        const live = withVotingDefaults({ id: snap.id, ...snap.data() } as SmeltLog);
-        setLiveSanctionCount(live.sanction_count);
-        setLiveBreachCount(live.breach_count);
-        setLiveEscalationCount(live.escalation_count);
+      if (!snap.exists()) {
+        console.error(`[IncidentReportOverlay] incident_logs/${incidentId} removed from archive while overlay open.`);
+        return;
       }
+      const data = snap.data();
+      const sc = data.sanction_count;
+      const bc = data.breach_count;
+      const ec = data.escalation_count;
+      if (typeof sc !== 'number' || typeof bc !== 'number' || typeof ec !== 'number') {
+        console.error(
+          `[IncidentReportOverlay] incident_logs/${incidentId} has non-numeric counter fields`,
+          { sanction_count: sc, breach_count: bc, escalation_count: ec }
+        );
+        return;
+      }
+      const ts = data.timestamp;
+      const nextTimestamp = ts && typeof ts.toDate === 'function' ? ts.toDate() as Date : null;
+      setCounts({ sanction: sc, breach: bc, escalation: ec, timestamp: nextTimestamp });
     }, (error) => {
       console.error('[IncidentReportOverlay] Live count subscription failed:', error);
     });
   }, [incidentId]);
+
+  return [counts, setCounts];
+}
+
+/**
+ * Drives the native <dialog> element's open/close lifecycle. `showModal()`
+ * handles focus trapping, the ::backdrop, body scroll inhibition, and the
+ * `cancel` (Escape) event for us — every piece of manual machinery this
+ * component used to carry. The caller wires the returned ref to the
+ * <dialog> and binds `onCancel` to `preventDefault() + onClose()` so the
+ * browser's default Escape handling doesn't skip the parent's state
+ * cleanup.
+ */
+function useModalDialog(onClose: () => void): React.RefObject<HTMLDialogElement | null> {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || dialog.open) return;
+    dialog.showModal();
+    return () => {
+      if (dialog.open) dialog.close();
+    };
+  }, []);
+  // Escape closes the dialog via the `cancel` event; forward that to the
+  // parent's onClose so React state stays in sync with the DOM state.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const handleCancel = (e: Event) => {
+      e.preventDefault();
+      onClose();
+    };
+    dialog.addEventListener('cancel', handleCancel);
+    return () => dialog.removeEventListener('cancel', handleCancel);
+  }, [onClose]);
+  return dialogRef;
+}
+
+export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose }) => {
+  assertOverlayInputs(analysis, log, incidentId);
+  const report = normalise(analysis, log);
+  const dialogRef = useModalDialog(onClose);
+  const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
+  const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
+  const [counts] = useLiveIncidentCounts(incidentId, report);
+  const liveCountsForImpact = {
+    sanction_count: counts.sanction,
+    escalation_count: counts.escalation,
+    breach_count: counts.breach,
+  };
+  const {
+    escalated,
+    isToggling: isTogglingEscalation,
+    toggle: toggleEscalate,
+  } = useEscalation(incidentId ?? null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const headingId = useId();
 
   // Derive incident URL from incidentId — used for the copy-link button
   const incidentUrl = incidentId ? buildIncidentUrl(incidentId) : null;
@@ -234,346 +326,271 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     };
   }, []);
 
+  // Backdrop click-to-close: clicks on the <dialog> element itself
+  // (not a descendant) mean the user clicked the translucent backdrop.
+  // Registered as an imperative listener instead of a JSX `onClick` so
+  // the a11y linter (S6847) doesn't flag <dialog> as a non-interactive
+  // element with a mouse handler — keyboard dismiss is handled via the
+  // native `cancel` event in useModalDialog above.
   useEffect(() => {
-    lastActiveElementRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    panelRef.current?.focus();
-
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (e.key !== 'Tab' || !panelRef.current) return;
-
-      const focusables = getFocusableElements(panelRef.current);
-      if (focusables.length === 0) {
-        e.preventDefault();
-        panelRef.current.focus();
-        return;
-      }
-
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      const activeEl = document.activeElement as HTMLElement | null;
-      const isInsidePanel = activeEl ? panelRef.current.contains(activeEl) : false;
-
-      if (e.shiftKey) {
-        if (!isInsidePanel || activeEl === first) {
-          e.preventDefault();
-          last.focus();
-        }
-        return;
-      }
-
-      if (!isInsidePanel || activeEl === last) {
-        e.preventDefault();
-        first.focus();
-      }
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const handleBackdropClick = (e: MouseEvent) => {
+      if (e.target === dialog) onClose();
     };
-
-    document.addEventListener('keydown', handleKey);
-    return () => {
-      document.removeEventListener('keydown', handleKey);
-      lastActiveElementRef.current?.focus();
-    };
-  }, [onClose]);
-
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
+    dialog.addEventListener('click', handleBackdropClick);
+    return () => dialog.removeEventListener('click', handleBackdropClick);
+  }, [dialogRef, onClose]);
 
   if (!report) return null;
 
-  const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === overlayRef.current) onClose();
+  // Breaches feed the Impact score (2× weight) and drive the P0 feed sort —
+  // this is product state, not analytics. All failures (Firestore errors,
+  // unexpected throws, skipped states) are logged to the console only —
+  // there is no user-facing error surface.
+  const recordBreachAsync = () => {
+    if (!incidentId) return;
+    recordBreach(incidentId)
+      .then((result) => {
+        if (result.ok || result.skipped) return;
+        console.error('[IncidentReportOverlay] Breach record failed:', result.error);
+      })
+      .catch((err) => {
+        console.error('[IncidentReportOverlay] Breach record threw unexpectedly:', err);
+      });
   };
 
   const handleCopyText = async () => {
     try {
-      await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount, liveEscalationCount, liveSanctionCount));
-      handleBreach();
+      await navigator.clipboard.writeText(buildMarkdown(report, counts.breach, counts.escalation, counts.sanction, counts.timestamp));
       setCopyTextState('copied');
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
       copyTimeoutRef.current = setTimeout(() => setCopyTextState('idle'), 2000);
+      recordBreachAsync();
     } catch (err) {
       console.error('[IncidentReportOverlay] Clipboard write failed:', err);
     }
   };
 
-  // Fire-and-forget: breach recording is best-effort analytics.
-  // recordBreach handles its own errors internally.
-  const handleBreach = () => {
-    if (incidentId) void recordBreach(incidentId);
-  };
-
-  const handleEscalate = async () => {
-    if (!incidentId || isTogglingEscalation) return;
-    setIsTogglingEscalation(true);
-    try {
-      const wasEscalated = escalated;
-      setEscalated(!wasEscalated);
-      const newState = await toggleEscalation(incidentId);
-      if (newState === wasEscalated) setEscalated(wasEscalated);
-    } catch (err) {
-      console.error('[IncidentReportOverlay] Escalation failed:', err);
-    } finally {
-      setIsTogglingEscalation(false);
-    }
+  const handleEscalate = () => {
+    toggleEscalate().catch((err: unknown) => {
+      console.error('[IncidentReportOverlay] toggleEscalate failed:', err);
+    });
   };
 
   const handleCopyLink = async () => {
     if (!incidentUrl) return;
     try {
       await navigator.clipboard.writeText(incidentUrl);
-      handleBreach();
       setCopyLinkState('copied');
       if (copyLinkTimeoutRef.current !== null) clearTimeout(copyLinkTimeoutRef.current);
       copyLinkTimeoutRef.current = setTimeout(() => setCopyLinkState('idle'), 2000);
+      recordBreachAsync();
     } catch (err) {
       console.error('[IncidentReportOverlay] Clipboard write failed:', err);
     }
   };
 
-  const platforms = (shareLinks || []).filter(l => SHARE_PLATFORMS[l.label]);
+  const platforms = (shareLinks ?? []).filter(l => SHARE_PLATFORMS[l.label]);
 
   return (
-    <div
-      ref={overlayRef}
-      onClick={handleBackdropClick}
-      className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6"
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={headingId}
+      className="bg-transparent p-0 m-0 max-w-none max-h-none w-screen h-[100dvh] backdrop:bg-black/80 backdrop:backdrop-blur-sm open:flex items-end sm:items-center justify-center sm:p-4"
     >
-      {/* Card — full-screen on mobile, constrained modal on desktop */}
       <div
-        ref={panelRef}
-        className="bg-concrete-light w-full sm:max-w-3xl lg:max-w-4xl sm:rounded-xl border-t sm:border border-concrete-border shadow-2xl max-h-[100dvh] sm:max-h-[85vh] overflow-y-auto sm:overflow-hidden sm:flex outline-none"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={headingId}
-        tabIndex={-1}
+        className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
       >
-        {/* Color palette strip — left on desktop, top on mobile */}
-        <div className="hidden sm:flex w-2 shrink-0 flex-col rounded-l-xl overflow-hidden" aria-hidden="true">
-          {report.dominantColors.map((color, i) => (
-            <div key={i} className="flex-1" style={{ backgroundColor: color }} />
-          ))}
-        </div>
-        <div className="flex sm:hidden h-1.5 w-full shrink-0" aria-hidden="true">
-          {report.dominantColors.map((color, i) => (
-            <div key={i} className="flex-1" style={{ backgroundColor: color }} />
+        {/* Color strip — always left */}
+        <div className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden" aria-hidden="true">
+          {report.dominantColors.map((color) => (
+            <div key={color} className="flex-1" style={{ backgroundColor: color }} />
           ))}
         </div>
 
-        {/* Content — fixed header zone + scrollable details on desktop */}
-        <div className="sm:flex-1 sm:min-w-0 sm:flex sm:flex-col sm:overflow-hidden">
-          {/* Hazard stripe */}
-          <div className="hazard-stripe h-1.5 w-full shrink-0" />
+        {/* Main content column */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 
-          {/* ── TOP ACTION BAR: label + share icons + close ── */}
-          <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-concrete-border">
-            <h2 id={headingId} className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
-              INCIDENT POSTMORTEM
-            </h2>
-            <div className="flex items-center gap-1.5">
-              {platforms.map(({ label, href }) => {
-                const cfg = SHARE_PLATFORMS[label];
-                return (
-                  <a
-                    key={label}
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={handleBreach}
-                    className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
-                    aria-label={`Post to ${cfg.name}`}
-                    title={`Post to ${cfg.name}`}
-                  >
-                    {cfg.icon}
-                  </a>
-                );
-              })}
-              {incidentUrl && (
-                <button
-                  onClick={handleCopyLink}
-                  className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
-                  aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
-                  title={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
+        {/* ── HEADER BAR ── */}
+        <div className="shrink-0 flex items-center justify-between gap-2 px-5 sm:px-8 py-2.5">
+          <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
+            Postmortem
+          </h2>
+          <div className="flex items-center gap-1 shrink-0">
+            {platforms.map(({ label, href }) => {
+              const cfg = SHARE_PLATFORMS[label];
+              return (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={recordBreachAsync}
+                  className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                  aria-label={`Post to ${cfg.name}`}
+                  title={cfg.name}
                 >
-                  {copyLinkState === 'copied'
-                    ? <Check size={12} aria-hidden="true" />
-                    : <Link2 size={12} aria-hidden="true" />}
-                </button>
-              )}
+                  {cfg.icon}
+                </a>
+              );
+            })}
+            {incidentUrl && (
               <button
-                onClick={handleCopyText}
-                className="w-7 h-7 flex items-center justify-center rounded-md bg-concrete-mid border border-concrete-border text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber active:scale-95"
-                aria-label={copyTextState === 'copied' ? 'Text copied' : 'Copy text'}
-                title={copyTextState === 'copied' ? 'Text copied' : 'Copy text'}
+                onClick={handleCopyLink}
+                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
+                title={copyLinkState === 'copied' ? 'Copied!' : 'Copy link'}
               >
-                {copyTextState === 'copied'
-                  ? <Check size={12} aria-hidden="true" />
-                  : <Copy size={12} aria-hidden="true" />}
+                {copyLinkState === 'copied' ? <Check size={12} /> : <Link2 size={12} />}
               </button>
-              <button
-                onClick={onClose}
-                className="w-7 h-7 flex items-center justify-center rounded-full bg-concrete-mid/80 text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
-                aria-label="Close report"
-              >
-                <X size={15} aria-hidden="true" />
-              </button>
-            </div>
+            )}
+            <button
+              onClick={handleCopyText}
+              className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+              aria-label={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
+              title={copyTextState === 'copied' ? 'Copied!' : 'Copy brief'}
+            >
+              {copyTextState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+            <div className="w-px h-4 bg-[#333] mx-0.5" aria-hidden="true" />
+            <button
+              onClick={onClose}
+              className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+              aria-label="Close report"
+            >
+              <X size={14} />
+            </button>
           </div>
+        </div>
 
-          {/* ── NON-SCROLLING HEADER ZONE ── */}
-          <div className="shrink-0 p-5 sm:p-6">
-            <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-bold leading-tight">
-              {report.legacyInfraClass}
-            </p>
-            <p className="text-ash-white font-mono text-sm sm:text-base leading-snug mt-1.5">
+        {/* Hazard stripe — under header, consistent with manifest */}
+        <div className="hazard-stripe h-1 w-full shrink-0" />
+
+        {/* ── SCROLLABLE BODY ── */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-5 sm:px-8 py-5 sm:py-6 space-y-5">
+
+            {/* Title + severity */}
+            <div>
+              <div className="flex justify-between items-start gap-3">
+                <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
+                  {report.legacyInfraClass}
+                </p>
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold shrink-0">
+                  <AlertTriangle size={8} aria-hidden="true" />
+                  {report.severity}
+                </span>
+              </div>
+              {counts.sanction > 0 && (
+                <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold">
+                  <ShieldCheck size={9} aria-hidden="true" />
+                  Sanctioned
+                </span>
+              )}
+            </div>
+
+            {/* Summary */}
+            <p className="text-ash-white font-mono text-sm leading-relaxed">
               {report.incidentFeedSummary}
             </p>
-            <div className="flex items-center gap-3 mt-2.5 flex-wrap">
-              {liveSanctionCount > 0 && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-950 bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold">
-                  <ShieldCheck size={11} aria-hidden="true" />
-                  SANCTIONED
-                </span>
-              )}
-              <span
-                className="inline-flex items-center gap-1.5 text-xs font-mono text-concrete-light bg-hazard-amber px-2.5 py-1 rounded uppercase font-bold"
-              >
-                <AlertTriangle size={10} aria-hidden="true" />
-                {report.severity}
-              </span>
-              {report.timestamp && (
-                <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest ml-auto">
-                  {formatTimestamp(report.timestamp)}
-                </span>
-              )}
+
+            {/* Quote — the star */}
+            <div className="border-l-2 border-hazard-amber pl-4 py-1">
+              <p className="text-hazard-amber font-mono text-base sm:text-lg italic leading-snug">
+                "{report.shareQuote}"
+              </p>
             </div>
-            {/* Scores: ordered by point weight (impact, sanctions, escalations, breaches) */}
-            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-concrete-border">
-              <div className="text-center">
-                <div className="text-hazard-amber font-mono text-lg font-black leading-none">
-                  {computeImpact(liveSanctionCount, liveEscalationCount, liveBreachCount)}
+
+            {/* Stats row */}
+            <div className="flex items-baseline justify-between py-3 border-y border-[#2a2a2a]">
+              {[
+                { value: computeImpact(liveCountsForImpact), label: 'Impact' },
+                { value: counts.sanction, label: 'Sanctions' },
+                { value: counts.escalation, label: 'Escalations' },
+                { value: counts.breach, label: 'Breaches' },
+              ].map(({ value, label }) => (
+                <div key={label} className="text-center">
+                  <div className="text-hazard-amber font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
+                  <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-stone-gray">{label}</div>
                 </div>
-                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">IMPACT</div>
-              </div>
-              <div className="w-px h-8 bg-concrete-border" />
-              <div className="text-center">
-                <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveSanctionCount}</div>
-                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">SANCTIONS</div>
-              </div>
-              <div className="w-px h-8 bg-concrete-border" />
-              <div className="text-center">
-                <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveEscalationCount}</div>
-                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">ESCALATIONS</div>
-              </div>
-              <div className="w-px h-8 bg-concrete-border" />
-              <div className="text-center">
-                <div className="text-hazard-amber font-mono text-lg font-black leading-none">{liveBreachCount}</div>
-                <div className="text-stone-gray font-mono text-[9px] uppercase tracking-widest mt-0.5">BREACHES</div>
-              </div>
-              {incidentId && (
-                <>
-                  <div className="w-px h-8 bg-concrete-border ml-auto" />
-                  <button
-                    onClick={handleEscalate}
-                    disabled={isTogglingEscalation}
-                    className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
-                      escalated
-                        ? 'text-hazard-amber bg-hazard-amber/15'
-                        : 'text-dead-gray hover:text-stone-gray hover:bg-concrete-mid/50'
-                    } ${isTogglingEscalation ? 'opacity-50' : ''}`}
-                    aria-label={escalated ? 'Remove escalation' : 'Escalate'}
-                    title={escalated ? 'De-escalate' : 'Escalate'}
-                  >
-                    <Siren size={20} />
-                    <span className="text-stone-gray font-mono text-[9px] uppercase tracking-widest">ESCALATE</span>
-                  </button>
-                </>
-              )}
+              ))}
             </div>
-          </div>
 
-          {/* ── SCROLLABLE TELEMETRY ZONE ── */}
-          <div className="sm:flex-1 sm:overflow-y-auto border-t border-concrete-border px-5 sm:px-6 pb-6 space-y-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset" tabIndex={0} role="region" aria-label="Incident details">
-
-            {/* Telemetry fields */}
-            {(report.failureOrigin || report.primaryContamination || report.contributingFactor || report.systemDx) && (
-              <div className="pt-4">
-                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 font-mono">
-                  {report.failureOrigin && (
-                    <div>
-                      <dt className="text-stone-gray uppercase text-xs tracking-widest">FAILURE ORIGIN</dt>
-                      <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
-                    </div>
-                  )}
-                  {report.systemDx && (
-                    <div>
-                      <dt className="text-stone-gray uppercase text-xs tracking-widest">SYSTEM DIAGNOSIS</dt>
-                      <dd className="text-ash-white text-sm mt-0.5">{report.systemDx}</dd>
-                    </div>
-                  )}
-                  {report.primaryContamination && (
-                    <div>
-                      <dt className="text-stone-gray uppercase text-xs tracking-widest">PRIMARY CONTAMINANT</dt>
-                      <dd className="text-ash-white text-sm mt-0.5">{report.primaryContamination}</dd>
-                    </div>
-                  )}
-                  {report.contributingFactor && (
-                    <div>
-                      <dt className="text-stone-gray uppercase text-xs tracking-widest">CONTRIBUTING FACTOR</dt>
-                      <dd className="text-ash-white text-sm mt-0.5">{report.contributingFactor}</dd>
-                    </div>
-                  )}
-                </dl>
-              </div>
+            {/* Escalate */}
+            {incidentId && (
+              <button
+                onClick={handleEscalate}
+                disabled={isTogglingEscalation}
+                className={`w-full flex items-center justify-center gap-2 rounded-md border py-2 font-mono text-[11px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                  escalated
+                    ? 'border-hazard-amber/30 bg-hazard-amber/10 text-hazard-amber'
+                    : 'border-[#333] text-stone-gray hover:text-ash-white hover:border-[#444]'
+                } ${isTogglingEscalation ? 'opacity-50' : ''}`}
+                aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+              >
+                <Siren size={16} aria-hidden="true" />
+                {escalated ? 'Escalation Armed' : 'Escalate Incident'}
+              </button>
             )}
 
             {/* Disposition */}
-            <div className="border-t border-concrete-border pt-4">
-              <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5">DISPOSITION</h3>
-              <p className="text-ash-white font-mono text-sm">{report.disposition}</p>
-            </div>
+            <section>
+              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em]">Recommended Action</p>
+              <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">{report.disposition}</p>
+            </section>
+
+            {/* Telemetry */}
+            <section className="border-t border-[#2a2a2a] pt-4">
+              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em] mb-3">Telemetry</p>
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 font-mono">
+                <div>
+                  <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Failure Origin</dt>
+                  <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
+                </div>
+                <div>
+                  <dt className="text-[9px] uppercase tracking-wider text-stone-gray">System Diagnosis</dt>
+                  <dd className="text-ash-white text-sm mt-0.5">{report.systemDx}</dd>
+                </div>
+                <div>
+                  <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Primary Contaminant</dt>
+                  <dd className="text-ash-white text-sm mt-0.5">{report.primaryContamination}</dd>
+                </div>
+                <div>
+                  <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Contributing Factor</dt>
+                  <dd className="text-ash-white text-sm mt-0.5">{report.contributingFactor}</dd>
+                </div>
+              </dl>
+            </section>
 
             {/* Archive Note */}
-            <div className="border-t border-concrete-border pt-4">
-              <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5">ARCHIVE NOTE</h3>
-              <p className="text-ash-white font-mono text-sm leading-relaxed">{report.archiveNote}</p>
-            </div>
+            <section className="border-t border-[#2a2a2a] pt-4">
+              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em]">Archive Note</p>
+              <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">{report.archiveNote}</p>
+            </section>
 
-            {/* Sanction rationale */}
-            {liveSanctionCount > 0 && report.sanctionRationale && (
-              <div className="border-t border-concrete-border pt-4">
-                <h3 className="text-stone-gray font-mono text-xs uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                  <ShieldCheck size={11} className="text-hazard-amber" aria-hidden="true" />
-                  SANCTIONED — RATIONALE
-                </h3>
-                <p className="text-hazard-amber/90 font-mono text-sm leading-relaxed italic">
-                  {report.sanctionRationale}
+            {/* Sanction Rationale */}
+            {counts.sanction > 0 && report.sanctionRationale && (
+              <section className="border-t border-hazard-amber/20 pt-4">
+                <p className="text-hazard-amber font-mono text-[10px] uppercase tracking-[0.15em] flex items-center gap-1.5">
+                  <ShieldCheck size={10} aria-hidden="true" />
+                  Sanction Rationale
                 </p>
-              </div>
+                <p className="mt-1.5 text-hazard-amber/80 font-mono text-sm leading-relaxed italic">{report.sanctionRationale}</p>
+              </section>
             )}
 
-            {/* Filed by + Chromatic Profile */}
-            <div className="border-t border-concrete-border pt-4 flex justify-between items-start">
-              <div>
-                <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">INCIDENT FILED BY</span>
-                <p className="text-hazard-amber font-mono text-sm font-bold mt-0.5">{report.anonHandle}</p>
-              </div>
-              <div className="text-right">
-                <span className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">CHROMATIC PROFILE</span>
-                <p className="text-stone-gray font-mono text-xs mt-0.5">{report.chromaticProfile}</p>
-              </div>
+            {/* Case footer */}
+            <div className="border-t border-[#2a2a2a] pt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-xs text-stone-gray">
+              <span>Filed by <span className="text-hazard-amber font-bold">{report.anonHandle}</span></span>
+              {counts.timestamp && <span>{formatTimestamp(counts.timestamp)}</span>}
+              <span>{report.chromaticProfile}</span>
             </div>
 
           </div>
         </div>
+        </div>
       </div>
-    </div>
+    </dialog>
   );
 };

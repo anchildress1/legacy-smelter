@@ -2,107 +2,124 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isHexColor(val) {
-      return val is string && val.matches('^#[0-9a-fA-F]{6}$');
-    }
-
-    function isValidIncidentLog(data) {
-      let fields = [
-               'pixel_count', 'incident_feed_summary',
-               'color_1', 'color_2', 'color_3', 'color_4', 'color_5',
-               'subject_box_ymin', 'subject_box_xmin', 'subject_box_ymax', 'subject_box_xmax',
-               'legacy_infra_class', 'diagnosis',
-               'chromatic_profile', 'system_dx', 'severity',
-               'primary_contamination', 'contributing_factor', 'failure_origin',
-               'disposition', 'archive_note',
-               'og_headline', 'share_quote', 'anon_handle',
-               'timestamp', 'uid', 'breach_count', 'escalation_count',
-               'sanction_count', 'sanctioned', 'judged'
-             ];
-      return data.keys().hasAll(fields) &&
-             data.keys().hasOnly(fields) &&
-             data.pixel_count is number && data.pixel_count > 0 &&
-             data.incident_feed_summary is string && data.incident_feed_summary.size() <= 500 &&
-             isHexColor(data.color_1) &&
-             isHexColor(data.color_2) &&
-             isHexColor(data.color_3) &&
-             isHexColor(data.color_4) &&
-             isHexColor(data.color_5) &&
-             data.subject_box_ymin is number &&
-             data.subject_box_xmin is number &&
-             data.subject_box_ymax is number &&
-             data.subject_box_xmax is number &&
-             data.legacy_infra_class is string && data.legacy_infra_class.size() <= 80 &&
-             data.diagnosis is string && data.diagnosis.size() <= 200 &&
-             data.chromatic_profile is string && data.chromatic_profile.size() <= 60 &&
-             data.system_dx is string && data.system_dx.size() <= 300 &&
-             data.severity is string && data.severity.size() > 0 && data.severity.size() <= 50 &&
-             data.primary_contamination is string && data.primary_contamination.size() <= 80 &&
-             data.contributing_factor is string && data.contributing_factor.size() <= 80 &&
-             data.failure_origin is string && data.failure_origin.size() <= 400 &&
-             data.disposition is string && data.disposition.size() <= 300 &&
-             data.archive_note is string && data.archive_note.size() <= 800 &&
-             data.og_headline is string && data.og_headline.size() <= 200 &&
-             data.share_quote is string && data.share_quote.size() <= 300 &&
-             data.anon_handle is string && data.anon_handle.size() <= 50 &&
-             data.timestamp is timestamp &&
-             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 100 &&
-             data.breach_count is number && data.breach_count == 0 &&
-             data.escalation_count is number && data.escalation_count == 0 &&
-             data.sanction_count is number && data.sanction_count == 0 &&
-             data.sanctioned is bool && data.sanctioned == false &&
-             data.judged is bool && data.judged == false;
-    }
-
-    function isValidGlobalStats(data) {
-      return data.total_pixels_melted is number && data.total_pixels_melted >= 0;
-    }
-
+    // incident_logs:
+    //   - Creates happen server-side via firebase-admin (rules bypassed).
+    //   - Reads are public.
+    //   - Client updates are limited to single-field counter increments
+    //     (breach_count, escalation_count). Escalation additionally requires
+    //     a matching write to the escalations/{uid} subcollection via a
+    //     client-side transaction.
+    //   - Deletes are disallowed for clients.
     match /incident_logs/{logId} {
+      function escalationDocPath(uid) {
+        return /databases/$(database)/documents/incident_logs/$(logId)/escalations/$(uid);
+      }
+
+      // Duplicates src/types.ts::computeImpact and shared/impactScore formulas.
+      // Firestore rules cannot import TypeScript, so this MUST be kept in sync
+      // with the weights (sanction=5, escalation=3, breach=2).
+      function impactScore(data) {
+        return (data.sanction_count * 5) + (data.escalation_count * 3) + (data.breach_count * 2);
+      }
+
+      // Invariant enforcement: each increment rule verifies two things —
+      //   (a) the counter moved by exactly ±1, and
+      //   (b) the post-write impact_score equals the weighted sum of the
+      //       post-write counters (sanction×5 + escalation×3 + breach×2).
+      //
+      // We intentionally do NOT check impact_score as a delta from the
+      // pre-write value. The weighted-sum equality in (b) already uniquely
+      // determines the correct post-write impact_score given the post-write
+      // counters, and pinning to a delta would silently reject legitimate
+      // writes against any document whose pre-write impact_score was missing
+      // or drifted (e.g. pre-backfill legacy docs where escalation_count > 0
+      // but impact_score is absent — `get('impact_score', 0) - 3` would
+      // require a negative value that (b) could never produce).
+      //
+      // Counter reads use `get(field, 0)` so the rule still accepts writes
+      // against legacy docs that were written before the voting-fields
+      // backfill added the counter defaults.
+      function isBreachIncrement() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['breach_count', 'impact_score']) &&
+               request.resource.data.breach_count == resource.data.get('breach_count', 0) + 1 &&
+               request.resource.data.impact_score == impactScore(request.resource.data);
+      }
+
+      function isEscalationIncrement() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['escalation_count', 'impact_score']) &&
+               request.resource.data.escalation_count == resource.data.get('escalation_count', 0) + 1 &&
+               request.resource.data.impact_score == impactScore(request.resource.data) &&
+               !exists(escalationDocPath(request.auth.uid)) &&
+               existsAfter(escalationDocPath(request.auth.uid));
+      }
+
+      function isEscalationDecrement() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['escalation_count', 'impact_score']) &&
+               resource.data.get('escalation_count', 0) > 0 &&
+               request.resource.data.escalation_count == resource.data.get('escalation_count', 0) - 1 &&
+               request.resource.data.impact_score == impactScore(request.resource.data) &&
+               exists(escalationDocPath(request.auth.uid)) &&
+               !existsAfter(escalationDocPath(request.auth.uid));
+      }
+
       allow read: if true;
-      allow create: if isValidIncidentLog(request.resource.data);
-      // NOTE: Firestore rules cannot query subcollection existence, so the
-      // one-vote-per-user constraint for escalation_count is enforced via:
-      //   1. The escalations/{uid} subcollection (create/delete only for that UID) — tracks one vote per user
-      //   2. A client-side Firestore transaction that creates/deletes the subcollection doc
-      //      and increments/decrements escalation_count atomically
-      // A malicious client bypassing that transaction could still attempt to update
-      // escalation_count directly, so integrity relies on clients following this protocol.
-      // Acceptable for this app.
+      allow create: if false;
+      allow delete: if false;
       allow update: if request.auth != null &&
                        (
-                         // Allow incrementing breach_count by 1
-                         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['breach_count']) &&
-                          request.resource.data.breach_count == resource.data.get('breach_count', 0) + 1)
-                         ||
-                         // Allow incrementing escalation_count by 1
-                         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['escalation_count']) &&
-                          request.resource.data.escalation_count == resource.data.get('escalation_count', 0) + 1)
-                         ||
-                         // Allow decrementing escalation_count by 1 (minimum 0)
-                         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['escalation_count']) &&
-                          resource.data.get('escalation_count', 0) > 0 &&
-                          request.resource.data.escalation_count == resource.data.get('escalation_count', 0) - 1)
+                         isBreachIncrement() ||
+                         isEscalationIncrement() ||
+                         isEscalationDecrement()
                        );
 
       // Per-user escalation tracking: one doc per user per incident
       match /escalations/{escId} {
+        function parentLogPath() {
+          return /databases/$(database)/documents/incident_logs/$(logId);
+        }
+
+        function escDocPath() {
+          return /databases/$(database)/documents/incident_logs/$(logId)/escalations/$(escId);
+        }
+
+        function parentEscalationIncremented() {
+          return exists(parentLogPath()) &&
+                 existsAfter(parentLogPath()) &&
+                 getAfter(parentLogPath()).data.escalation_count == get(parentLogPath()).data.escalation_count + 1;
+        }
+
+        function parentEscalationDecremented() {
+          return exists(parentLogPath()) &&
+                 existsAfter(parentLogPath()) &&
+                 get(parentLogPath()).data.escalation_count > 0 &&
+                 getAfter(parentLogPath()).data.escalation_count == get(parentLogPath()).data.escalation_count - 1;
+        }
+
         allow read: if request.auth != null && escId == request.auth.uid;
         allow create: if request.auth != null && escId == request.auth.uid &&
                          request.resource.data.keys().hasOnly(['uid', 'timestamp']) &&
                          request.resource.data.uid is string &&
-                         request.resource.data.timestamp is timestamp;
-        allow delete: if request.auth != null && escId == request.auth.uid;
+                         request.resource.data.uid == request.auth.uid &&
+                         request.resource.data.timestamp is timestamp &&
+                         !exists(escDocPath()) &&
+                         existsAfter(escDocPath()) &&
+                         parentEscalationIncremented();
+        allow delete: if request.auth != null && escId == request.auth.uid &&
+                        exists(escDocPath()) &&
+                        !existsAfter(escDocPath()) &&
+                        parentEscalationDecremented();
       }
     }
 
+    // global_stats:
+    //   - Reads are public.
+    //   - Writes are server-side only (admin SDK bypasses rules).
     match /global_stats/main {
       allow read: if true;
-      allow create: if isValidGlobalStats(request.resource.data);
-      allow update: if isValidGlobalStats(request.resource.data) &&
-                       request.resource.data.total_pixels_melted >= resource.data.total_pixels_melted;
+      allow write: if false;
     }
 
+    // Deny-by-default for everything else.
     match /{document=**} {
       allow read, write: if false;
     }

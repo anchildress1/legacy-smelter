@@ -1,33 +1,75 @@
 import { db, ensureAnonymousAuth, doc, runTransaction, increment, getDoc, serverTimestamp } from '../firebase';
 import { getAuth } from 'firebase/auth';
+import { IMPACT_WEIGHTS } from '../types';
+import { safeParseJsonFromStorage } from '../lib/storageJson';
 
 const STORAGE_KEY = 'escalated_incidents';
+const LOG_PREFIX = '[escalationService]';
 const inFlightEscalations = new Set<string>();
+const ESCALATION_STATE_EVENT = 'legacy-smelter:escalation-state-changed';
+
+interface EscalationStateChangeDetail {
+  incidentId: string;
+  escalated: boolean;
+}
+
+function emitEscalationStateChange(detail: EscalationStateChangeDetail): void {
+  if (globalThis.window === undefined) return;
+  globalThis.window.dispatchEvent(new CustomEvent<EscalationStateChangeDetail>(ESCALATION_STATE_EVENT, { detail }));
+}
 
 function getEscalatedSet(): Set<string> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch (err) {
-    console.warn('[escalationService] Failed to parse localStorage escalations:', err);
-    return new Set();
-  }
+  return safeParseJsonFromStorage(
+    STORAGE_KEY,
+    LOG_PREFIX,
+    (parsed) => {
+      if (!Array.isArray(parsed) || !parsed.every((v): v is string => typeof v === 'string')) {
+        return null;
+      }
+      return new Set(parsed);
+    },
+    new Set<string>(),
+  );
 }
 
 function persistEscalatedSet(set: Set<string>): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
+  } catch (err) {
+    // Cache persistence is best-effort; Firestore is the source of truth.
+    console.error(`${LOG_PREFIX} localStorage write failed:`, err);
+  }
 }
 
 export function hasEscalated(incidentId: string): boolean {
   return getEscalatedSet().has(incidentId);
 }
 
+export function subscribeEscalationStateChange(
+  listener: (detail: EscalationStateChangeDetail) => void,
+): () => void {
+  if (globalThis.window === undefined) return () => {};
+  const onChange = (event: Event) => {
+    const custom = event as CustomEvent<EscalationStateChangeDetail>;
+    if (!custom.detail) return;
+    listener(custom.detail);
+  };
+  globalThis.window.addEventListener(ESCALATION_STATE_EVENT, onChange as EventListener);
+  return () => {
+    globalThis.window.removeEventListener(ESCALATION_STATE_EVENT, onChange as EventListener);
+  };
+}
+
 /**
  * Toggles the current user's escalation on an incident.
  * Uses a Firestore transaction to read the escalation subcollection doc
- * before deciding whether to create or delete — this eliminates drift
- * between localStorage and Firestore that caused silent batch failures
- * when batch.set hit a missing `update` rule on an existing doc.
+ * before deciding whether to create or delete.
+ *
+ * Concurrency: in-flight calls for the same incident are deduped and
+ * return the current cached state.
+ *
+ * Failure handling: errors are thrown to the caller. The caller is
+ * responsible for rolling back any optimistic UI and surfacing feedback.
  *
  * Returns the new escalation state (true = escalated, false = de-escalated).
  */
@@ -48,11 +90,17 @@ export async function toggleEscalation(incidentId: string): Promise<boolean> {
 
       if (escalationSnap.exists()) {
         tx.delete(escalationRef);
-        tx.update(incidentRef, { escalation_count: increment(-1) });
+        tx.update(incidentRef, {
+          escalation_count: increment(-1),
+          impact_score: increment(-IMPACT_WEIGHTS.escalation),
+        });
         return false;
       } else {
         tx.set(escalationRef, { uid, timestamp: serverTimestamp() });
-        tx.update(incidentRef, { escalation_count: increment(1) });
+        tx.update(incidentRef, {
+          escalation_count: increment(1),
+          impact_score: increment(IMPACT_WEIGHTS.escalation),
+        });
         return true;
       }
     });
@@ -64,40 +112,34 @@ export async function toggleEscalation(incidentId: string): Promise<boolean> {
       set.delete(incidentId);
     }
     persistEscalatedSet(set);
+    emitEscalationStateChange({ incidentId, escalated: newState });
 
     return newState;
-  } catch (err) {
-    console.error('[escalationService] Toggle failed, re-syncing:', err);
-    return syncEscalationState(incidentId);
   } finally {
     inFlightEscalations.delete(incidentId);
   }
 }
 
 /**
- * Syncs localStorage with Firestore for a specific incident.
- * Call this once per visible card to correct any drift.
+ * Reads the authoritative escalation state for the current user from Firestore
+ * and updates localStorage to match. Throws on any read failure so callers can
+ * surface the problem to the user instead of silently drifting.
  */
 export async function syncEscalationState(incidentId: string): Promise<boolean> {
-  try {
-    await ensureAnonymousAuth();
-    const uid = getAuth().currentUser?.uid;
-    if (!uid) return false;
+  await ensureAnonymousAuth();
+  const uid = getAuth().currentUser?.uid;
+  if (!uid) throw new Error('No authenticated user');
 
-    const escalationRef = doc(db, 'incident_logs', incidentId, 'escalations', uid);
-    const snap = await getDoc(escalationRef);
-    const exists = snap.exists();
+  const escalationRef = doc(db, 'incident_logs', incidentId, 'escalations', uid);
+  const snap = await getDoc(escalationRef);
+  const exists = snap.exists();
 
-    const set = getEscalatedSet();
-    if (exists) {
-      set.add(incidentId);
-    } else {
-      set.delete(incidentId);
-    }
-    persistEscalatedSet(set);
-    return exists;
-  } catch (err) {
-    console.error('[escalationService] syncEscalationState failed for', incidentId, err);
-    return hasEscalated(incidentId);
+  const set = getEscalatedSet();
+  if (exists) {
+    set.add(incidentId);
+  } else {
+    set.delete(incidentId);
   }
+  persistEscalatedSet(set);
+  return exists;
 }

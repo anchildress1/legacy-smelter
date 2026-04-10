@@ -17,6 +17,13 @@ set -euo pipefail
 #   VITE_FIREBASE_STORAGE_BUCKET
 #   VITE_FIREBASE_MESSAGING_SENDER_ID
 #   VITE_FIREBASE_APP_ID
+#   VITE_FIREBASE_FIRESTORE_DATABASE_ID
+#
+# The server-side admin SDK (shared/admin-init.js) requires
+# FIREBASE_PROJECT_ID and FIREBASE_FIRESTORE_DATABASE_ID at runtime. These
+# MUST match their VITE_ counterparts, so this script derives them
+# automatically if not explicitly set — there is no valid deploy where
+# they diverge.
 #
 # VITE_APP_URL is auto-resolved from the existing Cloud Run service URL
 # if not set, so switching gcloud projects just works.
@@ -41,20 +48,20 @@ while [[ $# -gt 0 ]]; do
       sed -n '3,18p' "$0"
       exit 0
       ;;
-    *) echo "Unknown option: $1"; exit 1 ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
 
 # ── Preflight ────────────────────────────────────────────────────────────────
 
 if ! command -v gcloud &>/dev/null; then
-  echo "ERROR: gcloud CLI not found. Install from https://cloud.google.com/sdk/docs/install"
+  echo "ERROR: gcloud CLI not found. Install from https://cloud.google.com/sdk/docs/install" >&2
   exit 1
 fi
 
 PROJECT_ID="${GCP_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "(unset)" ]]; then
-  echo "ERROR: No GCP project set. Pass --project or run: gcloud config set project <ID>"
+  echo "ERROR: No GCP project set. Pass --project or run: gcloud config set project <ID>" >&2
   exit 1
 fi
 
@@ -83,6 +90,7 @@ required_vars=(
   VITE_FIREBASE_STORAGE_BUCKET
   VITE_FIREBASE_MESSAGING_SENDER_ID
   VITE_FIREBASE_APP_ID
+  VITE_FIREBASE_FIRESTORE_DATABASE_ID
 )
 missing=()
 for var in "${required_vars[@]}"; do
@@ -91,13 +99,10 @@ for var in "${required_vars[@]}"; do
   fi
 done
 if [[ ${#missing[@]} -gt 0 ]]; then
-  echo "ERROR: missing required env vars: ${missing[*]}"
-  echo "Set them in $ENV_FILE or export before running."
+  echo "ERROR: missing required env vars: ${missing[*]}" >&2
+  echo "Set them in $ENV_FILE or export before running." >&2
   exit 1
 fi
-
-# Keep runtime and firebase.json aligned on a single named Firestore database.
-VITE_FIREBASE_FIRESTORE_DATABASE_ID="${VITE_FIREBASE_FIRESTORE_DATABASE_ID:-legacy-smelter}"
 
 # Auto-resolve VITE_APP_URL from existing Cloud Run service if not set.
 if [[ -z "${VITE_APP_URL:-}" ]]; then
@@ -107,11 +112,25 @@ if [[ -z "${VITE_APP_URL:-}" ]]; then
   if [[ -n "$VITE_APP_URL" ]]; then
     echo "==> Resolved VITE_APP_URL from existing service: $VITE_APP_URL"
   else
-    echo "ERROR: VITE_APP_URL not set and no existing service to resolve from."
-    echo "Set VITE_APP_URL in $ENV_FILE or export it for first deploy."
+    echo "ERROR: VITE_APP_URL not set and no existing service to resolve from." >&2
+    echo "Set VITE_APP_URL in $ENV_FILE or export it for first deploy." >&2
     exit 1
   fi
 fi
+
+if [[ ! "$VITE_APP_URL" =~ ^https?://[^[:space:]]+$ ]]; then
+  echo "ERROR: VITE_APP_URL must be an absolute http(s) URL. Received: $VITE_APP_URL" >&2
+  exit 1
+fi
+VITE_APP_URL="${VITE_APP_URL%/}"
+
+# Mirror the VITE_FIREBASE_* values into the server-side admin SDK vars.
+# These MUST match (shared/admin-init.js is the sole writer for incidents
+# and must target the same project + database as the client), so mirroring
+# eliminates drift and makes deploys self-sufficient without having to
+# duplicate values in the env file. An explicit export still wins.
+export FIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID:-$VITE_FIREBASE_PROJECT_ID}"
+export FIREBASE_FIRESTORE_DATABASE_ID="${FIREBASE_FIRESTORE_DATABASE_ID:-$VITE_FIREBASE_FIRESTORE_DATABASE_ID}"
 
 # ── Derived values ───────────────────────────────────────────────────────────
 
@@ -182,7 +201,9 @@ gcloud run deploy "$SERVICE_NAME" \
   --set-env-vars="\
 VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY},\
 VITE_FIREBASE_PROJECT_ID=${VITE_FIREBASE_PROJECT_ID},\
-VITE_FIREBASE_FIRESTORE_DATABASE_ID=${VITE_FIREBASE_FIRESTORE_DATABASE_ID:-},\
+VITE_FIREBASE_FIRESTORE_DATABASE_ID=${VITE_FIREBASE_FIRESTORE_DATABASE_ID},\
+FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},\
+FIREBASE_FIRESTORE_DATABASE_ID=${FIREBASE_FIRESTORE_DATABASE_ID},\
 VITE_APP_URL=${VITE_APP_URL}" \
   --allow-unauthenticated \
   --cpu-boost

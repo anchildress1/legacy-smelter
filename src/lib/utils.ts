@@ -33,43 +33,38 @@ export function formatPixels(pixels: number): { value: string, unit: string } {
   return { value: (pixels / 1_000_000_000_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'PETAPIXELS' };
 }
 
-export const FALLBACK_COLORS = ["#ffff00", "#00c3f5", "#4db542", "#fb0094", "#fc9103"];
-const DEFAULT_APP_URL = 'https://hotfix.anchildress1.dev';
+export { getFiveDistinctColors } from '../../shared/colors.js';
 
-// Builds a shareable incident URL. Uses VITE_APP_URL when provided.
-// Falls back to the canonical production URL so links stay stable across hostnames.
+const APP_BASE_URL_RAW = (import.meta.env.VITE_APP_URL ?? '').trim();
+if (!APP_BASE_URL_RAW) {
+  throw new Error('Missing required VITE_APP_URL for canonical share links.');
+}
+
+let APP_BASE_URL = '';
+try {
+  APP_BASE_URL = new URL(APP_BASE_URL_RAW).toString().replace(/\/$/, '');
+} catch {
+  throw new Error(`VITE_APP_URL must be an absolute URL. Received: "${APP_BASE_URL_RAW}"`);
+}
+
+// Builds a shareable incident URL from VITE_APP_URL (validated at startup).
 // /s/:id is the canonical share path — handled by server.js for OG pre-rendering.
 export function buildIncidentUrl(docId: string): string {
-  const base = (import.meta.env.VITE_APP_URL || DEFAULT_APP_URL).replace(/\/$/, '');
-  return `${base}/s/${encodeURIComponent(docId)}`;
+  return `${APP_BASE_URL}/s/${encodeURIComponent(docId)}`;
 }
 
 export function buildShareLinks(shareText: string, headline: string, pageUrl: string): { label: string; href: string }[] {
+  const blueskyText = `${shareText} ${pageUrl}`;
   return [
     { label: 'twitter',  href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(pageUrl)}` },
     { label: 'linkedin', href: `https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(pageUrl)}&title=${encodeURIComponent(headline)}&summary=${encodeURIComponent(shareText)}` },
-    { label: 'bluesky',  href: `https://bsky.app/intent/compose?text=${encodeURIComponent(`${shareText} ${pageUrl}`)}` },
+    { label: 'bluesky',  href: `https://bsky.app/intent/compose?text=${encodeURIComponent(blueskyText)}` },
     { label: 'reddit',   href: `https://www.reddit.com/submit?url=${encodeURIComponent(pageUrl)}&title=${encodeURIComponent(headline)}` },
   ];
 }
 
 export function getLogShareLinks(log: SmeltLog): { label: string; href: string }[] {
   const incidentUrl = buildIncidentUrl(log.id);
-  const shareText = log.share_quote
-    ? `${log.share_quote}\n\n${log.incident_feed_summary}`
-    : log.incident_feed_summary;
-  const headline = log.og_headline || 'Legacy Smelter Incident Report';
-  return buildShareLinks(shareText, headline, incidentUrl);
-}
-
-export function getFiveDistinctColors(colors: string[]): string[] {
-  const hexRegex = /^#([0-9a-f]{6})$/i;
-  const validColors = (colors || [])
-    .filter(c => typeof c === 'string')
-    .map(c => c.toLowerCase().trim())
-    .filter(c => hexRegex.test(c));
-
-  const uniqueSrc = Array.from(new Set(validColors));
-  const combined = Array.from(new Set([...uniqueSrc, ...FALLBACK_COLORS]));
-  return combined.slice(0, 5);
+  const shareText = `${log.share_quote}\n\n${log.incident_feed_summary}`;
+  return buildShareLinks(shareText, log.og_headline, incidentUrl);
 }

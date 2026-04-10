@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Howl } from 'howler';
 import {
   db,
@@ -6,103 +6,179 @@ import {
   onSnapshot,
   query,
   orderBy,
+  limit,
   doc,
   getDoc,
-  setDoc,
-  increment,
-  serverTimestamp
 } from './firebase';
 import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
-import { GlobalStats as GlobalStatsType, SmeltLog, NormalizedSmeltLog, computeImpact, withVotingDefaults } from './types';
-import { SmelterCanvas, SmelterCanvasHandle } from './components/SmelterCanvas';
+import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
+import type { SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
-import { formatPixels, getFiveDistinctColors, getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
+import { getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
 import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
+import { DecommissionIndex } from './components/DecommissionIndex';
+import { SiteFooter } from './components/SiteFooter';
+import { DataHealthIndicator } from './components/DataHealthIndicator';
+import { parseSmeltLog, parseSmeltLogBatch } from './lib/smeltLogSchema';
 
 // Audio
 const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false, volume: 0.5 });
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
+const CANVAS_READY_TIMEOUT_MS = 8_000;
+const QUEUE_SCHEMA_ISSUE_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
+const STATS_SCHEMA_ISSUE = 'GLOBAL STATS DATA SCHEMA VIOLATION. DECOMMISSION INDEX FROZEN.';
+const SmelterCanvas = lazy(async () => {
+  const module = await import('./components/SmelterCanvas');
+  return { default: module.SmelterCanvas };
+});
 
 interface AppProps {
-  onNavigateManifest: () => void;
-  deepLinkId?: string | null;
+  readonly onNavigateManifest: () => void;
+  readonly deepLinkId?: string | null;
 }
 
-export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
+interface CanvasReadyWaiter {
+  resolve: (handle: SmelterCanvasHandle) => void;
+  reject: (error: Error) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+}
+
+export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProps>) {
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
-  const [recentLogs, setRecentLogs] = useState<NormalizedSmeltLog[]>([]);
-  const [selectedRecentLog, setSelectedRecentLog] = useState<NormalizedSmeltLog | null>(null);
+  const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
+  const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
-  const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
+  const [statsIssue, setStatsIssue] = useState<string | null>(null);
+  const [queueIssue, setQueueIssue] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
-  const [isWritingData, setIsWritingData] = useState(false);
-  const [buttonsDelayed, setButtonsDelayed] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
-  const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<SmeltAnalysis | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  // Firestore doc ID of the most recently smelted incident — used for share links
-  const [loggedIncidentId, setLoggedIncidentId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<SmelterCanvasHandle>(null);
+  const canvasRef = useRef<SmelterCanvasHandle | null>(null);
+  const canvasReadyWaitersRef = useRef<CanvasReadyWaiter[]>([]);
   const activeRequestIdRef = useRef(0);
   const analysisRef = useRef<SmeltAnalysis | null>(null);
-  const hasWrittenRef = useRef(false);
-  const smeltTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const postmortemAutoOpenedRef = useRef(false);
+  const cameraAttachTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingCameraStreamRef = useRef<MediaStream | null>(null);
+
+  const rejectCanvasWaiters = useCallback((reason: string) => {
+    const waiters = canvasReadyWaitersRef.current;
+    canvasReadyWaitersRef.current = [];
+    for (const waiter of waiters) {
+      clearTimeout(waiter.timeoutId);
+      waiter.reject(new Error(reason));
+    }
+  }, []);
+
+  const setCanvasHandle = useCallback((handle: SmelterCanvasHandle | null) => {
+    canvasRef.current = handle;
+    if (!handle) return;
+    const waiters = canvasReadyWaitersRef.current;
+    canvasReadyWaitersRef.current = [];
+    for (const waiter of waiters) {
+      clearTimeout(waiter.timeoutId);
+      waiter.resolve(handle);
+    }
+  }, []);
+
+  // Extracted so the setTimeout call in `waitForCanvasHandle` stays flat
+  // (S2004: no more than 4 nested function literals). `setTimeout(fn, ms,
+  // ...args)` passes the waiter through directly instead of closing over
+  // it in an inner arrow.
+  const onCanvasReadyTimeout = useCallback((waiter: CanvasReadyWaiter) => {
+    canvasReadyWaitersRef.current = canvasReadyWaitersRef.current.filter((entry) => entry !== waiter);
+    waiter.reject(new Error('Smelter canvas did not initialize in time.'));
+  }, []);
+
+  const waitForCanvasHandle = useCallback((): Promise<SmelterCanvasHandle> => {
+    if (canvasRef.current) return Promise.resolve(canvasRef.current);
+    return new Promise<SmelterCanvasHandle>((resolve, reject) => {
+      const waiter: CanvasReadyWaiter = {
+        resolve,
+        reject,
+        // Populated immediately below; we need the waiter reference inside
+        // the timeout callback, so the id can't be assigned until after
+        // the object literal exists.
+        timeoutId: 0 as unknown as ReturnType<typeof setTimeout>,
+      };
+      waiter.timeoutId = setTimeout(onCanvasReadyTimeout, CANVAS_READY_TIMEOUT_MS, waiter);
+      canvasReadyWaitersRef.current.push(waiter);
+    });
+  }, [onCanvasReadyTimeout]);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
     const unsubStats = onSnapshot(statsDoc, (snapshot) => {
-      if (snapshot.exists()) {
-        setGlobalStats(snapshot.data() as GlobalStatsType);
+      if (!snapshot.exists()) return;
+      const data = snapshot.data();
+      if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
+        console.error('[App] global_stats/main has invalid total_pixels_melted:', data);
+        setStatsIssue(STATS_SCHEMA_ISSUE);
+        return;
       }
+      setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
+      setStatsIssue(null);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'global_stats/main', setAnalysisError);
+      handleFirestoreError(error, OperationType.GET, 'global_stats/main', setStatsIssue);
     });
 
-    // Pull the full archive so P0 ranking is truly global.
-    // Impact = (5×sanctions)+(3×escalations)+(2×breaches) can't be queried server-side.
-    // SCALING: subscribes to the full collection for truly global P0 ranking.
-    // At scale, replace with a precomputed impact_score field maintained by a
-    // Cloud Function, then query orderBy('impact_score').limit(3).
+    // P0 queue uses server-maintained impact_score so this listener stays
+    // bounded and does not stream the full collection into the browser.
     const logsQuery = query(
       collection(db, 'incident_logs'),
-      orderBy('timestamp', 'desc')
+      orderBy('impact_score', 'desc'),
+      orderBy('timestamp', 'desc'),
+      limit(3)
     );
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
-      const entries = snapshot.docs.map(d => withVotingDefaults({ id: d.id, ...d.data() } as SmeltLog));
-      const sorted = entries.sort((a, b) => {
-        return computeImpact(b.sanction_count, b.escalation_count, b.breach_count)
-             - computeImpact(a.sanction_count, a.escalation_count, a.breach_count);
-      });
-      setRecentLogs(sorted.slice(0, 3));
+      const { entries, invalidCount } = parseSmeltLogBatch(snapshot.docs, { source: 'App' });
+      setRecentLogs(entries);
+      if (invalidCount > 0) {
+        const noun = invalidCount === 1 ? 'incident' : 'incidents';
+        setQueueIssue(
+          `${QUEUE_SCHEMA_ISSUE_PREFIX} ${invalidCount} ${noun} hidden from queue due to invalid schema.`
+        );
+      } else {
+        setQueueIssue(null);
+      }
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'incident_logs', setAnalysisError);
+      handleFirestoreError(error, OperationType.LIST, 'incident_logs', setQueueIssue);
     });
 
     return () => { unsubStats(); unsubLogs(); };
   }, []);
 
-  // Release camera hardware and pending timers if component unmounts mid-flow
+  const releaseCameraResources = () => {
+    if (cameraAttachTimerRef.current !== null) {
+      clearTimeout(cameraAttachTimerRef.current);
+      cameraAttachTimerRef.current = null;
+    }
+    if (pendingCameraStreamRef.current) {
+      pendingCameraStreamRef.current.getTracks().forEach((t) => t.stop());
+      pendingCameraStreamRef.current = null;
+    }
+    if (videoRef.current?.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  // Release camera hardware if component unmounts mid-flow
   useEffect(() => {
     return () => {
-      if (smeltTimerRef.current !== null) {
-        clearTimeout(smeltTimerRef.current);
-        smeltTimerRef.current = null;
-      }
-      if (videoRef.current?.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-      }
+      releaseCameraResources();
+      rejectCanvasWaiters('Smelter view unmounted before canvas was ready.');
     };
-  }, []);
+  }, [rejectCanvasWaiters]);
 
   // Deep link: fetch incident by Firestore doc ID and open its overlay.
   // The URL is already cleared by Root — deepLinkId is a one-shot value.
@@ -114,14 +190,14 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
         const snap = await getDoc(doc(db, 'incident_logs', deepLinkId));
         if (cancelled) return;
         if (!snap.exists()) {
-          setDeepLinkError('Incident not found — the link may have expired or been removed.');
+          console.error('[App] Deep link incident not found:', deepLinkId);
           return;
         }
-        setSelectedRecentLog(withVotingDefaults({ id: snap.id, ...snap.data() } as SmeltLog));
+        const parsedLog = parseSmeltLog(snap.id, snap.data());
+        setSelectedRecentLog(parsedLog);
       } catch (err) {
         if (!cancelled) {
-          console.error('[App] Deep link fetch failed:', err);
-          setDeepLinkError('Could not load incident — check your connection and try the link again.');
+          console.error('[App] Deep link fetch/parsing failed:', err);
         }
       }
     })();
@@ -130,32 +206,37 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
 
   const startCamera = async () => {
     try {
+      releaseCameraResources();
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      pendingCameraStreamRef.current = stream;
       setIsCameraActive(true);
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-        }
+      cameraAttachTimerRef.current = setTimeout(() => {
+        cameraAttachTimerRef.current = null;
+        if (!videoRef.current || pendingCameraStreamRef.current !== stream) return;
+        videoRef.current.srcObject = stream;
+        pendingCameraStreamRef.current = null;
+        // `.play()` returns a promise that rejects when autoplay is
+        // interrupted (e.g. stopCamera() nuked srcObject before playback
+        // resolved). Surface it as a diagnostic instead of dropping the
+        // rejection on the floor — silent failures here look like a
+        // frozen camera preview.
+        videoRef.current.play().catch((playErr: unknown) => {
+          console.error('[App] Camera play() failed:', playErr);
+        });
       }, 100);
     } catch (err) {
       const name = err instanceof Error ? err.name : '';
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        setAnalysisError('CAMERA PERMISSION DENIED. FILE PICKER OPENED AS FALLBACK.');
+        console.error('[App] Camera permission denied; opening file picker as fallback.');
         cameraInputRef.current?.click();
       } else {
         console.error(`[App] Camera unavailable (${name || 'unknown'}):`, err);
-        setAnalysisError('CAMERA UNAVAILABLE. USE PROCESS ARTIFACT.');
       }
     }
   };
 
   const stopCamera = () => {
-    if (videoRef.current?.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
+    releaseCameraResources();
     setIsCameraActive(false);
   };
 
@@ -172,7 +253,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
         processImage(base64, 'image/jpeg');
       } else {
         console.error('[App] captureImage: failed to get 2D canvas context');
-        setAnalysisError('CAMERA CAPTURE FAILED. USE PROCESS ARTIFACT.');
         stopCamera();
       }
     } else {
@@ -186,9 +266,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
 
     if (import.meta.env.DEV) console.log("Processing image...", mimeType);
     resetToIdle();
-    setCurrentImage(base64);
     setSelectedRecentLog(null);
-    setAnalysisError(null);
     setIsAnalyzing(true);
     flyInSound.stop();
     fireSound.stop();
@@ -202,8 +280,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       if (requestId !== activeRequestIdRef.current) return;
       console.error("Gemini analysis failed", error);
       setIsAnalyzing(false);
-      setCurrentImage(null);
-      setAnalysisError('GEMINI ANALYSIS FAILED. RETRY IN A MOMENT.');
       return;
     }
 
@@ -214,13 +290,18 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     setIsAnalyzing(false);
 
     try {
-      await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
+      const canvasHandle = await waitForCanvasHandle();
+      if (requestId !== activeRequestIdRef.current) return;
+      await canvasHandle.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
     } catch (error) {
       if (requestId !== activeRequestIdRef.current) return;
       console.error('[App] Canvas rendering failed:', error);
-      resetToIdle();
-      setCurrentImage(null);
-      setAnalysisError('CANVAS RENDER FAILED. TRY A DIFFERENT BROWSER OR ENABLE HARDWARE ACCELERATION.');
+      // The server already persisted the incident. Preserve `analysis` so the
+      // user can still open the postmortem (with its share links and live
+      // counts) even though the animation is broken. Otherwise they lose all
+      // access to data they already paid for with their upload.
+      setIsComplete(true);
+      setShowReport(true);
     }
   };
 
@@ -236,116 +317,50 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     };
     reader.onerror = () => {
       console.error('[App] FileReader failed:', reader.error);
-      setAnalysisError('FILE READ FAILED. THE FILE MAY BE CORRUPT OR INACCESSIBLE.');
     };
     reader.readAsDataURL(file);
   };
 
-  const handleSmeltComplete = async () => {
+  const handleSmeltComplete = () => {
     if (import.meta.env.DEV) console.log("Smelt complete");
     fireSound.stop();
     purrSound.play();
     setIsPlaying(false);
-
-    const completedAnalysis = analysisRef.current;
-    if (!completedAnalysis) return;
-
-    // Always delay buttons — works for both first smelt and replay
-    setButtonsDelayed(true);
-
-    if (!hasWrittenRef.current) {
-      // First completion — reveal report after delay regardless of write outcome,
-      // then write to Firestore in the background.
-      const writeRequestId = activeRequestIdRef.current;
-      hasWrittenRef.current = true;
-      setIsComplete(true);
-      setIsWritingData(true);
-
-      smeltTimerRef.current = setTimeout(() => {
-        smeltTimerRef.current = null;
-        setButtonsDelayed(false);
-        setShowReport(true);
-      }, 5000);
-
-      (async () => {
-        try {
-          const colors = getFiveDistinctColors(completedAnalysis.dominantColors);
-          const box = completedAnalysis.subjectBox;
-          const logRef = doc(collection(db, 'incident_logs'));
-          await setDoc(logRef, {
-            pixel_count: completedAnalysis.pixelCount,
-            incident_feed_summary: completedAnalysis.incidentFeedSummary,
-            color_1: colors[0],
-            color_2: colors[1],
-            color_3: colors[2],
-            color_4: colors[3],
-            color_5: colors[4],
-            subject_box_ymin: box[0] ?? 100,
-            subject_box_xmin: box[1] ?? 100,
-            subject_box_ymax: box[2] ?? 900,
-            subject_box_xmax: box[3] ?? 900,
-            legacy_infra_class: completedAnalysis.legacyInfraClass,
-            diagnosis: completedAnalysis.diagnosis,
-            chromatic_profile: completedAnalysis.chromaticProfile,
-            system_dx: completedAnalysis.systemDx,
-            severity: completedAnalysis.severity,
-            primary_contamination: completedAnalysis.primaryContamination,
-            contributing_factor: completedAnalysis.contributingFactor,
-            failure_origin: completedAnalysis.failureOrigin,
-            disposition: completedAnalysis.disposition,
-            archive_note: completedAnalysis.archiveNote,
-            og_headline: completedAnalysis.ogHeadline,
-            share_quote: completedAnalysis.shareQuote,
-            anon_handle: completedAnalysis.anonHandle,
-            timestamp: serverTimestamp(),
-            uid: crypto.randomUUID(),
-            breach_count: 0,
-            escalation_count: 0,
-            sanction_count: 0,
-            sanctioned: false,
-            judged: false
-          });
-          if (writeRequestId !== activeRequestIdRef.current) return;
-          setLoggedIncidentId(logRef.id);
-
-          const statsRef = doc(db, 'global_stats', 'main');
-          await setDoc(statsRef, {
-            total_pixels_melted: increment(completedAnalysis.pixelCount)
-          }, { merge: true });
-
-          if (writeRequestId !== activeRequestIdRef.current) return;
-          setIsWritingData(false);
-        } catch (error) {
-          if (writeRequestId !== activeRequestIdRef.current) return;
-          hasWrittenRef.current = false;
-          setIsWritingData(false);
-          setAnalysisError('ARCHIVE WRITE FAILED. INCIDENT NOT PERSISTED TO MANIFEST.');
-          handleFirestoreError(error, OperationType.WRITE, 'incident_logs / global_stats');
-        }
-      })();
-    } else {
-      // Replay — no Firestore write, just delay the buttons
-      smeltTimerRef.current = setTimeout(() => {
-        smeltTimerRef.current = null;
-        setButtonsDelayed(false);
-      }, 5000);
+    if (!analysisRef.current) return;
+    setIsComplete(true);
+    // Only auto-open the postmortem the first time. On replay, the user
+    // already dismissed it once — don't force it back open.
+    if (!postmortemAutoOpenedRef.current) {
+      postmortemAutoOpenedRef.current = true;
+      setShowReport(true);
     }
   };
 
   const resetToIdle = () => {
-    if (smeltTimerRef.current !== null) {
-      clearTimeout(smeltTimerRef.current);
-      smeltTimerRef.current = null;
-    }
     setIsComplete(false);
     setShowReport(false);
     setAnalysis(null);
     analysisRef.current = null;
-    hasWrittenRef.current = false;
-    setIsWritingData(false);
-    setButtonsDelayed(false);
+    postmortemAutoOpenedRef.current = false;
     setIsPlaying(false);
-    setLoggedIncidentId(null);
+  };
+
+  // Dismiss the post-smelt REPLAY/VIEW overlay synchronously *before* the
+  // file picker or camera opens. Without this, the overlay sits on top of
+  // the canvas through the entire picker session and stays visible if the
+  // user cancels the picker — `resetToIdle` only runs once a file actually
+  // arrives in `processImage`. The newly-archived incident is still in the
+  // P0 feed, so the user can still re-open the postmortem from there.
+  const handleProcessArtifactClick = () => {
+    resetToIdle();
+    fileInputRef.current?.click();
+  };
+
+  const handleDeployScannerClick = () => {
+    resetToIdle();
+    startCamera().catch((err: unknown) => {
+      console.error('[App] startCamera failed:', err);
+    });
   };
 
   const handleReplay = () => {
@@ -355,76 +370,61 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
     canvasRef.current?.replay();
   };
 
-  const shareLinks = analysis
+  const reportShareLinks = analysis
     ? buildShareLinks(
         `${analysis.shareQuote}\n\n${analysis.incidentFeedSummary}`,
         analysis.ogHeadline,
-        loggedIncidentId ? buildIncidentUrl(loggedIncidentId) : window.location.origin
+        buildIncidentUrl(analysis.incidentId)
       )
     : [];
-
-  const formatted = formatPixels(globalStats.total_pixels_melted);
+  const activeIssues = [statsIssue, queueIssue].filter((message): message is string => !!message);
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto w-full flex flex-col gap-3 px-4 py-4 sm:flex-row sm:justify-between sm:items-center sm:px-6">
-          <div>
-            <h1 className="text-2xl font-black font-mono tracking-tighter uppercase">
+        <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-x-3 sm:gap-x-4 px-4 py-4 sm:px-6">
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-2xl font-black font-mono tracking-tighter uppercase whitespace-nowrap">
               LEGACY <span className="text-hazard-amber">SMELTER</span>
             </h1>
-            <div className="flex items-center gap-1.5 mt-0.5">
+            <div className="hidden sm:flex items-center gap-1.5 mt-0.5">
               <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse shrink-0" />
               <p className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">
                 If a bug exists, apply Hotfix.
               </p>
             </div>
           </div>
-          <div className="flex items-center justify-between gap-4 w-full sm:w-auto sm:justify-end">
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <div className="font-mono font-extrabold text-hazard-amber text-lg leading-none tracking-tight">
-                  {formatted.value} <span className="text-xs text-stone-gray font-bold">{formatted.unit}</span>
-                </div>
-                <div className="text-[10px] font-mono text-stone-gray uppercase tracking-widest mt-0.5">
-                  DECOMMISSION INDEX
-                </div>
-              </div>
-              <div className="hazard-stripe w-2 h-10 rounded-sm shrink-0" aria-hidden="true" />
-            </div>
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+            <DataHealthIndicator issues={activeIssues} />
+            <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
             <button onClick={onNavigateManifest} className="nav-btn">
-              INCIDENT MANIFEST
+              ALL INCIDENTS
               <ArrowRight size={14} />
             </button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
-        {deepLinkError && (
-          <div className="modern-card p-4 mb-6" role="alert" aria-live="assertive">
-            <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">{deepLinkError}</p>
-          </div>
-        )}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+      <main className="flex-1 px-4 py-6 sm:px-6 max-w-7xl mx-auto w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
           {/* Left Column: Smelter Area */}
-          <div className="md:col-span-7 space-y-4">
+          <div className="lg:col-span-7 space-y-4">
             {/* Controls */}
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="modern-button flex-1 flex items-center justify-center gap-2"
+                onClick={handleProcessArtifactClick}
+                className="modern-button flex-1 flex items-center justify-center gap-3 px-5 py-3"
               >
                 <Upload size={18} />
-                PROCESS ARTIFACT
+                <span className="text-sm font-black uppercase tracking-[0.16em]">Process Artifact</span>
               </button>
               <button
-                onClick={startCamera}
-                className="modern-button flex-1 flex items-center justify-center gap-2 bg-concrete-mid text-ash-white border border-concrete-border hover:brightness-110"
+                onClick={handleDeployScannerClick}
+                className="modern-button flex-1 flex items-center justify-center gap-3 bg-concrete-mid px-5 py-3 text-ash-white border border-concrete-border hover:brightness-110"
               >
                 <Camera size={18} />
-                DEPLOY SCANNER
+                <span className="text-sm font-black uppercase tracking-[0.16em]">Deploy Scanner</span>
               </button>
             </div>
 
@@ -437,7 +437,9 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
               {/* Camera overlay */}
               {isCameraActive && (
                 <div className="absolute inset-0 bg-black z-30">
-                  <video ref={videoRef} playsInline className="w-full h-full object-cover" aria-label="Camera preview" />
+                  <video ref={videoRef} playsInline muted className="w-full h-full object-cover" aria-label="Camera preview">
+                    <track kind="captions" />
+                  </video>
                   <button
                     onClick={stopCamera}
                     className="absolute top-4 right-4 w-10 h-10 bg-concrete-mid/80 rounded-full flex items-center justify-center text-stone-gray hover:text-ash-white z-50"
@@ -458,38 +460,39 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
               )}
 
               {/* PixiJS Canvas — always mounted so idle animation runs immediately */}
-              <SmelterCanvas
-                ref={canvasRef}
-                onComplete={handleSmeltComplete}
-                onFlyInStart={() => flyInSound.play()}
-                onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
-              />
-
-
-              {/* Analyzing overlay */}
-              {isAnalyzing && (
-                <div role="status" className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
-                  <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" />
-                  <p className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
-                    HOTFIX PROCESSING
-                  </p>
+              <Suspense fallback={
+                <div className="absolute inset-0 flex items-center justify-center bg-concrete/70">
+                  <div className="w-10 h-10 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin" aria-hidden="true" />
                 </div>
-              )}
+              }>
+                <SmelterCanvas
+                  ref={setCanvasHandle}
+                  onComplete={handleSmeltComplete}
+                  onFlyInStart={() => flyInSound.play()}
+                  onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
+                  onRenderFailure={(err) => {
+                    console.error('[App] SmelterCanvas render failure:', err);
+                    if (analysisRef.current) {
+                      setIsComplete(true);
+                      setShowReport(true);
+                    }
+                  }}
+                />
+              </Suspense>
 
-              {/* Loading post-mortem overlay — visible from smelt-complete through Firestore write + 3s delay */}
-              {(isWritingData || (isComplete && buttonsDelayed && !isPlaying)) && !showReport && (
-                <div role="status" aria-live="polite" className="absolute inset-0 z-40 flex items-center justify-center">
-                  <div className="bg-concrete/90 backdrop-blur-sm px-6 py-3 rounded border border-concrete-border flex items-center gap-3">
-                    <div className="w-4 h-4 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin shrink-0" />
-                    <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest">
-                      COMPILING INCIDENT POSTMORTEM // STAND BY
-                    </p>
-                  </div>
+
+              {/* Analyzing overlay — shown while /api/analyze is in flight */}
+              {isAnalyzing && (
+                <div className="absolute inset-0 bg-concrete/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-40">
+                  <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin mb-4" aria-hidden="true" />
+                  <output className="text-hazard-amber font-mono text-xs uppercase animate-pulse">
+                    HOTFIX PROCESSING
+                  </output>
                 </div>
               )}
 
               {/* Post-smelt controls — replay + view report */}
-              {isComplete && !buttonsDelayed && !isPlaying && (
+              {isComplete && !isPlaying && (
                 <div className="absolute inset-0 z-40 bg-concrete/70 backdrop-blur-sm flex items-center justify-center gap-3">
                   <button
                     onClick={handleReplay}
@@ -509,26 +512,18 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
                 </div>
               )}
             </div>
-
-            {analysisError && (
-              <div className="modern-card p-4" role="alert" aria-live="assertive">
-                <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">
-                  {analysisError}
-                </p>
-              </div>
-            )}
           </div>
 
-          {/* Right Column: Recent Incidents */}
-          <div className="md:col-span-5">
+          {/* Right Column: Incident Queue */}
+          <div className="lg:col-span-5">
             <div>
               <div className="mb-3">
-                <h2 className="text-hazard-amber font-mono text-xs md:text-sm uppercase tracking-wide md:tracking-widest font-bold">
+                <h2 className="text-hazard-amber font-mono text-xs lg:text-sm uppercase tracking-wide lg:tracking-widest font-bold">
                   P0 INCIDENTS
                 </h2>
                 <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" />
               </div>
-              <ul role="list" className="space-y-3">
+              <ul className="space-y-4">
                 {recentLogs.map((log) => (
                   <li key={log.id}>
                     <IncidentLogCard
@@ -552,17 +547,7 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="p-6 bg-concrete-mid border-t border-concrete-border mt-auto">
-        <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
-            &copy; 2026 Ashley Childress
-          </p>
-          <p className="text-xs font-mono text-stone-gray uppercase tracking-widest">
-            Powered by Gemini
-          </p>
-        </div>
-      </footer>
+      <SiteFooter />
 
       {/* Post-mortem overlay */}
       {selectedRecentLog && (
@@ -570,7 +555,6 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
           log={selectedRecentLog}
           shareLinks={getLogShareLinks(selectedRecentLog)}
           incidentId={selectedRecentLog.id}
-
           onClose={() => setSelectedRecentLog(null)}
         />
       )}
@@ -578,9 +562,8 @@ export default function App({ onNavigateManifest, deepLinkId }: AppProps) {
       {showReport && analysis && (
         <IncidentReportOverlay
           analysis={analysis}
-          shareLinks={shareLinks}
-          incidentId={loggedIncidentId}
-
+          shareLinks={reportShareLinks}
+          incidentId={analysis.incidentId}
           onClose={() => setShowReport(false)}
         />
       )}

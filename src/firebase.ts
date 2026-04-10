@@ -1,15 +1,16 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, onSnapshot, query, orderBy, doc, getDoc, setDoc, updateDoc, increment, serverTimestamp, runTransaction } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 
-// Validate environment variables
 const requiredVars = [
   'VITE_FIREBASE_API_KEY',
   'VITE_FIREBASE_AUTH_DOMAIN',
   'VITE_FIREBASE_PROJECT_ID',
   'VITE_FIREBASE_STORAGE_BUCKET',
   'VITE_FIREBASE_MESSAGING_SENDER_ID',
-  'VITE_FIREBASE_APP_ID'
+  'VITE_FIREBASE_APP_ID',
+  'VITE_FIREBASE_FIRESTORE_DATABASE_ID',
+  'VITE_APP_URL',
 ] as const;
 
 const missingVars = requiredVars.filter(v => !import.meta.env[v]);
@@ -27,12 +28,12 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'legacy-smelter');
+export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID);
 const auth = getAuth(app);
 let anonymousAuthPromise: Promise<void> | null = null;
 
 export async function ensureAnonymousAuth(): Promise<void> {
-  if (typeof window === 'undefined') return;
+  if (globalThis.window === undefined) return;
   if (auth.currentUser) return;
   if (!anonymousAuthPromise) {
     anonymousAuthPromise = signInAnonymously(auth).then(() => undefined).catch((err) => {
@@ -48,11 +49,11 @@ export {
   onSnapshot,
   query,
   orderBy,
+  limit,
   doc,
   getDoc,
-  setDoc,
   updateDoc,
   increment,
   serverTimestamp,
   runTransaction,
-};
+} from 'firebase/firestore';

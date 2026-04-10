@@ -11,9 +11,16 @@ interface SmelterCanvasProps {
   onComplete: () => void;
   onFlyInStart?: () => void;
   onFireStart?: () => void;
+  /**
+   * Fires when the animation state machine has crashed so many consecutive
+   * times that the ticker has been removed. After this fires, the canvas is
+   * frozen — the parent should surface an error and either auto-open the
+   * postmortem (if the write already succeeded) or reset to idle.
+   */
+  onRenderFailure?: (err: Error) => void;
 }
 
-type AnimPhase = 'empty' | 'flying_in' | 'landing' | 'melting' | 'complete';
+type AnimPhase = 'empty' | 'flying_in' | 'landing' | 'melting' | 'settling' | 'complete';
 
 // Standard PixiJS v8 vertex shader for filters
 const FILTER_VERT = `
@@ -88,7 +95,10 @@ const PUDDLE_FRAG = `
 const DRAGON_TEX_H = 672;     // native pixel height of dragon sprite frames
 const ANIM_SPEED = 0.2;
 const FLY_SPEED = 0.005;
-const MELT_SPEED = 0.012;     // ~1.4s dissolve
+const MELT_SPEED = 0.012;     // melt progress increment per tick — ~1.4s total dissolve at 60fps
+const SETTLE_FRAMES = 90;     // idle-frame hold after the flame sequence ends (~1.5s at 60fps).
+                              // Total settling wall-clock is longer because the flame animation
+                              // (20 frames × ANIM_SPEED 0.2) must finish before the counter starts.
 
 // Layout ratios and reference dimensions
 const LAYOUT_REF_WIDTH = 900; // canvas width at which dragon renders at full scale
@@ -108,7 +118,7 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 }
 
 function hexToInt(hex: string): number {
-  return parseInt(hex.slice(1), 16);
+  return Number.parseInt(hex.slice(1), 16);
 }
 
 function intToVec3(c: number): [number, number, number] {
@@ -143,7 +153,7 @@ interface PixiState {
 }
 
 export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>(
-  ({ onComplete, onFlyInStart, onFireStart }, ref) => {
+  ({ onComplete, onFlyInStart, onFireStart, onRenderFailure }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const ps = useRef<PixiState | null>(null);
     const spriteRef = useRef<PIXI.Sprite | null>(null);
@@ -152,14 +162,15 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
     const phaseRef = useRef<AnimPhase>('empty');
     const meltProgressRef = useRef(0);
     const flyProgressRef = useRef(0);
-    const cbRef = useRef({ onComplete, onFlyInStart, onFireStart });
+    const settleProgressRef = useRef(0);
+    const cbRef = useRef({ onComplete, onFlyInStart, onFireStart, onRenderFailure });
     const readyResolveRef = useRef<() => void>(undefined);
     const readyRejectRef = useRef<(err: unknown) => void>(undefined);
     const readyPromiseRef = useRef<Promise<void>>(new Promise(() => {}));
 
     useEffect(() => {
-      cbRef.current = { onComplete, onFlyInStart, onFireStart };
-    }, [onComplete, onFlyInStart, onFireStart]);
+      cbRef.current = { onComplete, onFlyInStart, onFireStart, onRenderFailure };
+    }, [onComplete, onFlyInStart, onFireStart, onRenderFailure]);
 
     const beginSequence = () => {
       if (!ps.current || !spriteRef.current) return;
@@ -178,6 +189,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
       phaseRef.current = 'flying_in';
       flyProgressRef.current = 0;
       meltProgressRef.current = 0;
+      settleProgressRef.current = 0;
       dragon.visible = true;
 
       cbRef.current.onFlyInStart?.();
@@ -195,40 +207,31 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         // Pick top 3 dominant colors for puddle
         const palette = getFiveDistinctColors(colors);
         const picked = palette.slice(0, Math.min(3, palette.length)).map(h => ensureBright(hexToInt(h)));
-        while (picked.length < 3) picked.push(picked[0] || 0xcccccc);
+        while (picked.length < 3) picked.push(picked[0] ?? 0xcccccc);
 
-        // Create puddle palette-swap filter
-        try {
-          puddleFilterRef.current = PIXI.Filter.from({
-            gl: { vertex: FILTER_VERT, fragment: PUDDLE_FRAG },
-            resources: {
-              puddleUniforms: {
-                uColor1: { value: intToVec3(picked[0]), type: 'vec3<f32>' },
-                uColor2: { value: intToVec3(picked[1]), type: 'vec3<f32>' },
-                uColor3: { value: intToVec3(picked[2]), type: 'vec3<f32>' },
-              },
+        // Create puddle palette-swap filter. Failure is fatal — the filters
+        // ARE the animation, and a silent degrade would ship a broken smelt.
+        puddleFilterRef.current = PIXI.Filter.from({
+          gl: { vertex: FILTER_VERT, fragment: PUDDLE_FRAG },
+          resources: {
+            puddleUniforms: {
+              uColor1: { value: intToVec3(picked[0]), type: 'vec3<f32>' },
+              uColor2: { value: intToVec3(picked[1]), type: 'vec3<f32>' },
+              uColor3: { value: intToVec3(picked[2]), type: 'vec3<f32>' },
             },
-          });
-        } catch (err) {
-          console.error('[SmelterCanvas] Puddle filter failed:', err);
-          puddleFilterRef.current = null;
-        }
+          },
+        });
 
-        // Create melt filter for image dissolution
-        try {
-          meltFilterRef.current = PIXI.Filter.from({
-            gl: { vertex: FILTER_VERT, fragment: MELT_FRAG },
-            resources: {
-              meltUniforms: {
-                uTime: { value: 0, type: 'f32' },
-                uMeltAmount: { value: 0, type: 'f32' },
-              },
+        // Create melt filter for image dissolution. Also fatal on failure.
+        meltFilterRef.current = PIXI.Filter.from({
+          gl: { vertex: FILTER_VERT, fragment: MELT_FRAG },
+          resources: {
+            meltUniforms: {
+              uTime: { value: 0, type: 'f32' },
+              uMeltAmount: { value: 0, type: 'f32' },
             },
-          });
-        } catch (err) {
-          console.error('[SmelterCanvas] Melt filter failed:', err);
-          meltFilterRef.current = null;
-        }
+          },
+        });
 
         // Load image
         const img = new Image();
@@ -242,7 +245,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         // Crop via PixiJS frame Rectangle
         const baseTex = PIXI.Texture.from(img);
         let texture = baseTex;
-        if (subjectBox && subjectBox.length === 4) {
+        if (subjectBox?.length === 4) {
           const [ymin, xmin, ymax, xmax] = subjectBox;
           const cx = Math.max(0, Math.round((xmin / 1000) * img.width));
           const cy = Math.max(0, Math.round((ymin / 1000) * img.height));
@@ -260,7 +263,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         }
 
         if (spriteRef.current) {
-          state.app.stage.removeChild(spriteRef.current);
+          spriteRef.current.removeFromParent();
           spriteRef.current.texture.destroy(true);
           spriteRef.current = null;
         }
@@ -368,150 +371,45 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
           if (!dragon.playing) dragon.play();
         };
 
-        let time = 0;
+        let consecutiveTickerErrors = 0;
+        const MAX_CONSECUTIVE_TICKER_ERRORS = 5;
 
-        app.ticker.add((ticker) => {
+        const tickerFn = (ticker: PIXI.Ticker) => {
           try {
-            time += 0.05 * ticker.deltaTime;
-            const { width, height } = app.screen;
-            const baseScale = Math.min(DRAGON_MAX_SCALE, (width / LAYOUT_REF_WIDTH) * DRAGON_MAX_SCALE);
-            const dragonRestX = width * DRAGON_REST_X;
-            const dragonY = height * DRAGON_Y;
-            const imageX = width * IMAGE_X;
-            const imageY = height * IMAGE_Y;
-            const puddleY = height * PUDDLE_Y;
-
-            switch (phaseRef.current) {
-              case 'empty': {
-                dragon.visible = true;
-                setDragonTex(textures.idle, true);
-                dragon.x = dragonRestX;
-                dragon.y = dragonY;
-                dragon.scale.set(-baseScale, baseScale);
-                break;
-              }
-
-              case 'flying_in': {
-                dragon.visible = true;
-                setDragonTex(textures.fly, true);
-                flyProgressRef.current += FLY_SPEED * ticker.deltaTime;
-                const t = Math.min(flyProgressRef.current, 1);
-                const eased = 1 - Math.pow(1 - t, 3);
-                dragon.x = (width + FLY_OFFSCREEN_PAD) + (dragonRestX - width - FLY_OFFSCREEN_PAD) * eased;
-                dragon.y = dragonY;
-                dragon.scale.set(baseScale);
-                if (t >= 1) {
-                  phaseRef.current = 'landing';
-                  setDragonTex(textures.land, false);
-                  dragon.scale.set(-baseScale, baseScale);
-                  dragon.x = dragonRestX;
-                }
-                break;
-              }
-
-              case 'landing': {
-                dragon.x = dragonRestX;
-                dragon.y = dragonY;
-                dragon.scale.set(-baseScale, baseScale);
-                if (!dragon.playing) {
-                  phaseRef.current = 'melting';
-                  meltProgressRef.current = 0;
-                  setDragonTex(textures.flame, false);
-
-                  // Apply melt shader to image
-                  if (spriteRef.current && meltFilterRef.current) {
-                    spriteRef.current.filters = [meltFilterRef.current];
-                  }
-
-                  cbRef.current.onFireStart?.();
-                }
-                break;
-              }
-
-              case 'melting': {
-                dragon.x = dragonRestX;
-                dragon.y = dragonY;
-                dragon.scale.set(-baseScale, baseScale);
-
-                if (!dragon.playing && dragon.textures === textures.flame) {
-                  setDragonTex(textures.idle, true);
-                }
-                if (!dragon.playing) dragon.play();
-
-                meltProgressRef.current += MELT_SPEED * ticker.deltaTime;
-                const mp = Math.min(meltProgressRef.current, 1);
-
-                // Advance melt shader on image
-                if (meltFilterRef.current) {
-                  const u = (meltFilterRef.current.resources as any).meltUniforms.uniforms;
-                  u.uMeltAmount = mp;
-                  u.uTime += 0.005 * ticker.deltaTime;
-                }
-
-                // Squish + hide image as it melts
-                if (spriteRef.current) {
-                  if (mp >= 0.85) {
-                    spriteRef.current.visible = false;
-                  } else {
-                    const s = getImgScale(baseScale, spriteRef.current);
-                    const squish = 1.0 - mp * 0.9; // 1.0 → 0.1
-                    spriteRef.current.scale.x = s;
-                    spriteRef.current.scale.y = s * squish;
-                    spriteRef.current.x = imageX;
-                    // Keep bottom edge fixed as it squishes down
-                    const fullH = spriteRef.current.texture.height * s;
-                    spriteRef.current.y = imageY + (fullH - fullH * squish) / 2;
-                  }
-                }
-
-                // Puddle fades in
-                const puddleAlpha = smoothstep(0.3, 0.6, mp);
-                puddle.visible = puddleAlpha > 0.01;
-                if (puddle.visible) {
-                  if (!puddle.playing) puddle.play();
-                  if (puddleFilterRef.current && !puddle.filters?.length) {
-                    puddle.filters = [puddleFilterRef.current];
-                  }
-                  puddle.alpha = puddleAlpha;
-                  puddle.x = imageX;
-                  puddle.y = puddleY;
-                  puddle.scale.set((width * PUDDLE_WIDTH_RATIO) / PUDDLE_SPRITE_W);
-                }
-
-                if (mp >= 1) {
-                  phaseRef.current = 'complete';
-                  cbRef.current.onComplete();
-                }
-                break;
-              }
-
-              case 'complete': {
-                dragon.x = dragonRestX;
-                dragon.y = dragonY;
-                dragon.scale.set(-baseScale, baseScale);
-                setDragonTex(textures.idle, true);
-
-                if (!puddle.playing) puddle.play();
-                puddle.x = imageX;
-                puddle.y = puddleY;
-                puddle.scale.set((width * PUDDLE_WIDTH_RATIO) / PUDDLE_SPRITE_W);
-                break;
-              }
-            }
-
-            // Image positioning (pre-melt)
-            if (
-              spriteRef.current &&
-              (phaseRef.current === 'flying_in' || phaseRef.current === 'landing')
-            ) {
-              spriteRef.current.x = imageX;
-              spriteRef.current.y = imageY;
-              spriteRef.current.scale.set(getImgScale(baseScale, spriteRef.current));
-            }
+            stepAnimation({
+              ticker,
+              app,
+              dragon,
+              puddle,
+              textures,
+              spriteRef: spriteRef,
+              meltFilterRef: meltFilterRef,
+              puddleFilterRef: puddleFilterRef,
+              phaseRef: phaseRef,
+              flyProgressRef: flyProgressRef,
+              meltProgressRef: meltProgressRef,
+              settleProgressRef: settleProgressRef,
+              callbacks: cbRef.current,
+              setDragonTex,
+            });
+            consecutiveTickerErrors = 0;
           } catch (err) {
-            console.error('[SmelterCanvas] Ticker error:', err);
+            consecutiveTickerErrors++;
+            console.error(
+              `[SmelterCanvas] Ticker error (${consecutiveTickerErrors}/${MAX_CONSECUTIVE_TICKER_ERRORS}):`,
+              err
+            );
+            if (consecutiveTickerErrors >= MAX_CONSECUTIVE_TICKER_ERRORS) {
+              console.error('[SmelterCanvas] Ticker disabled after repeated failures.');
+              app.ticker.remove(tickerFn);
+              const wrapped = err instanceof Error
+                ? err
+                : new Error(`[SmelterCanvas] Ticker crashed: ${String(err)}`);
+              cbRef.current.onRenderFailure?.(wrapped);
+            }
           }
-        });
+        };
+        app.ticker.add(tickerFn);
 
         readyResolveRef.current?.();
       };
@@ -522,7 +420,19 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
       });
       return () => {
         destroyed = true;
-        ps.current?.app.destroy(true, { children: true, texture: true });
+        // The dragon and puddle frames are owned by PIXI.Assets — destroying
+        // them via app.destroy({ texture: true }) bypasses the Assets cache
+        // and triggers `Texture managed by Assets was destroyed instead of
+        // unloaded` warnings. Pass `texture: false` so app.destroy only tears
+        // down the stage and Assets keeps owning the sprite frames (their
+        // memory is freed when Assets evicts them, and the cache stays warm
+        // for a remount). The user-uploaded image texture is NOT in Assets,
+        // so destroy it explicitly here or it leaks.
+        if (spriteRef.current) {
+          spriteRef.current.texture.destroy(true);
+          spriteRef.current = null;
+        }
+        ps.current?.app.destroy(true, { children: true, texture: false });
         ps.current = null;
       };
     }, []);
@@ -533,9 +443,228 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
 
 SmelterCanvas.displayName = 'SmelterCanvas';
 
+// ── Per-phase animation step helpers ──────────────────────────────────────
+//
+// Each helper handles exactly one `phaseRef` value, keeping per-phase
+// branching out of the main ticker callback so the ticker itself stays
+// under the cognitive-complexity ceiling (S3776).
+
+interface StepContext {
+  ticker: PIXI.Ticker;
+  app: PIXI.Application;
+  dragon: PIXI.AnimatedSprite;
+  puddle: PIXI.AnimatedSprite;
+  textures: PixiState['textures'];
+  spriteRef: React.MutableRefObject<PIXI.Sprite | null>;
+  meltFilterRef: React.MutableRefObject<PIXI.Filter | null>;
+  puddleFilterRef: React.MutableRefObject<PIXI.Filter | null>;
+  phaseRef: React.MutableRefObject<AnimPhase>;
+  flyProgressRef: React.MutableRefObject<number>;
+  meltProgressRef: React.MutableRefObject<number>;
+  settleProgressRef: React.MutableRefObject<number>;
+  callbacks: SmelterCanvasProps & { onRenderFailure?: (err: Error) => void };
+  setDragonTex: (tex: PIXI.Texture[], loop: boolean) => void;
+}
+
+function stepFlyingIn(ctx: StepContext, dragonRestX: number, dragonY: number, baseScale: number): void {
+  const { ticker, app, dragon, textures, phaseRef, flyProgressRef, setDragonTex } = ctx;
+  const { width } = app.screen;
+  dragon.visible = true;
+  setDragonTex(textures.fly, true);
+  flyProgressRef.current += FLY_SPEED * ticker.deltaTime;
+  const t = Math.min(flyProgressRef.current, 1);
+  const eased = 1 - Math.pow(1 - t, 3);
+  dragon.x = (width + FLY_OFFSCREEN_PAD) + (dragonRestX - width - FLY_OFFSCREEN_PAD) * eased;
+  dragon.y = dragonY;
+  dragon.scale.set(baseScale);
+  if (t >= 1) {
+    phaseRef.current = 'landing';
+    setDragonTex(textures.land, false);
+    setDragonRestPose(dragon, dragonRestX, dragonY, baseScale);
+  }
+}
+
+function stepLanding(ctx: StepContext, dragonRestX: number, dragonY: number, baseScale: number): void {
+  const { dragon, textures, phaseRef, meltProgressRef, spriteRef, meltFilterRef, callbacks, setDragonTex } = ctx;
+  setDragonRestPose(dragon, dragonRestX, dragonY, baseScale);
+  if (!dragon.playing) {
+    phaseRef.current = 'melting';
+    meltProgressRef.current = 0;
+    setDragonTex(textures.flame, false);
+    if (spriteRef.current && meltFilterRef.current) {
+      spriteRef.current.filters = [meltFilterRef.current];
+    }
+    callbacks.onFireStart?.();
+  }
+}
+
+function advanceMeltShader(meltFilter: PIXI.Filter, mp: number, deltaTime: number): void {
+  const u = (meltFilter.resources as any).meltUniforms.uniforms;
+  u.uMeltAmount = mp;
+  u.uTime += 0.005 * deltaTime;
+}
+
+function squishImage(sprite: PIXI.Sprite, mp: number, baseScale: number, imageX: number, imageY: number): void {
+  if (mp >= 0.85) {
+    sprite.visible = false;
+    return;
+  }
+  const s = getImgScale(baseScale, sprite);
+  const squish = 1 - mp * 0.9; // 1.0 → 0.1
+  sprite.scale.x = s;
+  sprite.scale.y = s * squish;
+  sprite.x = imageX;
+  // Keep bottom edge fixed as it squishes down
+  const fullH = sprite.texture.height * s;
+  sprite.y = imageY + (fullH - fullH * squish) / 2;
+}
+
+function showPuddle(ctx: StepContext, mp: number, imageX: number, puddleY: number, canvasWidth: number): void {
+  const { puddle, puddleFilterRef } = ctx;
+  const puddleAlpha = smoothstep(0.3, 0.6, mp);
+  puddle.visible = puddleAlpha > 0.01;
+  if (!puddle.visible) return;
+  if (!puddle.playing) puddle.play();
+  if (puddleFilterRef.current && !puddle.filters?.length) {
+    puddle.filters = [puddleFilterRef.current];
+  }
+  puddle.alpha = puddleAlpha;
+  setPuddleRestPose(puddle, imageX, puddleY, canvasWidth);
+}
+
+function stepMelting(ctx: StepContext, dragonRestX: number, dragonY: number, baseScale: number, imageX: number, imageY: number, puddleY: number): void {
+  const { ticker, app, dragon, textures, phaseRef, meltProgressRef, settleProgressRef, spriteRef, meltFilterRef, setDragonTex } = ctx;
+  setDragonRestPose(dragon, dragonRestX, dragonY, baseScale);
+
+  if (!dragon.playing && dragon.textures === textures.flame) {
+    setDragonTex(textures.idle, true);
+  }
+  if (!dragon.playing) dragon.play();
+
+  meltProgressRef.current += MELT_SPEED * ticker.deltaTime;
+  const mp = Math.min(meltProgressRef.current, 1);
+
+  if (meltFilterRef.current) advanceMeltShader(meltFilterRef.current, mp, ticker.deltaTime);
+  if (spriteRef.current) squishImage(spriteRef.current, mp, baseScale, imageX, imageY);
+  showPuddle(ctx, mp, imageX, puddleY, app.screen.width);
+
+  if (mp >= 1) {
+    phaseRef.current = 'settling';
+    settleProgressRef.current = 0;
+  }
+}
+
+function stepSettling(ctx: StepContext, dragonRestX: number, dragonY: number, baseScale: number, imageX: number, puddleY: number): void {
+  const { ticker, app, dragon, puddle, textures, phaseRef, settleProgressRef, callbacks, setDragonTex } = ctx;
+  setDragonRestPose(dragon, dragonRestX, dragonY, baseScale);
+
+  if (!dragon.playing && dragon.textures === textures.flame) {
+    setDragonTex(textures.idle, true);
+  }
+  if (!dragon.playing) dragon.play();
+
+  if (!puddle.playing) puddle.play();
+  setPuddleRestPose(puddle, imageX, puddleY, app.screen.width);
+
+  // Only start counting idle frames once the dragon has actually
+  // switched back to idle (flame sequence finished).
+  if (dragon.textures === textures.idle) {
+    settleProgressRef.current += ticker.deltaTime;
+    if (settleProgressRef.current >= SETTLE_FRAMES) {
+      phaseRef.current = 'complete';
+      callbacks.onComplete();
+    }
+  }
+}
+
+function stepComplete(ctx: StepContext, dragonRestX: number, dragonY: number, baseScale: number, imageX: number, puddleY: number): void {
+  const { app, dragon, puddle, textures, setDragonTex } = ctx;
+  setDragonRestPose(dragon, dragonRestX, dragonY, baseScale);
+  setDragonTex(textures.idle, true);
+  if (!puddle.playing) puddle.play();
+  setPuddleRestPose(puddle, imageX, puddleY, app.screen.width);
+}
+
+function stepAnimation(ctx: StepContext): void {
+  const { app, dragon, textures, phaseRef, spriteRef, setDragonTex } = ctx;
+  const { width, height } = app.screen;
+  const baseScale = Math.min(DRAGON_MAX_SCALE, (width / LAYOUT_REF_WIDTH) * DRAGON_MAX_SCALE);
+  const dragonRestX = width * DRAGON_REST_X;
+  const dragonY = height * DRAGON_Y;
+  const imageX = width * IMAGE_X;
+  const imageY = height * IMAGE_Y;
+  const puddleY = height * PUDDLE_Y;
+
+  switch (phaseRef.current) {
+    case 'empty':
+      dragon.visible = true;
+      setDragonTex(textures.idle, true);
+      setDragonRestPose(dragon, dragonRestX, dragonY, baseScale);
+      break;
+    case 'flying_in':
+      stepFlyingIn(ctx, dragonRestX, dragonY, baseScale);
+      break;
+    case 'landing':
+      stepLanding(ctx, dragonRestX, dragonY, baseScale);
+      break;
+    case 'melting':
+      stepMelting(ctx, dragonRestX, dragonY, baseScale, imageX, imageY, puddleY);
+      break;
+    case 'settling':
+      stepSettling(ctx, dragonRestX, dragonY, baseScale, imageX, puddleY);
+      break;
+    case 'complete':
+      stepComplete(ctx, dragonRestX, dragonY, baseScale, imageX, puddleY);
+      break;
+  }
+
+  // Image positioning (pre-melt)
+  if (
+    spriteRef.current &&
+    (phaseRef.current === 'flying_in' || phaseRef.current === 'landing')
+  ) {
+    spriteRef.current.x = imageX;
+    spriteRef.current.y = imageY;
+    spriteRef.current.scale.set(getImgScale(baseScale, spriteRef.current));
+  }
+}
+
 function getImgScale(baseScale: number, sprite: PIXI.Sprite): number {
   const dragonVisualH = DRAGON_TEX_H * baseScale;
   const target = dragonVisualH * 0.6;
   const max = Math.max(sprite.texture.width, sprite.texture.height);
   return max > 0 ? target / max : 1;
+}
+
+/**
+ * Places the dragon at its rest position (facing left, so scale.x is
+ * negative). This is the "on the ground, not flying in" pose shared by
+ * the landing, melting, settling, and complete phases — pulled out of
+ * the ticker switch so adjusting the rest pose only needs one edit.
+ */
+function setDragonRestPose(
+  dragon: PIXI.AnimatedSprite,
+  restX: number,
+  restY: number,
+  baseScale: number,
+): void {
+  dragon.x = restX;
+  dragon.y = restY;
+  dragon.scale.set(-baseScale, baseScale);
+}
+
+/**
+ * Places the puddle at its anchor point under the image and rescales
+ * it to PUDDLE_WIDTH_RATIO of the current canvas width. Shared by the
+ * melting, settling, and complete phases.
+ */
+function setPuddleRestPose(
+  puddle: PIXI.AnimatedSprite,
+  imageX: number,
+  puddleY: number,
+  canvasWidth: number,
+): void {
+  puddle.x = imageX;
+  puddle.y = puddleY;
+  puddle.scale.set((canvasWidth * PUDDLE_WIDTH_RATIO) / PUDDLE_SPRITE_W);
 }
