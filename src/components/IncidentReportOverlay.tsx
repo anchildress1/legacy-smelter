@@ -402,15 +402,22 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       <div
         className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
       >
-        {/* Color strip — always left. Intensity reduced via
-            `saturate-75 brightness-90` to match the card treatment.
-            `opacity` on saturated colors against a near-black theme
-            background is mathematically almost invisible (blend with
-            black barely shifts the pigment); `saturate` is the
-            perceptually meaningful operator on dark themes because it
-            actually desaturates the colors toward neutral gray.
+        {/* Color strip — always left. Intensity reduced via an inline
+            `filter` rather than Tailwind `saturate-*` / `brightness-*`
+            utilities: in Tailwind v4 the filter utilities compose via
+            CSS variables, which can silently fail when the same element
+            also has `overflow-hidden` + `sm:rounded-l-lg` (the rounding
+            creates a clipping context that competes with the filter on
+            some browsers). Inline CSS `filter` is unambiguous and
+            guaranteed to apply. Values are stronger than the card
+            (0.6 vs 0.75 on the card) because the modal color strip is
+            larger on screen and needs a deeper cut to feel muted.
             Decorative (`aria-hidden`) — no WCAG contrast requirement. */}
-        <div className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden saturate-75 brightness-90" aria-hidden="true">
+        <div
+          className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden"
+          style={{ filter: 'saturate(0.6) brightness(0.85)' }}
+          aria-hidden="true"
+        >
           {report.dominantColors.map((color) => (
             <div key={color} className="flex-1" style={{ backgroundColor: color }} />
           ))}
