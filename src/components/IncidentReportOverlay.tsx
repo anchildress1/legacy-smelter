@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useId, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
