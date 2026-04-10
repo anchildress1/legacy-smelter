@@ -10,7 +10,12 @@ import {
   doc,
   getDoc,
 } from './firebase';
-import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
+import {
+  analyzeLegacyTech,
+  AnalysisError,
+  type AnalysisErrorCategory,
+  type SmeltAnalysis,
+} from './services/geminiService';
 import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import type { SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
@@ -30,6 +35,30 @@ const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, v
 const CANVAS_READY_TIMEOUT_MS = 8_000;
 const QUEUE_SCHEMA_ISSUE_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
 const STATS_SCHEMA_ISSUE = 'GLOBAL STATS DATA SCHEMA VIOLATION. DECOMMISSION INDEX FROZEN.';
+
+// User-visible copy for the analyze-path error categories. Kept alongside
+// the category definitions so a category added to `AnalysisError` that
+// forgets a message here would be surfaced as the catch-all "unknown"
+// branch rather than a silent `undefined`. Each message is phrased as
+// an institutional incident-report line because the rest of the UI uses
+// the same voice — a plain "Something went wrong" would clash.
+const ANALYZE_ISSUE_COPY: Record<AnalysisErrorCategory, string> = {
+  auth:
+    'ANALYSIS FAILED. AUTHENTICATION LAPSE. REFRESH AND RETRY.',
+  rate_limited:
+    'ANALYSIS FAILED. RATE LIMIT ENGAGED. WAIT BEFORE RETRYING.',
+  server_busy:
+    'ANALYSIS FAILED. FURNACE AT CAPACITY. RETRY SHORTLY.',
+  payload:
+    'ANALYSIS FAILED. ARTIFACT REJECTED BY INTAKE. TRY A DIFFERENT IMAGE.',
+  analysis:
+    'ANALYSIS FAILED. INCIDENT ENGINE UNAVAILABLE. RETRY SHORTLY.',
+  unknown:
+    'ANALYSIS FAILED. UNKNOWN FAULT. RETRY SHORTLY.',
+};
+
+const ANALYZE_ISSUE_FILE_READ =
+  'ANALYSIS FAILED. ARTIFACT COULD NOT BE READ. TRY ANOTHER FILE.';
 const SmelterCanvas = lazy(async () => {
   const module = await import('./components/SmelterCanvas');
   return { default: module.SmelterCanvas };
@@ -53,6 +82,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [statsIssue, setStatsIssue] = useState<string | null>(null);
   const [queueIssue, setQueueIssue] = useState<string | null>(null);
+  const [analyzeIssue, setAnalyzeIssue] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -267,6 +297,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     if (import.meta.env.DEV) console.log("Processing image...", mimeType);
     resetToIdle();
     setSelectedRecentLog(null);
+    setAnalyzeIssue(null);
     setIsAnalyzing(true);
     flyInSound.stop();
     fireSound.stop();
@@ -279,6 +310,14 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     } catch (error) {
       if (requestId !== activeRequestIdRef.current) return;
       console.error("Gemini analysis failed", error);
+      // Surface the failure through the shared DataHealthIndicator
+      // channel so the user sees a category-appropriate message
+      // instead of a silent bounce back to idle. `AnalysisError`
+      // carries an HTTP-status-derived category; anything else is
+      // treated as unknown (network error, parser failure, etc.).
+      const category =
+        error instanceof AnalysisError ? error.category : 'unknown';
+      setAnalyzeIssue(ANALYZE_ISSUE_COPY[category]);
       setIsAnalyzing(false);
       return;
     }
@@ -309,6 +348,9 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+    // Clear any stale analyze-issue so an old failure message does not
+    // cling to the screen once the user picks a fresh file.
+    setAnalyzeIssue(null);
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -317,6 +359,10 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     };
     reader.onerror = () => {
       console.error('[App] FileReader failed:', reader.error);
+      // Surface the failure so the user gets a recovery path. Without
+      // this, the file picker closes with no visible signal and the
+      // user has no idea why "Process Artifact" did nothing.
+      setAnalyzeIssue(ANALYZE_ISSUE_FILE_READ);
     };
     reader.readAsDataURL(file);
   };
@@ -377,7 +423,9 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
         buildIncidentUrl(analysis.incidentId)
       )
     : [];
-  const activeIssues = [statsIssue, queueIssue].filter((message): message is string => !!message);
+  const activeIssues = [statsIssue, queueIssue, analyzeIssue].filter(
+    (message): message is string => !!message,
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">

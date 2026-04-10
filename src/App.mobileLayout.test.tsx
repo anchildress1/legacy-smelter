@@ -1,6 +1,9 @@
 import { render, screen, within } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
+// BRITTLE BY DESIGN — pins specific Tailwind class names against a
+// screenshot-review regression. See below for the rationale.
+//
 // Regression test for the mobile header layout. The screenshot review
 // flagged two issues:
 //   1. `hidden sm:flex` on the tagline dropped the product voice from
@@ -21,6 +24,14 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 // `classList` directly and verify the mobile-first classes are present
 // and the `hidden`/`flex-col` defaults are absent. That is what a
 // broken mobile layout would actually look like at the source level.
+//
+// A refactor that migrates off Tailwind (CSS modules, a layout component,
+// a different utility framework) WILL break this test — that is the
+// intended trade-off. Re-pin against whatever the replacement provides,
+// or, if the replacement is visually verified another way (a Storybook
+// snapshot, a Playwright viewport test), delete this file. Do not treat
+// a failing classname assertion here as a test bug without first
+// confirming the mobile header still renders correctly.
 
 const flushFirestore = () => () => {};
 
