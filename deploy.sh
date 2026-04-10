@@ -17,6 +17,13 @@ set -euo pipefail
 #   VITE_FIREBASE_STORAGE_BUCKET
 #   VITE_FIREBASE_MESSAGING_SENDER_ID
 #   VITE_FIREBASE_APP_ID
+#   VITE_FIREBASE_FIRESTORE_DATABASE_ID
+#
+# The server-side admin SDK (shared/admin-init.js) requires
+# FIREBASE_PROJECT_ID and FIREBASE_FIRESTORE_DATABASE_ID at runtime. These
+# MUST match their VITE_ counterparts, so this script derives them
+# automatically if not explicitly set — there is no valid deploy where
+# they diverge.
 #
 # VITE_APP_URL is auto-resolved from the existing Cloud Run service URL
 # if not set, so switching gcloud projects just works.
@@ -117,6 +124,14 @@ if [[ ! "$VITE_APP_URL" =~ ^https?://[^[:space:]]+$ ]]; then
 fi
 VITE_APP_URL="${VITE_APP_URL%/}"
 
+# Mirror the VITE_FIREBASE_* values into the server-side admin SDK vars.
+# These MUST match (shared/admin-init.js is the sole writer for incidents
+# and must target the same project + database as the client), so mirroring
+# eliminates drift and makes deploys self-sufficient without having to
+# duplicate values in the env file. An explicit export still wins.
+export FIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID:-$VITE_FIREBASE_PROJECT_ID}"
+export FIREBASE_FIRESTORE_DATABASE_ID="${FIREBASE_FIRESTORE_DATABASE_ID:-$VITE_FIREBASE_FIRESTORE_DATABASE_ID}"
+
 # ── Derived values ───────────────────────────────────────────────────────────
 
 SERVICE_SA="${SERVICE_NAME}-run@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -186,7 +201,9 @@ gcloud run deploy "$SERVICE_NAME" \
   --set-env-vars="\
 VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY},\
 VITE_FIREBASE_PROJECT_ID=${VITE_FIREBASE_PROJECT_ID},\
-VITE_FIREBASE_FIRESTORE_DATABASE_ID=${VITE_FIREBASE_FIRESTORE_DATABASE_ID:-},\
+VITE_FIREBASE_FIRESTORE_DATABASE_ID=${VITE_FIREBASE_FIRESTORE_DATABASE_ID},\
+FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},\
+FIREBASE_FIRESTORE_DATABASE_ID=${FIREBASE_FIRESTORE_DATABASE_ID},\
 VITE_APP_URL=${VITE_APP_URL}" \
   --allow-unauthenticated \
   --cpu-boost

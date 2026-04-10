@@ -410,7 +410,12 @@ app.use('/api', express.json({ limit: '10mb' }));
 // The Gemini API key stays server-side; Firestore writes use the admin SDK
 // (which bypasses security rules), so auth is what protects global_stats
 // from being poisoned by anonymous bots.
-app.post('/api/analyze', requireFirebaseAuth, rateLimitAnalyzeRoute, async (req, res) => {
+//
+// Middleware order (IMPORTANT): rate limiting runs BEFORE auth so that
+// unauthenticated floods — and malformed/expired token probes — cannot
+// exhaust the Firebase token verification path. CodeQL `js/missing-rate-limiting`
+// also requires the rate limiter to dominate the authorization check.
+app.post('/api/analyze', rateLimitAnalyzeRoute, requireFirebaseAuth, async (req, res) => {
   if (!GEMINI_API_KEY) {
     return res.status(500).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
   }

@@ -22,23 +22,32 @@ service cloud.firestore {
         return (data.sanction_count * 5) + (data.escalation_count * 3) + (data.breach_count * 2);
       }
 
-      // Defensive getters: legacy docs written before the impact_score
-      // backfill may be missing the field. `get(field, default)` returns the
-      // default on missing/null so arithmetic doesn't short-circuit the rule
-      // to false on otherwise-valid clients. The final `impactScore(...)`
-      // equality check still enforces that the post-write value matches the
-      // weighted-sum invariant.
+      // Invariant enforcement: each increment rule verifies two things —
+      //   (a) the counter moved by exactly ±1, and
+      //   (b) the post-write impact_score equals the weighted sum of the
+      //       post-write counters (sanction×5 + escalation×3 + breach×2).
+      //
+      // We intentionally do NOT check impact_score as a delta from the
+      // pre-write value. The weighted-sum equality in (b) already uniquely
+      // determines the correct post-write impact_score given the post-write
+      // counters, and pinning to a delta would silently reject legitimate
+      // writes against any document whose pre-write impact_score was missing
+      // or drifted (e.g. pre-backfill legacy docs where escalation_count > 0
+      // but impact_score is absent — `get('impact_score', 0) - 3` would
+      // require a negative value that (b) could never produce).
+      //
+      // Counter reads use `get(field, 0)` so the rule still accepts writes
+      // against legacy docs that were written before the voting-fields
+      // backfill added the counter defaults.
       function isBreachIncrement() {
         return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['breach_count', 'impact_score']) &&
                request.resource.data.breach_count == resource.data.get('breach_count', 0) + 1 &&
-               request.resource.data.impact_score == resource.data.get('impact_score', 0) + 2 &&
                request.resource.data.impact_score == impactScore(request.resource.data);
       }
 
       function isEscalationIncrement() {
         return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['escalation_count', 'impact_score']) &&
                request.resource.data.escalation_count == resource.data.get('escalation_count', 0) + 1 &&
-               request.resource.data.impact_score == resource.data.get('impact_score', 0) + 3 &&
                request.resource.data.impact_score == impactScore(request.resource.data) &&
                !exists(escalationDocPath(request.auth.uid)) &&
                existsAfter(escalationDocPath(request.auth.uid));
@@ -48,7 +57,6 @@ service cloud.firestore {
         return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['escalation_count', 'impact_score']) &&
                resource.data.get('escalation_count', 0) > 0 &&
                request.resource.data.escalation_count == resource.data.get('escalation_count', 0) - 1 &&
-               request.resource.data.impact_score == resource.data.get('impact_score', 0) - 3 &&
                request.resource.data.impact_score == impactScore(request.resource.data) &&
                exists(escalationDocPath(request.auth.uid)) &&
                !existsAfter(escalationDocPath(request.auth.uid));
