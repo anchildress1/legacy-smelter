@@ -514,10 +514,18 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
             </div>
           </div>
 
-          {/* Right Column: Incident Queue */}
-          <div className="lg:col-span-5">
+          {/* Right Column: P0 Incidents rail. Chrome (header + hazard
+              stripe) sits at reduced opacity at rest so the eye is not
+              pulled away from the primary canvas column during the scan
+              phase; on rail hover the chrome brightens back to full
+              intensity. Card interactivity is intentionally NOT behind an
+              opacity wrapper — each `IncidentLogCard` owns its own rest
+              and hover states so the rail can fade its chrome without
+              degrading the cards' click targets or focus rings. Goal:
+              invisible during scan, visible on intent. */}
+          <div className="lg:col-span-5 group/rail">
             <div>
-              <div className="mb-3">
+              <div className="mb-3 opacity-60 group-hover/rail:opacity-100 transition-opacity duration-200">
                 <h2 className="text-hazard-amber font-mono text-xs lg:text-sm uppercase tracking-wide lg:tracking-widest font-bold">
                   P0 INCIDENTS
                 </h2>
@@ -533,7 +541,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                   </li>
                 ))}
                 {recentLogs.length === 0 && (
-                  <li className="modern-card p-12 text-center list-none">
+                  <li className="modern-card p-12 text-center list-none opacity-60 group-hover/rail:opacity-100 transition-opacity duration-200">
                     <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
                     <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
                       Furnace idle. Awaiting condemned infrastructure.

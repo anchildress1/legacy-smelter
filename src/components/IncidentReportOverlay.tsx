@@ -402,8 +402,13 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       <div
         className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
       >
-        {/* Color strip — always left */}
-        <div className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden" aria-hidden="true">
+        {/* Color strip — always left. Sits at 80% intensity to match the
+            card treatment and reduce visual harshness inside the modal
+            chrome; the modal dialog already saturates attention, and the
+            strip's purpose here is orientation/continuity with the list,
+            not a second attention-grab. Structure (5 bands) preserved —
+            only intensity tuned. */}
+        <div className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden opacity-80" aria-hidden="true">
           {report.dominantColors.map((color) => (
             <div key={color} className="flex-1" style={{ backgroundColor: color }} />
           ))}
@@ -477,13 +482,13 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
                   {report.legacyInfraClass}
                 </p>
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold shrink-0">
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold shrink-0">
                   <AlertTriangle size={8} aria-hidden="true" />
                   {report.severity}
                 </span>
               </div>
               {counts.sanction > 0 && (
-                <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold">
+                <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold">
                   <ShieldCheck size={9} aria-hidden="true" />
                   Sanctioned
                 </span>
@@ -502,7 +507,12 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               </p>
             </div>
 
-            {/* Stats row */}
+            {/* Stats row. Labels now sit at `text-ash-white/60` so the
+                stat name scans easily alongside the number instead of
+                disappearing into the dark border, and the four metrics
+                read as a cohesive row rather than "numbers + faint noise".
+                Values remain full amber so the count is still the focal
+                point. */}
             <div className="flex items-baseline justify-between py-3 border-y border-[#2a2a2a]">
               {[
                 { value: computeImpact(liveCountsForImpact), label: 'Impact' },
@@ -512,26 +522,34 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               ].map(({ value, label }) => (
                 <div key={label} className="text-center">
                   <div className="text-hazard-amber font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
-                  <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-stone-gray">{label}</div>
+                  <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-ash-white/60">{label}</div>
                 </div>
               ))}
             </div>
 
-            {/* Escalate */}
+            {/* Escalate. Narrower than full-width (`max-w-xs mx-auto`) and
+                drawn with a stronger border so it reads as an action,
+                not a banner spanning the content column. When escalated
+                the fill/border deepen to communicate armed state without
+                losing identity. Idle state still has lower visual weight
+                than the primary postmortem copy so the eye lands on
+                diagnosis → stats → action in that order. */}
             {incidentId && (
-              <button
-                onClick={handleEscalate}
-                disabled={isTogglingEscalation}
-                className={`w-full flex items-center justify-center gap-2 rounded-md border py-2 font-mono text-[11px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
-                  escalated
-                    ? 'border-hazard-amber/30 bg-hazard-amber/10 text-hazard-amber'
-                    : 'border-[#333] text-stone-gray hover:text-ash-white hover:border-[#444]'
-                } ${isTogglingEscalation ? 'opacity-50' : ''}`}
-                aria-label={escalated ? 'Remove escalation' : 'Escalate'}
-              >
-                <Siren size={16} aria-hidden="true" />
-                {escalated ? 'Escalation Armed' : 'Escalate Incident'}
-              </button>
+              <div className="flex justify-center">
+                <button
+                  onClick={handleEscalate}
+                  disabled={isTogglingEscalation}
+                  className={`w-full max-w-xs flex items-center justify-center gap-2 rounded-md border-2 px-4 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                    escalated
+                      ? 'border-hazard-amber/60 bg-hazard-amber/15 text-hazard-amber'
+                      : 'border-[#555] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/60 hover:bg-hazard-amber/5'
+                  } ${isTogglingEscalation ? 'opacity-50' : ''}`}
+                  aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+                >
+                  <Siren size={16} aria-hidden="true" />
+                  {escalated ? 'Escalation Armed' : 'Escalate Incident'}
+                </button>
+              </div>
             )}
 
             {/* Disposition */}

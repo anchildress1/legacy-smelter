@@ -190,7 +190,15 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           <div className="hazard-stripe h-1 w-full mt-3 rounded-sm" />
         </div>
 
-        {/* Filter + sort — flat, no container */}
+        {/* Filter + sort — single control surface. Both the filter pills
+            and the sort dropdown live in the same flex row with matching
+            py-2 vertical padding so they share a baseline, reading as one
+            group of controls rather than two disconnected widgets.
+            The active filter state uses a stronger border and a more
+            opaque amber fill than the pre-tuning version so it reads as
+            unambiguously interactive — decorative-looking active states
+            were a scan-phase confusion source. Idle state is still low
+            contrast so the row does not compete with card content. */}
         <div className="mb-5 flex flex-wrap items-center gap-2">
           {([
             ['all', 'All'],
@@ -201,9 +209,10 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
               key={value}
               type="button"
               onClick={() => setFilterMode(value)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+              aria-pressed={filterMode === value}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
                 filterMode === value
-                  ? 'border-hazard-amber/40 bg-hazard-amber/10 text-hazard-amber'
+                  ? 'border-hazard-amber/70 bg-hazard-amber/20 text-hazard-amber shadow-[inset_0_0_0_1px_rgba(245,200,66,0.25)]'
                   : 'border-[#444] bg-[#1a1a1a] text-stone-gray hover:text-ash-white hover:border-[#555]'
               }`}
             >
@@ -214,7 +223,8 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           <select
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as ManifestSort)}
-            className="ml-auto rounded-md border border-[#333] bg-transparent px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-widest text-stone-gray focus:border-hazard-amber focus:outline-none"
+            aria-label="Sort incidents"
+            className="ml-auto rounded-full border border-[#444] bg-[#1a1a1a] px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest text-stone-gray hover:text-ash-white hover:border-[#555] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus:border-hazard-amber/70 transition-colors"
           >
             <option value="impact">Highest Impact</option>
             <option value="newest">Newest First</option>
