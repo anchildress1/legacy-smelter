@@ -423,19 +423,21 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
           ))}
         </div>
 
-        {/* Main content column. `relative` is the anchor for the
-            absolutely-positioned close button below so it can sit
-            flush at the modal's top-right corner instead of being
-            inset by the header's horizontal padding. */}
-        <div className="relative flex-1 min-w-0 flex flex-col overflow-hidden">
+        {/* Main content column */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 
         {/* ── HEADER BAR ──
-            `pr-14` on the right reserves ~56px of clearance for the
-            absolutely-positioned close button so the share/copy
-            action cluster cannot run underneath it. Left padding is
-            unchanged (`pl-5 sm:pl-8`). The asymmetry is intentional
-            — the close button visually fills the right gutter. */}
-        <div className="shrink-0 flex items-center justify-between gap-2 pl-5 sm:pl-8 pr-14 py-2.5">
+            Left padding `pl-5 sm:pl-8` keeps the "POSTMORTEM" label
+            aligned with the body content. Right padding is trimmed
+            to `pr-2` so the action cluster (share → copy → close)
+            sits flush with the modal's top-right corner — the close
+            button's right edge lands ~8px inside the rounded-lg
+            corner, which reads as "in the corner" without colliding
+            with the border radius. All icons remain visually
+            cohesive in a single cluster, with the existing vertical
+            divider between copy and close preserving the
+            share/dismiss grouping. */}
+        <div className="shrink-0 flex items-center justify-between gap-2 pl-5 sm:pl-8 pr-2 py-2.5">
           <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
             Postmortem
           </h2>
@@ -475,27 +477,18 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             >
               {copyTextState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
             </button>
+            {/* Visual divider grouping share/copy (left) from
+                dismissal (right). Purely decorative — `aria-hidden`. */}
+            <div className="w-px h-4 bg-concrete-border mx-0.5" aria-hidden="true" />
+            <button
+              onClick={onClose}
+              className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+              aria-label="Close report"
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
           </div>
         </div>
-
-        {/* Close button — absolutely positioned so it sits flush at
-            the modal's top-right corner instead of inside the header's
-            horizontal padding. Sized at 44×44 (`w-11 h-11`) for WCAG
-            2.5.5 AAA enhanced target size — the close button is the
-            primary dismissal affordance on a modal and deserves a
-            generous target. `top-1.5 right-1.5` keeps a 6px visual
-            gap from the modal's `sm:rounded-lg` corner so the button
-            doesn't collide with the border radius. `z-10` keeps it
-            above the header row. Subtle `hover:bg-white/5` tint gives
-            a hover affordance without competing with the other action
-            icons below. */}
-        <button
-          onClick={onClose}
-          className="absolute top-1.5 right-1.5 z-10 w-11 h-11 flex items-center justify-center rounded-md text-stone-gray hover:text-ash-white hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
-          aria-label="Close report"
-        >
-          <X size={18} aria-hidden="true" />
-        </button>
 
         {/* Hazard stripe — under header, consistent with manifest */}
         <div className="hazard-stripe h-1 w-full shrink-0" />
