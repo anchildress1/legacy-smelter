@@ -175,11 +175,6 @@ export function hasValidVotingFields(data: Record<string, unknown>): boolean {
   );
 }
 
-export function readFiniteNumber(data: Record<string, unknown>, key: string): number {
-  const value = data[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
-
 /**
  * Reads a required non-negative finite counter off a candidate doc and throws
  * if the value is missing, non-numeric, non-finite, or negative. Used by
@@ -488,10 +483,15 @@ export async function runSanctionIncidents(): Promise<void> {
       console.log(`[sanction-incidents] Batch ${processedBatches} committed.`);
     }
   } catch (err) {
-    // Record where the run got before surfacing the underlying error so the
-    // operator can match a partial run against Firestore state on retry.
+    // Record where the run got AND the underlying error so the operator can
+    // match a partial run against Firestore state on retry. The error object
+    // must be logged here because the `finally` below re-throws `releaseErr`
+    // on lock-release failure, which replaces `err` at the process boundary;
+    // without this log, the original crash evidence (stack, message, batch
+    // context) is permanently lost in the stuck-lock recovery scenario.
     console.error(
-      `[sanction-incidents] Aborting after ${processedBatches} committed batch(es).`
+      `[sanction-incidents] Aborting after ${processedBatches} committed batch(es):`,
+      err
     );
     throw err;
   } finally {

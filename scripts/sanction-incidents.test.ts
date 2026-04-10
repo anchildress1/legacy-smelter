@@ -19,7 +19,6 @@ import {
   normalizeSelection,
   parseIncidentDoc,
   prepareSanctionUpdate,
-  readFiniteNumber,
   requireNonNegativeCounter,
   sanitizeRationale,
   type Candidate,
@@ -146,12 +145,6 @@ describe('sanction-incidents helpers', () => {
     ).toBe(false);
   });
 
-  it('readFiniteNumber returns finite numbers and falls back to zero for invalid values', () => {
-    expect(readFiniteNumber({ a: 3 }, 'a')).toBe(3);
-    expect(readFiniteNumber({ a: Number.NaN }, 'a')).toBe(0);
-    expect(readFiniteNumber({ a: '3' }, 'a')).toBe(0);
-  });
-
   it('requireNonNegativeCounter returns finite non-negative numbers and throws otherwise', () => {
     expect(requireNonNegativeCounter({ a: 0 }, 'a', 'inc')).toBe(0);
     expect(requireNonNegativeCounter({ a: 7 }, 'a', 'inc')).toBe(7);
@@ -176,15 +169,16 @@ describe('sanction-incidents helpers', () => {
     );
   });
 
-  it('requireNonNegativeCounter treats -0, +0, and large finite integers as valid', () => {
-    // `-0` is finite and non-negative (`-0 < 0` is false); the helper
-    // returns it verbatim. A future refactor that normalizes to +0 would
-    // only affect this boundary — pin the behaviour so it's a deliberate
-    // change, not a silent one.
-    const negZeroResult = requireNonNegativeCounter({ a: -0 }, 'a', 'inc-neg-zero');
-    expect(Object.is(negZeroResult, -0)).toBe(true);
-
-    expect(requireNonNegativeCounter({ a: +0 }, 'a', 'inc-pos-zero')).toBe(0);
+  it('requireNonNegativeCounter treats zero and large finite integers as valid', () => {
+    // `-0` is finite and non-negative (`-0 < 0` is false); the helper returns
+    // it, which is indistinguishable from `+0` for every downstream consumer
+    // (computeImpactScore, Firestore serialization). Use an arithmetic
+    // equality check (`=== 0`) instead of `toBe(0)` because Vitest's
+    // `toBe` uses `Object.is`, which distinguishes `-0` from `+0`.
+    // Pinning the IEEE sign of the zero would lock in an implementation
+    // detail unrelated to the invariant being enforced.
+    expect(requireNonNegativeCounter({ a: -0 }, 'a', 'inc-neg-zero') === 0).toBe(true);
+    expect(requireNonNegativeCounter({ a: +0 }, 'a', 'inc-pos-zero') === 0).toBe(true);
 
     // `Number.MIN_VALUE` is the smallest *positive* finite double. Must
     // pass the non-negative check even though it is vanishingly small.
@@ -276,10 +270,10 @@ describe('sanction-incidents helpers', () => {
   });
 
   it('prepareSanctionUpdate refuses to write when voting counters are corrupt', () => {
-    // `readFiniteNumber` will happily coerce garbage to zero, but this helper
-    // is the last line of defense before a wrong `impact_score` gets persisted
-    // and the doc is flipped to `sanctioned: true` (and thus never re-enters
-    // the query). Crash loudly so the operator runs the backfill instead.
+    // Last line of defense before a wrong `impact_score` gets persisted and
+    // the doc is flipped to `sanctioned: true` (and thus never re-enters the
+    // query). Crash loudly so the operator runs the backfill instead of
+    // silently coercing garbage to zero.
     const selection: SanctionSelection = {
       sanctioned_incident_id: 'inc-bad',
       sanction_rationale: 'reason',

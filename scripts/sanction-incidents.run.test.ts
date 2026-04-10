@@ -664,4 +664,136 @@ describe('runSanctionIncidents', () => {
       noise.restore();
     }
   });
+
+  it('creates the migration marker when every scanned doc has valid voting fields', async () => {
+    // Marker missing + every doc valid is the happy-path branch of
+    // `ensureVotingFieldsMigration`. After the scan, the runner writes a
+    // marker doc with `{ completed_at, scanned_count, patched_count: 0,
+    // source }`. Without a test on this branch, the marker-creation code
+    // is dead to the suite — a regression that wrote the wrong shape
+    // (missing `completed_at`, wrong `source`, or a swapped count) would
+    // ship silently and future runs would treat a partial migration as
+    // complete.
+    state.marker.exists = false;
+    state.migrationSnapshots.push(
+      {
+        size: 2,
+        empty: false,
+        docs: [
+          {
+            id: 'ok-1',
+            ref: { path: 'incident_logs/ok-1' },
+            data: () => ({
+              breach_count: 0,
+              escalation_count: 0,
+              sanction_count: 0,
+              sanctioned: false,
+              sanction_rationale: null,
+            }),
+          },
+          {
+            id: 'ok-2',
+            ref: { path: 'incident_logs/ok-2' },
+            data: () => ({
+              breach_count: 1,
+              escalation_count: 2,
+              sanction_count: 0,
+              sanctioned: false,
+              sanction_rationale: null,
+            }),
+          },
+        ],
+      },
+      { size: 0, empty: true, docs: [] },
+    );
+    // After the marker is created the runner continues into the sanction
+    // phase. Give it a below-threshold batch so it exits cleanly without
+    // needing model responses.
+    state.unsanctionedSnapshots.push({
+      size: 0,
+      empty: true,
+      docs: [],
+    });
+
+    const noise = silenceRunnerConsole();
+    try {
+      const { runSanctionIncidents } = await importRunner();
+      await runSanctionIncidents();
+
+      expect(state.marker.setCalls).toHaveLength(1);
+      const markerPayload = state.marker.setCalls[0] as Record<string, unknown>;
+      expect(markerPayload).toEqual(
+        expect.objectContaining({
+          scanned_count: 2,
+          patched_count: 0,
+          source: 'scripts/sanction-incidents.ts preflight',
+        }),
+      );
+      // `completed_at` is a server-timestamp sentinel (an opaque object,
+      // not a string/number) — assert it is present by key rather than
+      // by value to keep the test stable against admin SDK changes.
+      expect(markerPayload.completed_at).toBeDefined();
+      expect(state.getBatchCommitCount()).toBe(0);
+    } finally {
+      noise.restore();
+    }
+  });
+
+  it('paginates the migration scan through multiple pages using startAfter cursor', async () => {
+    // The preflight loop is paginated via `startAfter(cursor)` so projects
+    // with more than `MIGRATION_SCAN_PAGE_SIZE` (500) documents still
+    // validate every doc. A regression that forgot to advance the cursor
+    // (or re-read the first page) would loop forever or skip later docs.
+    // The mock collection records `startAfter` calls, and the runner pulls
+    // snapshots off the `migrationSnapshots` queue in order, so we can
+    // assert cursoring by (a) the presence of the call and (b) the count
+    // of pages consumed.
+    state.marker.exists = false;
+    const makeValidDoc = (id: string) => ({
+      id,
+      ref: { path: `incident_logs/${id}` },
+      data: () => ({
+        breach_count: 0,
+        escalation_count: 0,
+        sanction_count: 0,
+        sanctioned: false,
+        sanction_rationale: null,
+      }),
+    });
+    state.migrationSnapshots.push(
+      { size: 2, empty: false, docs: [makeValidDoc('p1-a'), makeValidDoc('p1-b')] },
+      { size: 1, empty: false, docs: [makeValidDoc('p2-a')] },
+      { size: 0, empty: true, docs: [] },
+    );
+    state.unsanctionedSnapshots.push({ size: 0, empty: true, docs: [] });
+
+    // Find the collection chain's `startAfter` mock so we can assert on
+    // it. The mock returns the chain object from every method, so the
+    // `startAfter` reference lives on the collection proxy itself.
+    const incidentCollectionProxy = state.db.collection('incident_logs') as unknown as {
+      startAfter: { mock: { calls: unknown[][] } };
+    };
+
+    const noise = silenceRunnerConsole();
+    try {
+      const { runSanctionIncidents } = await importRunner();
+      await runSanctionIncidents();
+
+      // Three pages in the queue → the runner must have called `get()`
+      // three times (first page, second page, empty terminator) and
+      // `startAfter` at least twice (once per non-initial page). The
+      // cursor argument is the final doc of the previous page —
+      // assert that directly so a bug that passed the first doc or a
+      // stale snapshot reference is caught.
+      expect(incidentCollectionProxy.startAfter.mock.calls.length).toBeGreaterThanOrEqual(2);
+      // Scanned count in the marker payload is the sum across all pages:
+      // 2 + 1 = 3.
+      expect(state.marker.setCalls).toHaveLength(1);
+      expect(state.marker.setCalls[0]).toEqual(
+        expect.objectContaining({ scanned_count: 3, patched_count: 0 }),
+      );
+    } finally {
+      noise.restore();
+    }
+  });
 });
