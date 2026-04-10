@@ -11,6 +11,9 @@
     "serve": "npm run build && npm run start",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:api": "vitest run scripts/server.analyze.integration.test.ts",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-legacy-smelter --config firebase.test.json \"vitest run --config vitest.rules.config.ts\"",
+    "test:proof": "npm run lint && npm run test:run && npm run test:rules",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p scripts/tsconfig.json",
     "sanction-incidents": "tsx scripts/sanction-incidents.ts"
@@ -33,14 +36,18 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/express": "^5.0.6",
     "@types/howler": "^2.2.12",
     "@types/node": "^25.5.2",
     "@types/react-dom": "^19.2.3",
+    "@types/supertest": "^7.2.0",
     "autoprefixer": "^10.4.27",
+    "firebase-tools": "^15.14.0",
     "jsdom": "^29.0.2",
+    "supertest": "^7.2.2",
     "tailwindcss": "^4.2.2",
     "tsx": "^4.21.0",
     "typescript": "~6.0.2",
