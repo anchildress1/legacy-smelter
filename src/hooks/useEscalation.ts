@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react';
-import { toggleEscalation, hasEscalated, syncEscalationState } from '../services/escalationService';
+import {
+  toggleEscalation,
+  hasEscalated,
+  syncEscalationState,
+  subscribeEscalationStateChange,
+} from '../services/escalationService';
 
 export interface UseEscalationResult {
   /** Whether the current user has escalated this incident. Starts from the
@@ -46,7 +51,14 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
         console.error('[useEscalation] syncEscalationState failed:', err);
         setError('Could not verify escalation state. Count may be stale.');
       });
-    return () => { cancelled = true; };
+    const unsubscribe = subscribeEscalationStateChange(({ incidentId: changedIncidentId, escalated: nextState }) => {
+      if (changedIncidentId !== incidentId) return;
+      if (!cancelled) setEscalated(nextState);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [incidentId]);
 
   const toggle = async () => {

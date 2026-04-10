@@ -6,6 +6,17 @@ import { safeParseJsonFromStorage } from '../lib/storageJson';
 const STORAGE_KEY = 'escalated_incidents';
 const LOG_PREFIX = '[escalationService]';
 const inFlightEscalations = new Set<string>();
+const ESCALATION_STATE_EVENT = 'legacy-smelter:escalation-state-changed';
+
+interface EscalationStateChangeDetail {
+  incidentId: string;
+  escalated: boolean;
+}
+
+function emitEscalationStateChange(detail: EscalationStateChangeDetail): void {
+  if (typeof globalThis.window === 'undefined') return;
+  globalThis.window.dispatchEvent(new CustomEvent<EscalationStateChangeDetail>(ESCALATION_STATE_EVENT, { detail }));
+}
 
 function getEscalatedSet(): Set<string> {
   return safeParseJsonFromStorage(
@@ -32,6 +43,21 @@ function persistEscalatedSet(set: Set<string>): void {
 
 export function hasEscalated(incidentId: string): boolean {
   return getEscalatedSet().has(incidentId);
+}
+
+export function subscribeEscalationStateChange(
+  listener: (detail: EscalationStateChangeDetail) => void,
+): () => void {
+  if (typeof globalThis.window === 'undefined') return () => {};
+  const onChange = (event: Event) => {
+    const custom = event as CustomEvent<EscalationStateChangeDetail>;
+    if (!custom.detail) return;
+    listener(custom.detail);
+  };
+  globalThis.window.addEventListener(ESCALATION_STATE_EVENT, onChange as EventListener);
+  return () => {
+    globalThis.window.removeEventListener(ESCALATION_STATE_EVENT, onChange as EventListener);
+  };
 }
 
 /**
@@ -86,6 +112,7 @@ export async function toggleEscalation(incidentId: string): Promise<boolean> {
       set.delete(incidentId);
     }
     persistEscalatedSet(set);
+    emitEscalationStateChange({ incidentId, escalated: newState });
 
     return newState;
   } finally {
@@ -114,5 +141,6 @@ export async function syncEscalationState(incidentId: string): Promise<boolean> 
     set.delete(incidentId);
   }
   persistEscalatedSet(set);
+  emitEscalationStateChange({ incidentId, escalated: exists });
   return exists;
 }

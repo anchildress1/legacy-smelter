@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Howl } from 'howler';
 import {
   db,
@@ -28,6 +28,7 @@ const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, 
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
 const INCIDENT_SCHEMA_ERROR_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
 const GLOBAL_STATS_SCHEMA_ERROR_PREFIX = 'GLOBAL STATS SCHEMA VIOLATION.';
+const CANVAS_READY_TIMEOUT_MS = 8_000;
 const SmelterCanvas = lazy(async () => {
   const module = await import('./components/SmelterCanvas');
   return { default: module.SmelterCanvas };
@@ -58,12 +59,52 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<SmelterCanvasHandle>(null);
+  const canvasRef = useRef<SmelterCanvasHandle | null>(null);
+  const canvasReadyWaitersRef = useRef<Array<{
+    resolve: (handle: SmelterCanvasHandle) => void;
+    reject: (error: Error) => void;
+    timeoutId: ReturnType<typeof setTimeout>;
+  }>>([]);
   const activeRequestIdRef = useRef(0);
   const analysisRef = useRef<SmeltAnalysis | null>(null);
   const postmortemAutoOpenedRef = useRef(false);
   const cameraAttachTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingCameraStreamRef = useRef<MediaStream | null>(null);
+
+  const rejectCanvasWaiters = useCallback((reason: string) => {
+    const waiters = canvasReadyWaitersRef.current;
+    canvasReadyWaitersRef.current = [];
+    for (const waiter of waiters) {
+      clearTimeout(waiter.timeoutId);
+      waiter.reject(new Error(reason));
+    }
+  }, []);
+
+  const setCanvasHandle = useCallback((handle: SmelterCanvasHandle | null) => {
+    canvasRef.current = handle;
+    if (!handle) return;
+    const waiters = canvasReadyWaitersRef.current;
+    canvasReadyWaitersRef.current = [];
+    for (const waiter of waiters) {
+      clearTimeout(waiter.timeoutId);
+      waiter.resolve(handle);
+    }
+  }, []);
+
+  const waitForCanvasHandle = useCallback((): Promise<SmelterCanvasHandle> => {
+    if (canvasRef.current) return Promise.resolve(canvasRef.current);
+    return new Promise((resolve, reject) => {
+      const waiter = {
+        resolve,
+        reject,
+        timeoutId: setTimeout(() => {
+          canvasReadyWaitersRef.current = canvasReadyWaitersRef.current.filter((entry) => entry !== waiter);
+          reject(new Error('Smelter canvas did not initialize in time.'));
+        }, CANVAS_READY_TIMEOUT_MS),
+      };
+      canvasReadyWaitersRef.current.push(waiter);
+    });
+  }, []);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
@@ -133,8 +174,9 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
   useEffect(() => {
     return () => {
       releaseCameraResources();
+      rejectCanvasWaiters('Smelter view unmounted before canvas was ready.');
     };
-  }, []);
+  }, [rejectCanvasWaiters]);
 
   // Deep link: fetch incident by Firestore doc ID and open its overlay.
   // The URL is already cleared by Root — deepLinkId is a one-shot value.
@@ -247,7 +289,9 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     setIsAnalyzing(false);
 
     try {
-      await canvasRef.current?.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
+      const canvasHandle = await waitForCanvasHandle();
+      if (requestId !== activeRequestIdRef.current) return;
+      await canvasHandle.loadAndSmelt(base64, result.subjectBox, result.dominantColors);
     } catch (error) {
       if (requestId !== activeRequestIdRef.current) return;
       console.error('[App] Canvas rendering failed:', error);
@@ -408,7 +452,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                 </div>
               }>
                 <SmelterCanvas
-                  ref={canvasRef}
+                  ref={setCanvasHandle}
                   onComplete={handleSmeltComplete}
                   onFlyInStart={() => flyInSound.play()}
                   onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
