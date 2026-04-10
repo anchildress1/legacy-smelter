@@ -555,7 +555,19 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
       });
       return () => {
         destroyed = true;
-        ps.current?.app.destroy(true, { children: true, texture: true });
+        // The dragon and puddle frames are owned by PIXI.Assets — destroying
+        // them via app.destroy({ texture: true }) bypasses the Assets cache
+        // and triggers `Texture managed by Assets was destroyed instead of
+        // unloaded` warnings. Pass `texture: false` so app.destroy only tears
+        // down the stage and Assets keeps owning the sprite frames (their
+        // memory is freed when Assets evicts them, and the cache stays warm
+        // for a remount). The user-uploaded image texture is NOT in Assets,
+        // so destroy it explicitly here or it leaks.
+        if (spriteRef.current) {
+          spriteRef.current.texture.destroy(true);
+          spriteRef.current = null;
+        }
+        ps.current?.app.destroy(true, { children: true, texture: false });
         ps.current = null;
       };
     }, []);

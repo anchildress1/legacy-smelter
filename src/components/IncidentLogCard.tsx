@@ -10,7 +10,7 @@ interface IncidentLogCardProps {
 }
 
 export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }) => {
-  const { escalated, isToggling, error: escalationError, toggle } = useEscalation(log.id);
+  const { escalated, isToggling, toggle } = useEscalation(log.id);
 
   const finalColors = getFiveDistinctColors([
     log.color_1, log.color_2, log.color_3, log.color_4, log.color_5,
@@ -72,20 +72,12 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
         onClick={handleEscalate}
         disabled={isToggling}
         className={`shrink-0 w-12 flex flex-col items-center justify-center gap-1 border-l transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset ${
-          escalationError
-            ? 'border-l-hazard-amber/60 bg-hazard-amber/20 text-hazard-amber animate-pulse'
-            : escalated
+          escalated
             ? 'bg-hazard-amber/15 text-hazard-amber border-l-hazard-amber/30'
             : 'border-concrete-border text-stone-gray/60 hover:text-hazard-amber/80 hover:bg-hazard-amber/5'
         } ${isToggling ? 'opacity-50' : ''}`}
-        aria-label={
-          escalationError
-            ? `Escalation failed for ${log.legacy_infra_class}: ${escalationError}`
-            : escalated
-            ? `Remove escalation for ${log.legacy_infra_class}`
-            : `Escalate ${log.legacy_infra_class}`
-        }
-        title={escalationError ?? (escalated ? 'De-escalate' : 'Escalate')}
+        aria-label={escalated ? `Remove escalation for ${log.legacy_infra_class}` : `Escalate ${log.legacy_infra_class}`}
+        title={escalated ? 'De-escalate' : 'Escalate'}
       >
         <Siren size={18} />
       </button>

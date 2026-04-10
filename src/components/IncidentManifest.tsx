@@ -22,8 +22,6 @@ const PAGE_SIZE = 20;
 const MANIFEST_FETCH_LIMIT = 500;
 type ManifestFilter = 'all' | 'needs_ruling' | 'escalated' | 'sanctioned';
 type ManifestSort = 'impact' | 'newest' | 'breaches' | 'escalations';
-const MANIFEST_SCHEMA_ERROR_PREFIX = 'Incident data schema violation.';
-const GLOBAL_STATS_SCHEMA_ERROR_PREFIX = 'Global stats schema violation.';
 
 interface IncidentManifestProps {
   onNavigateHome: () => void;
@@ -37,7 +35,6 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   const [filterMode, setFilterMode] = useState<ManifestFilter>('all');
   const [sortMode, setSortMode] = useState<ManifestSort>('impact');
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubStats = onSnapshot(doc(db, 'global_stats', 'main'), (snap) => {
@@ -45,14 +42,10 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
       const data = snap.data();
       if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
         console.error('[IncidentManifest] global_stats/main has invalid total_pixels_melted:', data);
-        setError(`${GLOBAL_STATS_SCHEMA_ERROR_PREFIX} Decommission Index frozen.`);
         return;
       }
       setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
-      setError((prev) => (
-        prev?.startsWith(GLOBAL_STATS_SCHEMA_ERROR_PREFIX) ? null : prev
-      ));
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'global_stats/main', setError));
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'global_stats/main'));
 
     return () => { unsubStats(); };
   }, []);
@@ -76,26 +69,15 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
     })();
 
     setIsLoading(true);
-    setError(null);
     let gotFirst = false;
     const unsubLogs = onSnapshot(q, (snap) => {
       const entries: SmeltLog[] = [];
-      let schemaErrors = 0;
       for (const d of snap.docs) {
         try {
           entries.push(parseSmeltLog(d.id, d.data()));
         } catch (parseErr) {
-          schemaErrors++;
-          if (schemaErrors <= 3) console.error('[IncidentManifest] Skipping malformed doc:', parseErr);
+          console.error('[IncidentManifest] Skipping malformed doc:', parseErr);
         }
-      }
-      if (schemaErrors > 0) {
-        const incidentWord = schemaErrors === 1 ? 'incident' : 'incidents';
-        setError(`${MANIFEST_SCHEMA_ERROR_PREFIX} ${schemaErrors} ${incidentWord} hidden from manifest.`);
-      } else {
-        setError((prev) => (
-          prev?.startsWith(MANIFEST_SCHEMA_ERROR_PREFIX) ? null : prev
-        ));
       }
       setAllLogs(entries);
       if (!gotFirst) {
@@ -103,7 +85,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
         setIsLoading(false);
       }
     }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'incident_logs', setError);
+      handleFirestoreError(err, OperationType.LIST, 'incident_logs');
       setAllLogs([]);
       setIsLoading(false);
     });
@@ -249,7 +231,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             </li>
           ))}
 
-          {!isLoading && sortedLogs.length === 0 && !error && (
+          {!isLoading && sortedLogs.length === 0 && (
             <li className="py-12 text-center list-none">
               <Flame size={28} className="text-hazard-amber mx-auto mb-2" />
               <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
@@ -258,12 +240,6 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
                 {filterMode === 'escalated' && 'No escalated incidents on record.'}
                 {filterMode === 'sanctioned' && 'No sanctions issued yet.'}
               </p>
-            </li>
-          )}
-
-          {error && (
-            <li className="py-4 list-none">
-              <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">{error}</p>
             </li>
           )}
         </ul>

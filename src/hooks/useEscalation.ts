@@ -12,12 +12,9 @@ export interface UseEscalationResult {
   readonly escalated: boolean;
   /** True while a toggle request is in flight — use to disable the button. */
   readonly isToggling: boolean;
-  /** User-facing error message from the most recent sync or toggle. Cleared
-   *  automatically on the next sync or toggle attempt; callers should render
-   *  it as long as it is non-null. */
-  readonly error: string | null;
-  /** Flip the escalation state. Optimistically updates, rolls back on
-   *  failure, and populates `error` on rejection. */
+  /** Flip the escalation state. Optimistically updates and rolls back on
+   *  failure. Failures are logged to the console only — there is no
+   *  user-facing error surface. */
   readonly toggle: () => Promise<void>;
 }
 
@@ -27,29 +24,25 @@ export interface UseEscalationResult {
  * (so the UI paints immediately) and then kicks off a Firestore sync to
  * replace that value with the authoritative state from the
  * `incident_logs/{id}/escalations/{uid}` subcollection. Both the sync and
- * the toggle surface failures via the returned `error` string — callers
- * MUST render it; there is no silent fallback.
+ * the toggle log failures to the console only — there is no user-facing
+ * error display.
  */
 export function useEscalation(incidentId: string | null): UseEscalationResult {
   const [escalated, setEscalated] = useState(() => incidentId ? hasEscalated(incidentId) : false);
   const [isToggling, setIsToggling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!incidentId) {
       setEscalated(false);
-      setError(null);
       return;
     }
     setEscalated(hasEscalated(incidentId));
-    setError(null);
     let cancelled = false;
     syncEscalationState(incidentId)
       .then((state) => { if (!cancelled) setEscalated(state); })
       .catch((err) => {
         if (cancelled) return;
         console.error('[useEscalation] syncEscalationState failed:', err);
-        setError('Could not verify escalation state. Count may be stale.');
       });
     const unsubscribe = subscribeEscalationStateChange(({ incidentId: changedIncidentId, escalated: nextState }) => {
       if (changedIncidentId !== incidentId) return;
@@ -64,7 +57,6 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
   const toggle = async () => {
     if (!incidentId || isToggling) return;
     setIsToggling(true);
-    setError(null);
     const previous = escalated;
     const optimistic = !previous;
     setEscalated(optimistic);
@@ -74,11 +66,10 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
     } catch (err) {
       setEscalated(previous);
       console.error('[useEscalation] Toggle failed:', err);
-      setError('Escalation failed. Check your connection and retry.');
     } finally {
       setIsToggling(false);
     }
   };
 
-  return { escalated, isToggling, error, toggle };
+  return { escalated, isToggling, toggle };
 }

@@ -217,18 +217,12 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
   const [liveEscalationCount, setLiveEscalationCount] = useState<number>(report?.escalationCount ?? 0);
   const [liveTimestamp, setLiveTimestamp] = useState<Date | null>(report?.timestamp ?? null);
-  const [liveError, setLiveError] = useState<string | null>(null);
-  const [copyError, setCopyError] = useState<string | null>(null);
   const liveCounts = { sanction_count: liveSanctionCount, escalation_count: liveEscalationCount, breach_count: liveBreachCount };
   const {
     escalated,
     isToggling: isTogglingEscalation,
-    error: escalationError,
     toggle: toggleEscalate,
   } = useEscalation(incidentId ?? null);
-  const activeErrors = [liveError, escalationError, copyError].filter(
-    (msg): msg is string => !!msg
-  );
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const headingId = useId();
@@ -238,8 +232,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     setLiveBreachCount(report?.breachCount ?? 0);
     setLiveEscalationCount(report?.escalationCount ?? 0);
     setLiveTimestamp(report?.timestamp ?? null);
-    setLiveError(null);
-    setCopyError(null);
   }, [incidentId]);
 
   // Live-subscribe to counter fields while overlay is open
@@ -247,7 +239,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     if (!incidentId) return;
     return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
       if (!snap.exists()) {
-        setLiveError('Incident removed from archive.');
+        console.error(`[IncidentReportOverlay] incident_logs/${incidentId} removed from archive while overlay open.`);
         return;
       }
       const data = snap.data();
@@ -259,10 +251,8 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
           `[IncidentReportOverlay] incident_logs/${incidentId} has non-numeric counter fields`,
           { sanction_count: sc, breach_count: bc, escalation_count: ec }
         );
-        setLiveError('Incident data schema violation. Live counts frozen.');
         return;
       }
-      setLiveError(null);
       setLiveSanctionCount(sc);
       setLiveBreachCount(bc);
       setLiveEscalationCount(ec);
@@ -272,7 +262,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       }
     }, (error) => {
       console.error('[IncidentReportOverlay] Live count subscription failed:', error);
-      setLiveError('Live counts unavailable. Reconnecting…');
     });
   }, [incidentId]);
 
@@ -347,37 +336,28 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const handleCopyText = async () => {
     try {
       await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount, liveEscalationCount, liveSanctionCount, liveTimestamp));
-      setCopyError(null);
       setCopyTextState('copied');
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
       copyTimeoutRef.current = setTimeout(() => setCopyTextState('idle'), 2000);
       recordBreachAsync();
     } catch (err) {
       console.error('[IncidentReportOverlay] Clipboard write failed:', err);
-      setCopyError('Copy failed. Select the text manually or check browser permissions.');
     }
   };
 
   // Breaches feed the Impact score (2× weight) and drive the P0 feed sort —
-  // this is product state, not analytics. Errors are surfaced via liveError
-  // so the user knows their action didn't register. Skipped states
-  // (cooldown / in-flight) are intentionally silent to avoid spamming the
-  // user when they click repeatedly.
+  // this is product state, not analytics. All failures (Firestore errors,
+  // unexpected throws, skipped states) are logged to the console only —
+  // there is no user-facing error surface.
   const recordBreachAsync = () => {
     if (!incidentId) return;
     recordBreach(incidentId)
       .then((result) => {
         if (result.ok || result.skipped) return;
         console.error('[IncidentReportOverlay] Breach record failed:', result.error);
-        setLiveError(
-          result.error
-            ? `Breach not recorded: ${result.error}`
-            : 'Breach not recorded. Check your connection and try again.'
-        );
       })
       .catch((err) => {
         console.error('[IncidentReportOverlay] Breach record threw unexpectedly:', err);
-        setLiveError('Breach not recorded due to an unexpected error.');
       });
   };
 
@@ -387,14 +367,12 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     if (!incidentUrl) return;
     try {
       await navigator.clipboard.writeText(incidentUrl);
-      setCopyError(null);
       setCopyLinkState('copied');
       if (copyLinkTimeoutRef.current !== null) clearTimeout(copyLinkTimeoutRef.current);
       copyLinkTimeoutRef.current = setTimeout(() => setCopyLinkState('idle'), 2000);
       recordBreachAsync();
     } catch (err) {
       console.error('[IncidentReportOverlay] Clipboard write failed:', err);
-      setCopyError('Copy link failed. Check browser permissions.');
     }
   };
 
@@ -491,19 +469,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         {/* ── SCROLLABLE BODY ── */}
         <div className="flex-1 overflow-y-auto">
           <div className="px-5 sm:px-8 py-5 sm:py-6 space-y-5">
-
-            {activeErrors.length > 0 && (
-              <div
-                role="alert"
-                aria-live="polite"
-                aria-atomic="true"
-                className="border border-hazard-amber/40 bg-hazard-amber/10 rounded p-2.5 font-mono text-[11px] uppercase tracking-wider text-hazard-amber space-y-1"
-              >
-                {activeErrors.map((msg) => (
-                  <p key={msg}>{msg}</p>
-                ))}
-              </div>
-            )}
 
             {/* Title + severity */}
             <div>

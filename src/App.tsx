@@ -26,8 +26,6 @@ import { parseSmeltLog } from './lib/smeltLogSchema';
 const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false, volume: 0.5 });
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
-const INCIDENT_SCHEMA_ERROR_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
-const GLOBAL_STATS_SCHEMA_ERROR_PREFIX = 'GLOBAL STATS SCHEMA VIOLATION.';
 const CANVAS_READY_TIMEOUT_MS = 8_000;
 const SmelterCanvas = lazy(async () => {
   const module = await import('./components/SmelterCanvas');
@@ -44,12 +42,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
   const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
   const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  // Split data-integrity errors into distinct slots so the two async
-  // snapshots (stats + incidents) cannot clobber each other's state.
-  const [incidentSchemaError, setIncidentSchemaError] = useState<string | null>(null);
-  const [statsSchemaError, setStatsSchemaError] = useState<string | null>(null);
-  const [workflowError, setWorkflowError] = useState<string | null>(null);
-  const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -113,13 +105,11 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       const data = snapshot.data();
       if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
         console.error('[App] global_stats/main has invalid total_pixels_melted:', data);
-        setStatsSchemaError(`${GLOBAL_STATS_SCHEMA_ERROR_PREFIX} DECOMMISSION INDEX FROZEN.`);
         return;
       }
       setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
-      setStatsSchemaError(null);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'global_stats/main', setStatsSchemaError);
+      handleFirestoreError(error, OperationType.GET, 'global_stats/main');
     });
 
     // P0 queue uses server-maintained impact_score so this listener stays
@@ -132,24 +122,16 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     );
     const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
       const entries: SmeltLog[] = [];
-      let schemaErrors = 0;
       for (const d of snapshot.docs) {
         try {
           entries.push(parseSmeltLog(d.id, d.data()));
         } catch (error) {
-          schemaErrors++;
-          if (schemaErrors <= 3) console.error('[App] Skipping malformed incident_logs doc:', error);
+          console.error('[App] Skipping malformed incident_logs doc:', error);
         }
-      }
-      if (schemaErrors > 0) {
-        const incidentWord = schemaErrors === 1 ? 'incident' : 'incidents';
-        setIncidentSchemaError(`${INCIDENT_SCHEMA_ERROR_PREFIX} ${schemaErrors} ${incidentWord} hidden from queue.`);
-      } else {
-        setIncidentSchemaError(null);
       }
       setRecentLogs(entries);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'incident_logs', setIncidentSchemaError);
+      handleFirestoreError(error, OperationType.LIST, 'incident_logs');
     });
 
     return () => { unsubStats(); unsubLogs(); };
@@ -188,16 +170,14 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
         const snap = await getDoc(doc(db, 'incident_logs', deepLinkId));
         if (cancelled) return;
         if (!snap.exists()) {
-          setDeepLinkError('Incident not found — the link may have expired or been removed.');
+          console.error('[App] Deep link incident not found:', deepLinkId);
           return;
         }
         const parsedLog = parseSmeltLog(snap.id, snap.data());
         setSelectedRecentLog(parsedLog);
-        setDeepLinkError(null);
       } catch (err) {
         if (!cancelled) {
           console.error('[App] Deep link fetch/parsing failed:', err);
-          setDeepLinkError('Could not load incident — data schema violation or network failure.');
         }
       }
     })();
@@ -222,11 +202,10 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     } catch (err) {
       const name = err instanceof Error ? err.name : '';
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        setWorkflowError('CAMERA PERMISSION DENIED. FILE PICKER OPENED AS FALLBACK.');
+        console.error('[App] Camera permission denied; opening file picker as fallback.');
         cameraInputRef.current?.click();
       } else {
         console.error(`[App] Camera unavailable (${name || 'unknown'}):`, err);
-        setWorkflowError('CAMERA UNAVAILABLE. USE PROCESS ARTIFACT.');
       }
     }
   };
@@ -249,7 +228,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
         processImage(base64, 'image/jpeg');
       } else {
         console.error('[App] captureImage: failed to get 2D canvas context');
-        setWorkflowError('CAMERA CAPTURE FAILED. USE PROCESS ARTIFACT.');
         stopCamera();
       }
     } else {
@@ -264,7 +242,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     if (import.meta.env.DEV) console.log("Processing image...", mimeType);
     resetToIdle();
     setSelectedRecentLog(null);
-    setWorkflowError(null);
     setIsAnalyzing(true);
     flyInSound.stop();
     fireSound.stop();
@@ -278,7 +255,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       if (requestId !== activeRequestIdRef.current) return;
       console.error("Gemini analysis failed", error);
       setIsAnalyzing(false);
-      setWorkflowError('GEMINI ANALYSIS FAILED. RETRY IN A MOMENT.');
       return;
     }
 
@@ -301,7 +277,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       // access to data they already paid for with their upload.
       setIsComplete(true);
       setShowReport(true);
-      setWorkflowError('CANVAS RENDER FAILED. INCIDENT ARCHIVED BUT ANIMATION UNAVAILABLE. TRY A DIFFERENT BROWSER OR ENABLE HARDWARE ACCELERATION.');
     }
   };
 
@@ -317,7 +292,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     };
     reader.onerror = () => {
       console.error('[App] FileReader failed:', reader.error);
-      setWorkflowError('FILE READ FAILED. THE FILE MAY BE CORRUPT OR INACCESSIBLE.');
     };
     reader.readAsDataURL(file);
   };
@@ -344,6 +318,22 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     analysisRef.current = null;
     postmortemAutoOpenedRef.current = false;
     setIsPlaying(false);
+  };
+
+  // Dismiss the post-smelt REPLAY/VIEW overlay synchronously *before* the
+  // file picker or camera opens. Without this, the overlay sits on top of
+  // the canvas through the entire picker session and stays visible if the
+  // user cancels the picker — `resetToIdle` only runs once a file actually
+  // arrives in `processImage`. The newly-archived incident is still in the
+  // P0 feed, so the user can still re-open the postmortem from there.
+  const handleProcessArtifactClick = () => {
+    resetToIdle();
+    fileInputRef.current?.click();
+  };
+
+  const handleDeployScannerClick = () => {
+    resetToIdle();
+    void startCamera();
   };
 
   const handleReplay = () => {
@@ -387,11 +377,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 max-w-7xl mx-auto w-full">
-        {deepLinkError && (
-          <div className="modern-card p-4 mb-6" role="alert" aria-live="assertive">
-            <p className="text-hazard-amber font-mono text-xs uppercase tracking-wide">{deepLinkError}</p>
-          </div>
-        )}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
           {/* Left Column: Smelter Area */}
@@ -399,14 +384,14 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
             {/* Controls */}
             <div className="flex flex-col gap-3 sm:flex-row">
               <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={handleProcessArtifactClick}
                 className="modern-button flex-1 flex items-center justify-center gap-3 px-5 py-3"
               >
                 <Upload size={18} />
                 <span className="text-sm font-black uppercase tracking-[0.16em]">Process Artifact</span>
               </button>
               <button
-                onClick={startCamera}
+                onClick={handleDeployScannerClick}
                 className="modern-button flex-1 flex items-center justify-center gap-3 bg-concrete-mid px-5 py-3 text-ash-white border border-concrete-border hover:brightness-110"
               >
                 <Camera size={18} />
@@ -458,7 +443,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                   onFireStart={() => { flyInSound.stop(); fireSound.play(); }}
                   onRenderFailure={(err) => {
                     console.error('[App] SmelterCanvas render failure:', err);
-                    setWorkflowError('CANVAS RENDER HALTED. USE VIEW POSTMORTEM TO ACCESS YOUR INCIDENT.');
                     if (analysisRef.current) {
                       setIsComplete(true);
                       setShowReport(true);
@@ -499,18 +483,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                 </div>
               )}
             </div>
-
-            {(incidentSchemaError || statsSchemaError || workflowError) && (
-              <div className="modern-card p-4 space-y-2" role="alert" aria-live="assertive" aria-atomic="true">
-                {[incidentSchemaError, statsSchemaError, workflowError]
-                  .filter((msg): msg is string => !!msg)
-                  .map((msg) => (
-                    <p key={msg} className="text-hazard-amber font-mono text-xs uppercase tracking-wide">
-                      {msg}
-                    </p>
-                  ))}
-              </div>
-            )}
           </div>
 
           {/* Right Column: Incident Queue */}

@@ -27,7 +27,6 @@ export function handleFirestoreError(
   error: unknown,
   operationType: OperationType,
   path: string | null,
-  onError?: (message: string) => void
 ) {
   const errInfo: FirestoreErrorInfo = {
     error: stringifyError(error),
@@ -35,7 +34,6 @@ export function handleFirestoreError(
     path
   };
   console.error('Firestore Error:', JSON.stringify(errInfo));
-  onError?.(`FIRESTORE ${operationType.toUpperCase()} FAILED. DATA MAY BE STALE.`);
 }
 
 /**
