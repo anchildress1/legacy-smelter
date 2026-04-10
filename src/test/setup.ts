@@ -52,7 +52,11 @@ beforeEach(() => {
     writable: true,
   });
 
-  if (typeof globalThis.window !== 'undefined') {
+  // Property access on `globalThis` is safe whether or not `window` exists,
+  // so compare against `undefined` directly (Sonar S7741). `typeof` is only
+  // required for bare identifiers that may not be declared — not for
+  // property lookups on an object we know exists.
+  if (globalThis.window !== undefined) {
     Object.defineProperty(globalThis.window, 'localStorage', {
       value: local,
       configurable: true,
