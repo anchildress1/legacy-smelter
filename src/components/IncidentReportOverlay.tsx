@@ -402,13 +402,15 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       <div
         className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
       >
-        {/* Color strip — always left. Sits at 80% intensity to match the
-            card treatment and reduce visual harshness inside the modal
-            chrome; the modal dialog already saturates attention, and the
-            strip's purpose here is orientation/continuity with the list,
-            not a second attention-grab. Structure (5 bands) preserved —
-            only intensity tuned. */}
-        <div className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden opacity-80" aria-hidden="true">
+        {/* Color strip — always left. Intensity reduced via
+            `saturate-75 brightness-90` to match the card treatment.
+            `opacity` on saturated colors against a near-black theme
+            background is mathematically almost invisible (blend with
+            black barely shifts the pigment); `saturate` is the
+            perceptually meaningful operator on dark themes because it
+            actually desaturates the colors toward neutral gray.
+            Decorative (`aria-hidden`) — no WCAG contrast requirement. */}
+        <div className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden saturate-75 brightness-90" aria-hidden="true">
           {report.dominantColors.map((color) => (
             <div key={color} className="flex-1" style={{ backgroundColor: color }} />
           ))}
@@ -528,12 +530,16 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </div>
 
             {/* Escalate. Narrower than full-width (`max-w-xs mx-auto`) and
-                drawn with a stronger border so it reads as an action,
-                not a banner spanning the content column. When escalated
-                the fill/border deepen to communicate armed state without
-                losing identity. Idle state still has lower visual weight
-                than the primary postmortem copy so the eye lands on
-                diagnosis → stats → action in that order. */}
+                drawn with a 2px border so it reads as an action, not
+                a banner spanning the content column. Idle border is
+                `#777` for a 4:1 contrast against the modal surface
+                (WCAG 1.4.11 needs ≥3:1 for UI components — the
+                pre-tuning `#333` failed at 1.43:1). Idle text sits at
+                `text-ash-white/80` (~10:1, passes 1.4.3). Escalated
+                state deepens the border and fill to communicate armed
+                state. Transition is color-only so
+                `prefers-reduced-motion` users get the same cue with
+                no layout motion (WCAG 2.3.3 compatible). */}
             {incidentId && (
               <div className="flex justify-center">
                 <button
@@ -541,8 +547,8 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                   disabled={isTogglingEscalation}
                   className={`w-full max-w-xs flex items-center justify-center gap-2 rounded-md border-2 px-4 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
                     escalated
-                      ? 'border-hazard-amber/60 bg-hazard-amber/15 text-hazard-amber'
-                      : 'border-[#555] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/60 hover:bg-hazard-amber/5'
+                      ? 'border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber'
+                      : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
                   } ${isTogglingEscalation ? 'opacity-50' : ''}`}
                   aria-label={escalated ? 'Remove escalation' : 'Escalate'}
                 >

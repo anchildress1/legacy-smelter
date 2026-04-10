@@ -514,18 +514,18 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
             </div>
           </div>
 
-          {/* Right Column: P0 Incidents rail. Chrome (header + hazard
-              stripe) sits at reduced opacity at rest so the eye is not
-              pulled away from the primary canvas column during the scan
-              phase; on rail hover the chrome brightens back to full
-              intensity. Card interactivity is intentionally NOT behind an
-              opacity wrapper — each `IncidentLogCard` owns its own rest
-              and hover states so the rail can fade its chrome without
-              degrading the cards' click targets or focus rings. Goal:
-              invisible during scan, visible on intent. */}
-          <div className="lg:col-span-5 group/rail">
+          {/* Right Column: P0 Incidents rail. Chrome stays at full
+              contrast because the H2 heading is normal text (WCAG
+              1.4.3 requires 4.5:1 — wrapping it in an opacity fade
+              would drop it below the threshold and create a
+              readability regression for low-vision users during the
+              scan phase). The rail is already visually subdued via the
+              existing palette (amber heading against concrete, cards
+              with soft borders), so no additional fade is needed for
+              it to sit under the primary canvas column. */}
+          <div className="lg:col-span-5">
             <div>
-              <div className="mb-3 opacity-60 group-hover/rail:opacity-100 transition-opacity duration-200">
+              <div className="mb-3">
                 <h2 className="text-hazard-amber font-mono text-xs lg:text-sm uppercase tracking-wide lg:tracking-widest font-bold">
                   P0 INCIDENTS
                 </h2>
@@ -541,8 +541,8 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                   </li>
                 ))}
                 {recentLogs.length === 0 && (
-                  <li className="modern-card p-12 text-center list-none opacity-60 group-hover/rail:opacity-100 transition-opacity duration-200">
-                    <Flame size={32} className="text-hazard-amber mx-auto mb-3" />
+                  <li className="modern-card p-12 text-center list-none">
+                    <Flame size={32} className="text-hazard-amber mx-auto mb-3" aria-hidden="true" />
                     <p className="text-stone-gray font-mono text-xs uppercase tracking-wider">
                       Furnace idle. Awaiting condemned infrastructure.
                     </p>

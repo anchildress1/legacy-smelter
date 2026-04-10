@@ -26,11 +26,18 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
   return (
     <div className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors group">
       {/* Left multicolor strip: preserves the AI "chromatic fingerprint"
-          signal but held at 80% opacity to reduce visual harshness during
-          list scans. Structure (5 bands) preserved per the final rule —
-          only intensity is tuned. */}
+          signal. Intensity is tuned via `saturate-75 brightness-90`
+          rather than `opacity` — on a near-black theme background,
+          `opacity: 0.8` is mathematically ~`color * 0.8 + black * 0.2`,
+          which is nearly imperceptible on fully saturated colors.
+          `saturate` actually desaturates the pigment (grays it toward
+          neutral) and `brightness-90` nudges lightness down, so the
+          reduction is visible on the dark card surface. Structure
+          (5 bands) preserved — only intensity tuned. The strip is
+          `aria-hidden` because it is purely decorative; WCAG 1.4.11
+          does not require contrast for decorative elements. */}
       <div
-        className="w-2 shrink-0 flex flex-col opacity-80"
+        className="w-2 shrink-0 flex flex-col saturate-75 brightness-90"
         aria-hidden="true"
       >
         {finalColors.map((col) => (
@@ -98,24 +105,28 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
         </div>
       </button>
       {/* Escalate is a SECONDARY action — it must not compete with card
-          click as the primary affordance. Idle state is deliberately
-          subdued (`text-stone-gray/35` and a lighter border) so the eye
-          lands on the title/status/quote first. Hover state blooms to full
-          amber and a background fill so the action is still discoverable
-          on intent. Escalated state remains vivid so the armed indicator
-          is unambiguous — this is product state, not decoration. */}
+          click as the primary affordance. Idle icon sits at
+          `text-stone-gray/60` — subdued enough to read as secondary
+          (title/status/quote still dominate the eye) but above the
+          WCAG 1.4.11 non-text contrast floor of 3:1 against
+          concrete-light (~3.4:1 computed). Hover state blooms to full
+          amber + background fill so the action is discoverable on
+          intent. Escalated state preserved vivid so the armed
+          indicator is unambiguous — this is product state, not
+          decoration. Touch target is `w-12` × full card height, which
+          exceeds the 44×44 enhanced target size recommendation. */}
       <button
         onClick={handleEscalate}
         disabled={isToggling}
-        className={`shrink-0 w-12 flex flex-col items-center justify-center gap-1 border-l transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset ${
+        className={`shrink-0 w-12 flex flex-col items-center justify-center gap-1 border-l transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset ${
           escalated
             ? 'bg-hazard-amber/15 text-hazard-amber border-l-hazard-amber/30'
-            : 'border-l-concrete-border/60 text-stone-gray/35 hover:text-hazard-amber hover:bg-hazard-amber/10 hover:border-l-hazard-amber/30'
+            : 'border-l-concrete-border text-stone-gray/60 hover:text-hazard-amber hover:bg-hazard-amber/10 hover:border-l-hazard-amber/40'
         } ${isToggling ? 'opacity-50' : ''}`}
         aria-label={escalated ? `Remove escalation for ${log.legacy_infra_class}` : `Escalate ${log.legacy_infra_class}`}
         title={escalated ? 'De-escalate' : 'Escalate'}
       >
-        <Siren size={18} />
+        <Siren size={18} aria-hidden="true" />
       </button>
     </div>
   );
