@@ -326,12 +326,20 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     };
   }, []);
 
-  const handleDialogClick = useCallback((e: React.MouseEvent<HTMLDialogElement>) => {
-    // Clicks on the ::backdrop bubble up with `e.target === dialog`
-    // (the dialog element itself, not any descendant). That's the cue
-    // to dismiss — matches the old backdrop-click-to-close UX without
-    // needing a separate clickable backdrop div.
-    if (e.target === dialogRef.current) onClose();
+  // Backdrop click-to-close: clicks on the <dialog> element itself
+  // (not a descendant) mean the user clicked the translucent backdrop.
+  // Registered as an imperative listener instead of a JSX `onClick` so
+  // the a11y linter (S6847) doesn't flag <dialog> as a non-interactive
+  // element with a mouse handler — keyboard dismiss is handled via the
+  // native `cancel` event in useModalDialog above.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const handleBackdropClick = (e: MouseEvent) => {
+      if (e.target === dialog) onClose();
+    };
+    dialog.addEventListener('click', handleBackdropClick);
+    return () => dialog.removeEventListener('click', handleBackdropClick);
   }, [dialogRef, onClose]);
 
   if (!report) return null;
@@ -388,7 +396,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   return (
     <dialog
       ref={dialogRef}
-      onClick={handleDialogClick}
       aria-labelledby={headingId}
       className="bg-transparent p-0 m-0 max-w-none max-h-none w-screen h-[100dvh] backdrop:bg-black/80 backdrop:backdrop-blur-sm open:flex items-end sm:items-center justify-center sm:p-4"
     >
@@ -397,8 +404,8 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       >
         {/* Color strip — always left */}
         <div className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden" aria-hidden="true">
-          {report.dominantColors.map((color, i) => (
-            <div key={`${color}-${i}`} className="flex-1" style={{ backgroundColor: color }} />
+          {report.dominantColors.map((color) => (
+            <div key={color} className="flex-1" style={{ backgroundColor: color }} />
           ))}
         </div>
 

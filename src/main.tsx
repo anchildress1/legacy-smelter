@@ -44,7 +44,7 @@ function Root() {
   useEffect(() => {
     if (!deepLinkId) return;
     const cleanedPath = globalThis.location.pathname.replace(DEEP_LINK_PATH_RE, '') || '/';
-    history.replaceState(null, '', `${cleanedPath}${globalThis.location.search}${globalThis.location.hash}`);
+    globalThis.history.replaceState(null, '', `${cleanedPath}${globalThis.location.search}${globalThis.location.hash}`);
   }, [deepLinkId]);
 
   useEffect(() => {
@@ -61,7 +61,7 @@ function Root() {
     const url = p === 'smelter'
       ? globalThis.location.pathname + globalThis.location.search
       : '#' + p;
-    history.pushState(null, '', url);
+    globalThis.history.pushState(null, '', url);
     setPage(p);
     globalThis.scrollTo(0, 0);
   }, []);

@@ -151,13 +151,13 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   const goToPreviousPage = () => {
     if (safePage === 0) return;
     setCurrentPage(safePage - 1);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    globalThis.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const goToNextPage = () => {
     if (!hasNextPage) return;
     setCurrentPage(safePage + 1);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    globalThis.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (

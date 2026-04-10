@@ -358,7 +358,9 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
 
   const handleDeployScannerClick = () => {
     resetToIdle();
-    void startCamera();
+    startCamera().catch((err: unknown) => {
+      console.error('[App] startCamera failed:', err);
+    });
   };
 
   const handleReplay = () => {

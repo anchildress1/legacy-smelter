@@ -70,13 +70,16 @@ function missingDefaultFor(
 ): unknown {
   const defaultValue = REQUIRED_DEFAULTS[field];
   if (field === 'sanction_rationale') {
-    return value !== null && typeof value !== 'string' ? defaultValue : undefined;
+    if (value === null || typeof value === 'string') return undefined;
+    return defaultValue;
   }
   if (typeof defaultValue === 'number') {
-    return typeof value !== 'number' || !Number.isFinite(value) ? defaultValue : undefined;
+    if (typeof value === 'number' && Number.isFinite(value)) return undefined;
+    return defaultValue;
   }
   if (typeof defaultValue === 'boolean') {
-    return typeof value !== 'boolean' ? defaultValue : undefined;
+    if (typeof value === 'boolean') return undefined;
+    return defaultValue;
   }
   return undefined;
 }
@@ -206,7 +209,7 @@ async function run(): Promise<void> {
 
     state.scanned += pageDocs.length;
     await backfillPage(pageDocs, state);
-    cursor = pageDocs[pageDocs.length - 1];
+    cursor = pageDocs.at(-1)!;
   }
 
   if (state.batchSize > 0) {

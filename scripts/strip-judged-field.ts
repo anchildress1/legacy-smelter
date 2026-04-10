@@ -78,7 +78,7 @@ async function run(): Promise<void> {
 
     state.scanned += pageDocs.length;
     await stripJudgedFromPage(pageDocs, state);
-    cursor = pageDocs[pageDocs.length - 1];
+    cursor = pageDocs.at(-1)!;
   }
 
   if (state.batchSize > 0) {

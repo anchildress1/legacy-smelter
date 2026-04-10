@@ -207,7 +207,7 @@ async function ensureVotingFieldsMigration(): Promise<void> {
       if (!hasValidVotingFields(d.data() as Record<string, unknown>)) invalidCount += 1;
     }
 
-    cursor = pageSnap.docs[pageSnap.docs.length - 1];
+    cursor = pageSnap.docs.at(-1)!;
   }
 
   if (invalidCount > 0) {
@@ -431,7 +431,9 @@ async function run(): Promise<void> {
   }
 }
 
-run().catch((err) => {
+try {
+  await run();
+} catch (err) {
   console.error('[sanction-incidents] Fatal error:', err);
   process.exit(1);
-});
+}

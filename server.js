@@ -271,7 +271,7 @@ function rateLimitAnalyzeRoute(req, res, next) {
   }
 
   const currentBucket = apiRateLimitBuckets.get(clientIp);
-  const withinWindow = currentBucket && (now - currentBucket.windowStart) < API_RATE_LIMIT_WINDOW_MS;
+  const withinWindow = (now - currentBucket?.windowStart) < API_RATE_LIMIT_WINDOW_MS;
   const bucket = withinWindow
     ? { windowStart: currentBucket.windowStart, count: currentBucket.count + 1 }
     : { windowStart: now, count: 1 };
