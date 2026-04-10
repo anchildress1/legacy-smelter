@@ -222,7 +222,7 @@ describe('IncidentReportOverlay escalation error surface', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('renders the stale indicator when the Firestore snapshot rejects non-numeric counters', () => {
+  it('renders the stale indicator when the Firestore snapshot rejects invalid counters', () => {
     // The live-counts subscription guards against `sanction_count` /
     // `breach_count` / `escalation_count` drifting to non-numeric
     // shapes. Before this test, the guard at lines 246-252 of
@@ -257,7 +257,7 @@ describe('IncidentReportOverlay escalation error surface', () => {
     expect(indicator).toBeInTheDocument();
     expect(indicator.textContent).toMatch(/schema drift/i);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('non-numeric counter fields'),
+      expect.stringContaining('invalid counter fields'),
       expect.objectContaining({ sanction_count: 'nope' }),
     );
     // The stats row DOM stays seeded from the initial analysis → no
@@ -265,6 +265,46 @@ describe('IncidentReportOverlay escalation error surface', () => {
     const statsRow = screen.getByTestId('incident-stats-row');
     expect(statsRow.getAttribute('data-live-stale')).toBe('schema');
     expect(statsRow.textContent).not.toContain('NaN');
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('treats non-finite counter values as stale schema and avoids NaN impact output', () => {
+    // `typeof NaN === "number"`, so a type-only guard would let this through
+    // and render `Impact: NaN`. Pin the finite-number invariant explicitly.
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+
+    act(() => {
+      snapshotHandlers.next?.({
+        exists: () => true,
+        data: () => ({
+          sanction_count: Number.NaN,
+          breach_count: -1,
+          escalation_count: Number.POSITIVE_INFINITY,
+        }),
+      });
+    });
+
+    const indicator = screen.getByTestId('incident-stale-indicator');
+    expect(indicator.textContent).toMatch(/schema drift/i);
+    expect(screen.getByTestId('incident-stats-row').getAttribute('data-live-stale')).toBe('schema');
+    expect(screen.getByTestId('incident-stats-row').textContent).not.toContain('NaN');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('invalid counter fields'),
+      expect.objectContaining({
+        sanction_count: Number.NaN,
+        breach_count: -1,
+        escalation_count: Number.POSITIVE_INFINITY,
+      }),
+    );
 
     consoleErrorSpy.mockRestore();
   });

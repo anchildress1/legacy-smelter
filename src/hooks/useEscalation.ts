@@ -109,12 +109,11 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
     } catch (err) {
       if (localMutationEpochRef.current !== toggleEpoch) {
         // Same stale-epoch guard as the success path, but the error is worth
-        // keeping visible during development — a late Firestore rejection
-        // that only surfaces at debug level is still better than silently
-        // dropping a signal that could indicate a broken incident-switch
-        // race or a stuck transaction. We deliberately do NOT call
-        // setToggleError because the UI has moved on to a new incident.
-        console.debug(
+        // keeping visible in production logs — a late Firestore rejection
+        // can still indicate a race or intermittent write failure. We
+        // deliberately do NOT call setToggleError because the UI has moved
+        // on to a new incident.
+        console.warn(
           '[useEscalation] Ignoring stale toggle failure for previous epoch',
           { toggleEpoch, currentEpoch: localMutationEpochRef.current, err },
         );

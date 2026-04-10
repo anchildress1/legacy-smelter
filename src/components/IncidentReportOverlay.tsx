@@ -262,9 +262,16 @@ function useLiveIncidentCounts(
       const sc = data.sanction_count;
       const bc = data.breach_count;
       const ec = data.escalation_count;
-      if (typeof sc !== 'number' || typeof bc !== 'number' || typeof ec !== 'number') {
+      if (
+        !Number.isFinite(sc) ||
+        !Number.isFinite(bc) ||
+        !Number.isFinite(ec) ||
+        sc < 0 ||
+        bc < 0 ||
+        ec < 0
+      ) {
         console.error(
-          `[IncidentReportOverlay] incident_logs/${incidentId} has non-numeric counter fields`,
+          `[IncidentReportOverlay] incident_logs/${incidentId} has invalid counter fields`,
           { sanction_count: sc, breach_count: bc, escalation_count: ec }
         );
         setStaleReason('schema');

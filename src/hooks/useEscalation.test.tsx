@@ -241,7 +241,7 @@ describe('useEscalation', () => {
 
   it('ignores a late toggle rejection from the previous incident after incidentId changes', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const consoleDebugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     mockHasEscalated.mockImplementation((id: string) => id === 'inc-a');
     mockSyncEscalationState.mockResolvedValue(false);
 
@@ -291,16 +291,16 @@ describe('useEscalation', () => {
       '[useEscalation] Toggle failed:',
       expect.any(Error),
     );
-    // ...but it MUST leave a debug-level breadcrumb so a genuine late
-    // Firestore failure is still observable in devtools. A regression that
+    // ...but it MUST leave a warning-level breadcrumb so a genuine late
+    // Firestore failure is still observable in production logs. A regression that
     // silently swallowed the rejection entirely would lose the only signal
     // a developer has that the race was triggered in the first place.
-    expect(consoleDebugSpy).toHaveBeenCalledWith(
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
       '[useEscalation] Ignoring stale toggle failure for previous epoch',
       expect.objectContaining({ err: expect.any(Error) }),
     );
     consoleErrorSpy.mockRestore();
-    consoleDebugSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
   });
 
   it('falls back to cached state and logs when syncEscalationState rejects', async () => {
