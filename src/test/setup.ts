@@ -1,6 +1,17 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach } from 'vitest';
-import { cleanup } from '@testing-library/react';
+
+// `vitest.config.ts` wires this file as a global `setupFiles` entry, which
+// means it runs inside Node-environment test files too — every file in
+// `scripts/*.test.ts` declares `// @vitest-environment node`. Those tests do
+// not render React, so we deliberately avoid importing
+// `@testing-library/react` at module scope: a future RTL version that
+// touches `document`/`window` at import time would silently break every
+// Node-env suite. Instead, the DOM-specific cleanup is loaded lazily inside
+// `afterEach` and guarded on `typeof document` so the Node runs stay
+// completely decoupled from the DOM.
+
+const IS_DOM_ENVIRONMENT = typeof document !== 'undefined';
 
 function makeStorage(): Storage {
   const map = new Map<string, string>();
@@ -55,6 +66,12 @@ beforeEach(() => {
   }
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Only run React Testing Library cleanup when a DOM is actually available.
+  // Node-env test files share this setup file but never render React, so
+  // importing RTL there would couple the Node suites to the DOM for no
+  // benefit.
+  if (!IS_DOM_ENVIRONMENT) return;
+  const { cleanup } = await import('@testing-library/react');
   cleanup();
 });
