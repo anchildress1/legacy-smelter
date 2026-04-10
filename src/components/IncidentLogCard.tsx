@@ -26,12 +26,11 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
   return (
     <div className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors group">
       {/* Left multicolor strip: preserves the AI "chromatic fingerprint"
-          signal but sits at 80% opacity at rest to reduce visual harshness
-          during list scans. Restored to full intensity on card hover so the
-          palette is readable on intent. Structure (5 bands) is preserved
-          per the final rule — only intensity is tuned. */}
+          signal but held at 80% opacity to reduce visual harshness during
+          list scans. Structure (5 bands) preserved per the final rule —
+          only intensity is tuned. */}
       <div
-        className="w-2 shrink-0 flex flex-col opacity-80 group-hover:opacity-100 transition-opacity duration-200"
+        className="w-2 shrink-0 flex flex-col opacity-80"
         aria-hidden="true"
       >
         {finalColors.map((col) => (
@@ -58,14 +57,15 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
               <AlertTriangle size={10} aria-hidden="true" />
               {log.severity}
             </span>
-            {/* Chevron reinforces "this opens" as a navigation hint. Slightly
-                more present at rest than before (from `text-dead-gray` to
-                `text-stone-gray/50`) so a first-time user sees the affordance
-                without needing to hover, then transitions to full amber on
-                group hover to make the open action unmistakable. */}
+            {/* Chevron reinforces "this opens" as a navigation hint.
+                More present at rest (from `text-dead-gray` to
+                `text-stone-gray/50`) so a first-time user sees the
+                affordance without having to hover. Existing subtle color
+                shift on group hover (from the original contract) is
+                preserved as standard interactive feedback. */}
             <ChevronRight
               size={12}
-              className="text-stone-gray/50 group-hover:text-hazard-amber group-hover:translate-x-0.5 transition-all duration-200"
+              className="text-stone-gray/50 group-hover:text-stone-gray transition-colors"
               aria-hidden="true"
             />
           </div>
@@ -73,14 +73,17 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
         <p className="text-ash-white font-mono text-sm leading-snug mt-1 line-clamp-2">
           {log.incident_feed_summary}
         </p>
-        {/* Quote block: clamped to 1 line at rest (down from 2) to reduce
-            vertical cost per card, then expands to the full quote on card
-            hover. Info is preserved, just deferred behind intent — per the
-            "prefer hover to eliminating info" rule. `line-clamp-none` on
-            hover removes the webkit-line-clamp cap entirely. */}
-        <div className="mt-2 flex items-start gap-2 border-l-2 border-hazard-amber/30 group-hover:border-hazard-amber/50 pl-2.5 transition-colors">
+        {/* Quote block: clamped to 1 line to reduce vertical cost per
+            card. The full text is surfaced via the native `title`
+            attribute — standard OS tooltip shows the full quote on
+            hover so nothing is eliminated, it's just deferred behind a
+            "hover text helper" instead of expanding the card layout. */}
+        <div className="mt-2 flex items-start gap-2 border-l-2 border-hazard-amber/40 pl-2.5">
           <Quote size={12} className="mt-0.5 shrink-0 text-hazard-amber/70" aria-hidden="true" />
-          <p className="text-xs font-mono italic leading-snug text-hazard-amber/90 line-clamp-1 group-hover:line-clamp-none transition-all duration-200">
+          <p
+            className="text-xs font-mono italic leading-snug text-hazard-amber/90 line-clamp-1"
+            title={log.share_quote}
+          >
             "{log.share_quote}"
           </p>
         </div>
