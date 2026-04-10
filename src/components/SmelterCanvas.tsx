@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import * as PIXI from 'pixi.js';
 import { getFiveDistinctColors } from '../lib/utils';
+import { advanceAnimationWindow } from '../lib/animationWindow';
 
 export interface SmelterCanvasHandle {
   loadAndSmelt: (imageUrl: string, subjectBox: number[] | null, colors: string[]) => Promise<void>;
@@ -569,8 +570,13 @@ function stepSettling(ctx: StepContext, dragonRestX: number, dragonY: number, ba
   // Only start counting idle frames once the dragon has actually
   // switched back to idle (flame sequence finished).
   if (dragon.textures === textures.idle) {
-    settleProgressRef.current += ticker.deltaTime;
-    if (settleProgressRef.current >= SETTLE_FRAMES) {
+    const { nextProgress, isComplete } = advanceAnimationWindow(
+      settleProgressRef.current,
+      ticker.deltaTime,
+      SETTLE_FRAMES,
+    );
+    settleProgressRef.current = nextProgress;
+    if (isComplete) {
       phaseRef.current = 'complete';
       callbacks.onComplete();
     }
