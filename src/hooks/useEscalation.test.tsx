@@ -241,6 +241,7 @@ describe('useEscalation', () => {
 
   it('ignores a late toggle rejection from the previous incident after incidentId changes', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleDebugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
     mockHasEscalated.mockImplementation((id: string) => id === 'inc-a');
     mockSyncEscalationState.mockResolvedValue(false);
 
@@ -283,12 +284,23 @@ describe('useEscalation', () => {
     expect(result.current.isToggling).toBe(false);
     expect(result.current.toggleError).toBeNull();
     expect(result.current.escalated).toBe(false);
-    // Stale completion is ignored entirely, so no fresh toggle-error log.
+    // Stale completion does not produce a user-visible error (the UI has
+    // moved on), and does NOT use the production-error channel — otherwise
+    // operators would get paged for a race that the hook already absorbed.
     expect(consoleErrorSpy).not.toHaveBeenCalledWith(
       '[useEscalation] Toggle failed:',
       expect.any(Error),
     );
+    // ...but it MUST leave a debug-level breadcrumb so a genuine late
+    // Firestore failure is still observable in devtools. A regression that
+    // silently swallowed the rejection entirely would lose the only signal
+    // a developer has that the race was triggered in the first place.
+    expect(consoleDebugSpy).toHaveBeenCalledWith(
+      '[useEscalation] Ignoring stale toggle failure for previous epoch',
+      expect.objectContaining({ err: expect.any(Error) }),
+    );
     consoleErrorSpy.mockRestore();
+    consoleDebugSpy.mockRestore();
   });
 
   it('falls back to cached state and logs when syncEscalationState rejects', async () => {
@@ -360,6 +372,47 @@ describe('useEscalation', () => {
     act(() => {
       activeListener?.({ incidentId: 'inc-5', escalated: true });
     });
+    expect(result.current.escalated).toBe(true);
+  });
+
+  it('discards an in-flight sync response that resolves after a subscription event', async () => {
+    // useEscalation.ts bumps `localMutationEpochRef` inside the subscription
+    // listener specifically so a slow sync resolving AFTER a subscription
+    // event cannot clobber the authoritative state the subscription already
+    // delivered. Without this epoch bump the following race would be
+    // observable: (a) mount starts sync, (b) subscription fires with
+    // `escalated: true`, UI shows true, (c) sync resolves with `false`
+    // (stale read), UI silently flips back to false. The test forces that
+    // ordering by holding the sync promise open across the listener fire.
+    mockHasEscalated.mockReturnValue(false);
+    let resolveSync!: (value: boolean) => void;
+    mockSyncEscalationState.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSync = resolve;
+        }),
+    );
+
+    const { useEscalation } = await loadHook();
+    const { result } = renderHook(() => useEscalation('inc-epoch'));
+
+    // The sync has been kicked off but is still pending. A subscription
+    // event now delivers the authoritative state.
+    expect(result.current.escalated).toBe(false);
+
+    act(() => {
+      activeListener?.({ incidentId: 'inc-epoch', escalated: true });
+    });
+    expect(result.current.escalated).toBe(true);
+
+    // The stale sync resolves with a value that disagrees with the
+    // subscription. Because the subscription listener bumped the epoch,
+    // the sync's `.then` must early-return without touching state.
+    await act(async () => {
+      resolveSync(false);
+      await Promise.resolve();
+    });
+
     expect(result.current.escalated).toBe(true);
   });
 

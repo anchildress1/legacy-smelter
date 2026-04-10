@@ -94,10 +94,32 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
     setEscalated(optimistic);
     try {
       const actual = await toggleEscalation(incidentId);
-      if (localMutationEpochRef.current !== toggleEpoch) return;
+      if (localMutationEpochRef.current !== toggleEpoch) {
+        // Stale completion — a newer incident/toggle bumped the epoch while
+        // this call was in flight. Surface at debug level so a real Firestore
+        // error arriving late is still observable in devtools, even though
+        // we intentionally do not touch UI state for the stale epoch.
+        console.debug(
+          '[useEscalation] Ignoring stale toggle success for previous epoch',
+          { toggleEpoch, currentEpoch: localMutationEpochRef.current },
+        );
+        return;
+      }
       if (actual !== optimistic) setEscalated(actual);
     } catch (err) {
-      if (localMutationEpochRef.current !== toggleEpoch) return;
+      if (localMutationEpochRef.current !== toggleEpoch) {
+        // Same stale-epoch guard as the success path, but the error is worth
+        // keeping visible during development — a late Firestore rejection
+        // that only surfaces at debug level is still better than silently
+        // dropping a signal that could indicate a broken incident-switch
+        // race or a stuck transaction. We deliberately do NOT call
+        // setToggleError because the UI has moved on to a new incident.
+        console.debug(
+          '[useEscalation] Ignoring stale toggle failure for previous epoch',
+          { toggleEpoch, currentEpoch: localMutationEpochRef.current, err },
+        );
+        return;
+      }
       setEscalated(previous);
       const wrapped = err instanceof Error ? err : new Error(String(err));
       setToggleError(wrapped);
