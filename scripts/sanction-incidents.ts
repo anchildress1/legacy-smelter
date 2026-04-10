@@ -24,7 +24,6 @@ import { randomUUID } from 'node:crypto';
 import { db } from './lib/admin-init.js';
 import { computeImpactScore } from '../shared/impactScore.js';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MIN_BATCH = 5;
 const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 const LOCK_COLLECTION = 'system_locks';
@@ -36,7 +35,11 @@ const MIGRATION_COLLECTION = 'system_migrations';
 const MIGRATION_DOC_ID = 'voting-fields-v1';
 const MIGRATION_SCAN_PAGE_SIZE = 500;
 
-if (!GEMINI_API_KEY) throw new Error('Missing GEMINI_API_KEY');
+function requireGeminiApiKey(): string {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('Missing GEMINI_API_KEY');
+  return apiKey;
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const JUDGING_PROMPT = readFileSync(resolve(__dirname, '../docs/judging-prompt.md'), 'utf-8');
@@ -54,11 +57,17 @@ interface IncidentDoc {
   share_quote: string;
 }
 
-type Candidate = IncidentDoc & { incident_id: string };
+export type Candidate = IncidentDoc & { incident_id: string };
 
-interface SanctionSelection {
+export interface SanctionSelection {
   sanctioned_incident_id: string;
   sanction_rationale: string;
+}
+
+export interface SanctionBatchDoc {
+  id: string;
+  data: () => Record<string, unknown>;
+  ref: unknown;
 }
 
 
@@ -120,7 +129,7 @@ async function releaseRunLock(): Promise<void> {
   });
 }
 
-function sanitizeRationale(value: unknown): string {
+export function sanitizeRationale(value: unknown): string {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, 500);
 }
@@ -134,7 +143,7 @@ function expectIncidentField(data: Record<string, unknown>, key: keyof IncidentD
   return value;
 }
 
-function parseIncidentDoc(raw: unknown, incidentId: string): IncidentDoc {
+export function parseIncidentDoc(raw: unknown, incidentId: string): IncidentDoc {
   if (!raw || typeof raw !== 'object') {
     throw new Error(`[sanction-incidents] incident_logs/${incidentId} has invalid payload (expected object)`);
   }
@@ -153,7 +162,7 @@ function parseIncidentDoc(raw: unknown, incidentId: string): IncidentDoc {
   };
 }
 
-function hasValidVotingFields(data: Record<string, unknown>): boolean {
+export function hasValidVotingFields(data: Record<string, unknown>): boolean {
   return (
     typeof data.breach_count === 'number' &&
     Number.isFinite(data.breach_count) &&
@@ -166,7 +175,7 @@ function hasValidVotingFields(data: Record<string, unknown>): boolean {
   );
 }
 
-function readFiniteNumber(data: Record<string, unknown>, key: string): number {
+export function readFiniteNumber(data: Record<string, unknown>, key: string): number {
   const value = data[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
@@ -233,7 +242,7 @@ async function ensureVotingFieldsMigration(): Promise<void> {
  * Throws if the model returned no valid selection or no rationale — callers
  * MUST NOT fabricate a judgment.
  */
-function normalizeSelection(raw: unknown, candidates: Candidate[]): SanctionSelection {
+export function normalizeSelection(raw: unknown, candidates: Candidate[]): SanctionSelection {
   const candidateIds = new Set(candidates.map((c) => c.incident_id));
 
   let selectedRaw: unknown;
@@ -275,7 +284,45 @@ function normalizeSelection(raw: unknown, candidates: Candidate[]): SanctionSele
   };
 }
 
-async function run(): Promise<void> {
+export function prepareSanctionUpdate(
+  batch: readonly SanctionBatchDoc[],
+  selection: SanctionSelection,
+): {
+  selectedDoc: SanctionBatchDoc;
+  updatePayload: {
+    sanctioned: true;
+    sanction_count: 1;
+    sanction_rationale: string;
+    impact_score: number;
+  };
+} {
+  const selectedDoc = batch.find((d) => d.id === selection.sanctioned_incident_id);
+  if (!selectedDoc) {
+    throw new Error(
+      `[sanction-incidents] Selected incident ${selection.sanctioned_incident_id} is not in the candidate batch.`
+    );
+  }
+
+  const selectedData = selectedDoc.data();
+  const breachCount = readFiniteNumber(selectedData, 'breach_count');
+  const escalationCount = readFiniteNumber(selectedData, 'escalation_count');
+
+  return {
+    selectedDoc,
+    updatePayload: {
+      sanctioned: true,
+      sanction_count: 1,
+      sanction_rationale: selection.sanction_rationale,
+      impact_score: computeImpactScore({
+        sanction_count: 1,
+        escalation_count: escalationCount,
+        breach_count: breachCount,
+      }),
+    },
+  };
+}
+
+export async function runSanctionIncidents(): Promise<void> {
   console.log('[sanction-incidents] Starting run...');
   await ensureVotingFieldsMigration();
   const lockAcquired = await acquireRunLock();
@@ -284,7 +331,7 @@ async function run(): Promise<void> {
     return;
   }
 
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  const ai = new GoogleGenAI({ apiKey: requireGeminiApiKey() });
   let processedBatches = 0;
 
   try {
@@ -395,26 +442,9 @@ async function run(): Promise<void> {
       // Only the selected doc is mutated. The other four stay
       // sanctioned: false and re-enter the query on the next run,
       // competing fresh against the next batch of incidents.
-      const selectedDoc = batch.find((d) => d.id === selection.sanctioned_incident_id);
-      if (!selectedDoc) {
-        throw new Error(
-          `[sanction-incidents] Selected incident ${selection.sanctioned_incident_id} is not in the candidate batch.`
-        );
-      }
-      const selectedData = selectedDoc.data() as Record<string, unknown>;
-      const breachCount = readFiniteNumber(selectedData, 'breach_count');
-      const escalationCount = readFiniteNumber(selectedData, 'escalation_count');
+      const { selectedDoc, updatePayload } = prepareSanctionUpdate(batch, selection);
       const writeBatch = db.batch();
-      writeBatch.update(selectedDoc.ref, {
-        sanctioned: true,
-        sanction_count: 1,
-        sanction_rationale: selection.sanction_rationale,
-        impact_score: computeImpactScore({
-          sanction_count: 1,
-          escalation_count: escalationCount,
-          breach_count: breachCount,
-        }),
-      });
+      writeBatch.update(selectedDoc.ref as DocumentReference<DocumentData>, updatePayload);
 
       await writeBatch.commit();
       processedBatches += 1;
@@ -431,9 +461,13 @@ async function run(): Promise<void> {
   }
 }
 
-try {
-  await run();
-} catch (err) {
-  console.error('[sanction-incidents] Fatal error:', err);
-  process.exit(1);
+const isMainModule = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMainModule) {
+  try {
+    await runSanctionIncidents();
+  } catch (err) {
+    console.error('[sanction-incidents] Fatal error:', err);
+    process.exit(1);
+  }
 }
