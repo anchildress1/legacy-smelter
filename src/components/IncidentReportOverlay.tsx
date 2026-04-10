@@ -205,16 +205,33 @@ interface LiveCounts {
   timestamp: Date | null;
 }
 
+/**
+ * Reason the live-count stream stopped advancing. `null` means the
+ * stream is healthy and the rendered counters reflect Firestore. Any
+ * non-null value means the overlay is showing a stale snapshot: the
+ * parent doc was deleted, drifted to a non-numeric counter shape, or
+ * the snapshot listener itself errored. Callers surface a compact
+ * "stale" pill next to the counters so the user knows to close and
+ * reopen the overlay instead of silently reading frozen numbers.
+ */
+type LiveCountsStaleReason = 'removed' | 'schema' | 'subscription' | null;
+
+interface LiveCountsResult {
+  readonly counts: LiveCounts;
+  readonly staleReason: LiveCountsStaleReason;
+}
+
 function useLiveIncidentCounts(
   incidentId: string | null | undefined,
   seed: NormalisedReport | null,
-): [LiveCounts, React.Dispatch<React.SetStateAction<LiveCounts>>] {
+): LiveCountsResult {
   const [counts, setCounts] = useState<LiveCounts>(() => ({
     sanction: seed?.sanctionCount ?? 0,
     breach: seed?.breachCount ?? 0,
     escalation: seed?.escalationCount ?? 0,
     timestamp: seed?.timestamp ?? null,
   }));
+  const [staleReason, setStaleReason] = useState<LiveCountsStaleReason>(null);
 
   // Re-seed from the report whenever the incident changes. Keeping the
   // local seed behind an effect (instead of inside render) prevents a
@@ -227,6 +244,7 @@ function useLiveIncidentCounts(
       escalation: seed?.escalationCount ?? 0,
       timestamp: seed?.timestamp ?? null,
     });
+    setStaleReason(null);
     // Re-run only when the incident itself changes. `seed` is a fresh
     // object every render so including it would cause a re-seed loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -237,6 +255,7 @@ function useLiveIncidentCounts(
     return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
       if (!snap.exists()) {
         console.error(`[IncidentReportOverlay] incident_logs/${incidentId} removed from archive while overlay open.`);
+        setStaleReason('removed');
         return;
       }
       const data = snap.data();
@@ -248,17 +267,33 @@ function useLiveIncidentCounts(
           `[IncidentReportOverlay] incident_logs/${incidentId} has non-numeric counter fields`,
           { sanction_count: sc, breach_count: bc, escalation_count: ec }
         );
+        setStaleReason('schema');
         return;
       }
       const ts = data.timestamp;
       const nextTimestamp = ts && typeof ts.toDate === 'function' ? ts.toDate() as Date : null;
       setCounts({ sanction: sc, breach: bc, escalation: ec, timestamp: nextTimestamp });
+      setStaleReason(null);
     }, (error) => {
       console.error('[IncidentReportOverlay] Live count subscription failed:', error);
+      setStaleReason('subscription');
     });
   }, [incidentId]);
 
-  return [counts, setCounts];
+  return { counts, staleReason };
+}
+
+function staleReasonCopy(reason: LiveCountsStaleReason): string | null {
+  switch (reason) {
+    case 'removed':
+      return 'LIVE COUNTS STALE. INCIDENT REMOVED FROM ARCHIVE.';
+    case 'schema':
+      return 'LIVE COUNTS STALE. ARCHIVE SCHEMA DRIFT.';
+    case 'subscription':
+      return 'LIVE COUNTS STALE. SUBSCRIPTION ERRORED.';
+    default:
+      return null;
+  }
 }
 
 /**
@@ -301,7 +336,9 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const dialogRef = useModalDialog(onClose);
   const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
   const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
-  const [counts] = useLiveIncidentCounts(incidentId, report);
+  const [breachError, setBreachError] = useState<Error | null>(null);
+  const { counts, staleReason } = useLiveIncidentCounts(incidentId, report);
+  const staleMessage = staleReasonCopy(staleReason);
   const liveCountsForImpact = {
     sanction_count: counts.sanction,
     escalation_count: counts.escalation,
@@ -346,18 +383,28 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   if (!report) return null;
 
   // Breaches feed the Impact score (2× weight) and drive the P0 feed sort —
-  // this is product state, not analytics. All failures (Firestore errors,
-  // unexpected throws, skipped states) are logged to the console only —
-  // there is no user-facing error surface.
+  // this is product state, not analytics. A failed breach record is shown
+  // to the user via `breachError` (mirroring the escalation error surface
+  // in `useEscalation`), so both counter writes that feed `impact_score`
+  // have a consistent failure UX. Skipped states (cooldown, already-in-
+  // flight) are NOT shown — they are intentional no-ops and the user
+  // should not be nagged about them.
   const recordBreachAsync = () => {
     if (!incidentId) return;
+    setBreachError(null);
     recordBreach(incidentId)
       .then((result) => {
         if (result.ok || result.skipped) return;
         console.error('[IncidentReportOverlay] Breach record failed:', result.error);
+        // `BreachResult.error` is the underlying error's `.message` (a
+        // string) per breachService contract. Wrap it in an Error so the
+        // alert surface matches the shape of `escalationError` and the
+        // render path only has to handle one type.
+        setBreachError(new Error(result.error ?? 'Breach record failed'));
       })
       .catch((err) => {
         console.error('[IncidentReportOverlay] Breach record threw unexpectedly:', err);
+        setBreachError(err instanceof Error ? err : new Error(String(err)));
       });
   };
 
@@ -508,7 +555,11 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </div>
 
             {/* Stats row */}
-            <div className="flex items-baseline justify-between py-3 border-y border-[#2a2a2a]">
+            <div
+              className="flex items-baseline justify-between py-3 border-y border-[#2a2a2a]"
+              data-testid="incident-stats-row"
+              data-live-stale={staleReason ?? 'fresh'}
+            >
               {[
                 { value: computeImpact(liveCountsForImpact), label: 'Impact' },
                 { value: counts.sanction, label: 'Sanctions' },
@@ -521,6 +572,21 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 </div>
               ))}
             </div>
+
+            {/* Live-count staleness indicator. Mirrors the DataHealthIndicator
+                pattern from App.tsx so a user reading frozen counter values
+                gets a compact warning pill, not a silent stale view. `role=
+                status` (not `alert`) because this is passive information —
+                the user isn't blocked from dismissing the overlay. */}
+            {staleMessage && (
+              <p
+                role="status"
+                data-testid="incident-stale-indicator"
+                className="text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
+              >
+                {staleMessage}
+              </p>
+            )}
 
             {/* Escalate */}
             {incidentId && (
@@ -544,6 +610,20 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     className="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
                   >
                     Escalation failed: {escalationError.message}
+                  </p>
+                )}
+                {/* Breach errors mirror the escalation error surface above.
+                    Both writes feed `impact_score` and drive the P0 feed
+                    sort — the user needs a consistent signal when either
+                    one fails, instead of escalation surfacing failures
+                    and breach silently eating them. */}
+                {breachError && (
+                  <p
+                    role="alert"
+                    data-testid="breach-error"
+                    className="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
+                  >
+                    Breach record failed: {breachError.message}
                   </p>
                 )}
               </div>
