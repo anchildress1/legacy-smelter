@@ -276,7 +276,9 @@ describe('firestore.rules invariants', () => {
     // Pair a valid parent increment with a subdoc keyed on another user's
     // id. The rule `escId == request.auth.uid` on the subcollection must
     // reject this impersonation attempt even though the parent delta is
-    // structurally valid.
+    // structurally valid. This exercises the path guard only — see the
+    // body-tamper test below for the `request.resource.data.uid ==
+    // request.auth.uid` check on the subdoc payload itself.
     const impersonationBatch = writeBatch(attackerDb);
     impersonationBatch.update(incidentRef, {
       escalation_count: 1,
@@ -287,6 +289,109 @@ describe('firestore.rules invariants', () => {
       timestamp: serverTimestamp(),
     });
     await assertFails(impersonationBatch.commit());
+  });
+
+  it('rejects escalation subdoc where body uid does not match the authenticated caller', async () => {
+    // Body-tamper variant of the impersonation test: the subdoc is keyed on
+    // the attacker's own uid (so the path guard `escId == request.auth.uid`
+    // passes), but the payload's `uid` field carries a different user's id.
+    // The rule `request.resource.data.uid == request.auth.uid` at
+    // firestore.rules:102 is the sole guard against this attack shape. A
+    // regression that dropped it would let an attacker plant a subdoc whose
+    // body claimed a different owner, corrupting any downstream consumer
+    // that trusted the embedded `uid`.
+    await seedIncident('inc-esc-body-tamper');
+
+    const attackerDb = testEnv.authenticatedContext('u-attacker').firestore();
+    const incidentRef = doc(attackerDb, 'incident_logs', 'inc-esc-body-tamper');
+    const attackerEscalationRef = doc(
+      attackerDb,
+      'incident_logs',
+      'inc-esc-body-tamper',
+      'escalations',
+      'u-attacker',
+    );
+
+    const bodyTamperBatch = writeBatch(attackerDb);
+    bodyTamperBatch.update(incidentRef, {
+      escalation_count: 1,
+      impact_score: 3,
+    });
+    bodyTamperBatch.set(attackerEscalationRef, {
+      uid: 'u-victim',
+      timestamp: serverTimestamp(),
+    });
+    await assertFails(bodyTamperBatch.commit());
+  });
+
+  it('rejects escalation subdoc carrying extra keys beyond uid and timestamp', async () => {
+    // `request.resource.data.keys().hasOnly(['uid', 'timestamp'])` at
+    // firestore.rules:100 is the guard that prevents clients from smuggling
+    // arbitrary fields into the subdoc (e.g. `admin: true`, a drifted
+    // `escalation_count` mirror, or any field that a downstream reader
+    // might trust). A regression that loosened this constraint would let
+    // any attacker bloat the doc with attacker-controlled fields while the
+    // parent counter update still looked structurally valid.
+    await seedIncident('inc-esc-extra-keys');
+
+    const db = testEnv.authenticatedContext('u-extra').firestore();
+    const incidentRef = doc(db, 'incident_logs', 'inc-esc-extra-keys');
+    const escalationRef = doc(
+      db,
+      'incident_logs',
+      'inc-esc-extra-keys',
+      'escalations',
+      'u-extra',
+    );
+
+    const extraKeysBatch = writeBatch(db);
+    extraKeysBatch.update(incidentRef, {
+      escalation_count: 1,
+      impact_score: 3,
+    });
+    extraKeysBatch.set(escalationRef, {
+      uid: 'u-extra',
+      timestamp: serverTimestamp(),
+      foo: 'bar',
+    });
+    await assertFails(extraKeysBatch.commit());
+  });
+
+  it('rejects client writes that touch sanction_count', async () => {
+    // `isBreachIncrement` / `isEscalationIncrement` / `isEscalationDecrement`
+    // each lock `affectedKeys().hasOnly([...])` to the breach or escalation
+    // counter plus `impact_score`. Neither rule permits `sanction_count` in
+    // the affected keys, so any client attempt to poke that field — even
+    // paired with a correctly-weighted `impact_score` — must be rejected.
+    // `sanction_count` is server-only (admin SDK bypass via
+    // scripts/sanction-incidents.ts). A regression that added
+    // `sanction_count` to any `hasOnly` list would silently open the voting
+    // outcome to client tampering.
+    await seedIncident('inc-sanction-client', {
+      breach_count: 0,
+      escalation_count: 0,
+      sanction_count: 0,
+    });
+
+    const db = testEnv.authenticatedContext('u-sanction').firestore();
+    const incidentRef = doc(db, 'incident_logs', 'inc-sanction-client');
+
+    // Pure sanction_count increment with a matching impact_score (5×1 = 5).
+    await assertFails(
+      updateDoc(incidentRef, {
+        sanction_count: 1,
+        impact_score: 5,
+      }),
+    );
+
+    // Smuggling sanction_count into an otherwise-valid breach increment.
+    await assertFails(
+      updateDoc(incidentRef, {
+        breach_count: 1,
+        sanction_count: 1,
+        impact_score: 7,
+      }),
+    );
   });
 
   it('allows escalation decrement only when paired with subdoc delete and denies decrement at zero', async () => {
