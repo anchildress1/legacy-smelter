@@ -402,6 +402,78 @@ app.use('/api', (req, res, next) => {
 // JSON body parsing — 10 MB limit for base64-encoded images
 app.use('/api', express.json({ limit: '10mb' }));
 
+// Validates the POST /api/analyze body and normalizes it into
+// { image, mimeType }. Returns a `{ status, error }` tuple when the
+// payload is rejected so the handler can respond without nesting its
+// own try/catch around the validation branch.
+function validateAnalyzeRequestBody(body) {
+  const source = body && typeof body === 'object' ? body : {};
+  const { image, mimeType } = source;
+  if (typeof image !== 'string' || typeof mimeType !== 'string' || !image || !mimeType) {
+    return { status: 400, error: 'Request must include "image" (base64) and "mimeType".' };
+  }
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+    return { status: 400, error: 'Unsupported image type.' };
+  }
+  if (image.length > MAX_BASE64_LENGTH) {
+    return { status: 413, error: 'Image too large.' };
+  }
+  return { image, mimeType };
+}
+
+// Builds the Firestore admin-write batch for a successful analysis and
+// commits it. Kept separate from the route handler so the handler only
+// describes the request/response flow and doesn't include the ~40 lines
+// of field mapping that push it over the cognitive-complexity ceiling.
+async function persistIncident(analysis, pixelCount, authUid) {
+  const adminDb = getDb();
+  const logRef = adminDb.collection('incident_logs').doc();
+  const statsRef = adminDb.collection('global_stats').doc('main');
+  const [ymin, xmin, ymax, xmax] = analysis.subjectBox;
+  const writeBatch = adminDb.batch();
+  writeBatch.set(logRef, {
+    pixel_count: pixelCount,
+    incident_feed_summary: analysis.incidentFeedSummary,
+    color_1: analysis.dominantColors[0],
+    color_2: analysis.dominantColors[1],
+    color_3: analysis.dominantColors[2],
+    color_4: analysis.dominantColors[3],
+    color_5: analysis.dominantColors[4],
+    subject_box_ymin: ymin,
+    subject_box_xmin: xmin,
+    subject_box_ymax: ymax,
+    subject_box_xmax: xmax,
+    legacy_infra_class: analysis.legacyInfraClass,
+    diagnosis: analysis.diagnosis,
+    chromatic_profile: analysis.chromaticProfile,
+    system_dx: analysis.systemDx,
+    severity: analysis.severity,
+    primary_contamination: analysis.primaryContamination,
+    contributing_factor: analysis.contributingFactor,
+    failure_origin: analysis.failureOrigin,
+    disposition: analysis.disposition,
+    archive_note: analysis.archiveNote,
+    og_headline: analysis.ogHeadline,
+    share_quote: analysis.shareQuote,
+    anon_handle: analysis.anonHandle,
+    timestamp: FieldValue.serverTimestamp(),
+    uid: authUid,
+    breach_count: 0,
+    escalation_count: 0,
+    sanction_count: 0,
+    impact_score: 0,
+    sanctioned: false,
+    sanction_rationale: null,
+  });
+  writeBatch.set(
+    statsRef,
+    { total_pixels_melted: FieldValue.increment(pixelCount) },
+    { merge: true },
+  );
+  await writeBatch.commit();
+  return logRef.id;
+}
+
 // POST /api/analyze — accepts { image, mimeType } from an authenticated
 // Firebase user (anonymous is fine) via a Bearer ID token in the
 // Authorization header. Derives pixelCount from the image bytes, calls
@@ -420,17 +492,11 @@ app.post('/api/analyze', rateLimitAnalyzeRoute, requireFirebaseAuth, async (req,
     return res.status(500).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
   }
 
-  const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const { image, mimeType } = body;
-  if (typeof image !== 'string' || typeof mimeType !== 'string' || !image || !mimeType) {
-    return res.status(400).json({ error: 'Request must include "image" (base64) and "mimeType".' });
+  const validated = validateAnalyzeRequestBody(req.body);
+  if (validated.error) {
+    return res.status(validated.status).json({ error: validated.error });
   }
-  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-    return res.status(400).json({ error: 'Unsupported image type.' });
-  }
-  if (image.length > MAX_BASE64_LENGTH) {
-    return res.status(413).json({ error: 'Image too large.' });
-  }
+  const { image, mimeType } = validated;
 
   let pixelCount;
   try {
@@ -456,52 +522,8 @@ app.post('/api/analyze', rateLimitAnalyzeRoute, requireFirebaseAuth, async (req,
   // Persist the incident log and bump the global pixel counter.
   // Write is required — if Firestore rejects, return 502 and the client retries.
   try {
-    const adminDb = getDb();
-    const logRef = adminDb.collection('incident_logs').doc();
-    const statsRef = adminDb.collection('global_stats').doc('main');
-    const [ymin, xmin, ymax, xmax] = analysis.subjectBox;
-    const writeBatch = adminDb.batch();
-    writeBatch.set(logRef, {
-      pixel_count: pixelCount,
-      incident_feed_summary: analysis.incidentFeedSummary,
-      color_1: analysis.dominantColors[0],
-      color_2: analysis.dominantColors[1],
-      color_3: analysis.dominantColors[2],
-      color_4: analysis.dominantColors[3],
-      color_5: analysis.dominantColors[4],
-      subject_box_ymin: ymin,
-      subject_box_xmin: xmin,
-      subject_box_ymax: ymax,
-      subject_box_xmax: xmax,
-      legacy_infra_class: analysis.legacyInfraClass,
-      diagnosis: analysis.diagnosis,
-      chromatic_profile: analysis.chromaticProfile,
-      system_dx: analysis.systemDx,
-      severity: analysis.severity,
-      primary_contamination: analysis.primaryContamination,
-      contributing_factor: analysis.contributingFactor,
-      failure_origin: analysis.failureOrigin,
-      disposition: analysis.disposition,
-      archive_note: analysis.archiveNote,
-      og_headline: analysis.ogHeadline,
-      share_quote: analysis.shareQuote,
-      anon_handle: analysis.anonHandle,
-      timestamp: FieldValue.serverTimestamp(),
-      uid: req.authUid,
-      breach_count: 0,
-      escalation_count: 0,
-      sanction_count: 0,
-      impact_score: 0,
-      sanctioned: false,
-      sanction_rationale: null,
-    });
-    writeBatch.set(
-      statsRef,
-      { total_pixels_melted: FieldValue.increment(pixelCount) },
-      { merge: true }
-    );
-    await writeBatch.commit();
-    return res.json({ ...analysis, incidentId: logRef.id, pixelCount });
+    const incidentId = await persistIncident(analysis, pixelCount, req.authUid);
+    return res.json({ ...analysis, incidentId, pixelCount });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[server] Firestore write failed:', msg);
@@ -532,6 +554,13 @@ app.use('/api', (err, _req, res, _next) => {
   });
 });
 
+// Firestore auto-IDs are 20-char URL-safe alphanumerics. Rejecting anything
+// outside that alphabet short-circuits path traversal probes, log-injection
+// attempts (CRLF in the URL), and the Firestore REST call for garbage IDs
+// that would certainly 404. Applied at the route boundary so every downstream
+// consumer (logs, canonical URL, fetchIncident) can treat `id` as trusted.
+const VALID_INCIDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
 // Incident share URLs: /s/:id
 // Injects incident-specific OG meta tags so Slack, X, LinkedIn etc. unfurl correctly.
 // Crawlers stop at the meta tags; browsers get the full SPA and the React app
@@ -540,6 +569,13 @@ app.get('/s/:id', async (req, res, next) => {
   const { id } = req.params;
   if (!FIREBASE_API_KEY || !FIREBASE_PROJECT_ID || !FIREBASE_DB_ID) {
     console.warn('[server] OG route misconfigured (missing env); falling through to SPA');
+    return next();
+  }
+
+  // Anything that doesn't match the Firestore auto-ID shape can't resolve to
+  // a real document and shouldn't reach Firestore or the log pipeline at all.
+  // Falling through to the SPA matches the existing "not found" UX.
+  if (!VALID_INCIDENT_ID_PATTERN.test(id)) {
     return next();
   }
 

@@ -129,7 +129,7 @@ function sanitizeRationale(value: unknown): string {
 function expectIncidentField(data: Record<string, unknown>, key: keyof IncidentDoc, incidentId: string): string {
   const value = data[key];
   if (typeof value !== 'string') {
-    throw new Error(`[sanction-incidents] incident_logs/${incidentId} has invalid "${key}" (expected string)`);
+    throw new TypeError(`[sanction-incidents] incident_logs/${incidentId} has invalid "${key}" (expected string)`);
   }
   return value;
 }

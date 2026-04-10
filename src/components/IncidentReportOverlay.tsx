@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useId } from 'react';
+import React, { useEffect, useRef, useState, useId, useCallback } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
@@ -36,20 +36,6 @@ interface NormalisedReport {
   sanctioned: boolean;
   sanctionRationale: string | null;
   timestamp: Date | null;
-}
-
-const FOCUSABLE_SELECTOR = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled]):not([type="hidden"])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])'
-].join(',');
-
-function getFocusableElements(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-    .filter((el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
 }
 
 function buildMarkdown(
@@ -198,43 +184,54 @@ const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> =
   },
 };
 
-export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose }) => {
-  if (import.meta.env.DEV) {
-    if (analysis && log) {
-      throw new Error('IncidentReportOverlay: pass `analysis` OR `log`, never both.');
-    }
-    if ((analysis || log) && !incidentId) {
-      console.warn('IncidentReportOverlay: `incidentId` should be set when analysis or log is provided.');
-    }
+function assertOverlayInputs(
+  analysis: SmeltAnalysis | null | undefined,
+  log: SmeltLog | null | undefined,
+  incidentId: string | null | undefined,
+): void {
+  if (!import.meta.env.DEV) return;
+  if (analysis && log) {
+    throw new Error('IncidentReportOverlay: pass `analysis` OR `log`, never both.');
   }
-  const report = normalise(analysis, log);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const lastActiveElementRef = useRef<HTMLElement | null>(null);
-  const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
-  const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
-  const [liveSanctionCount, setLiveSanctionCount] = useState<number>(report?.sanctionCount ?? 0);
-  const [liveBreachCount, setLiveBreachCount] = useState<number>(report?.breachCount ?? 0);
-  const [liveEscalationCount, setLiveEscalationCount] = useState<number>(report?.escalationCount ?? 0);
-  const [liveTimestamp, setLiveTimestamp] = useState<Date | null>(report?.timestamp ?? null);
-  const liveCounts = { sanction_count: liveSanctionCount, escalation_count: liveEscalationCount, breach_count: liveBreachCount };
-  const {
-    escalated,
-    isToggling: isTogglingEscalation,
-    toggle: toggleEscalate,
-  } = useEscalation(incidentId ?? null);
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const headingId = useId();
+  if ((analysis || log) && !incidentId) {
+    console.warn('IncidentReportOverlay: `incidentId` should be set when analysis or log is provided.');
+  }
+}
 
+interface LiveCounts {
+  sanction: number;
+  breach: number;
+  escalation: number;
+  timestamp: Date | null;
+}
+
+function useLiveIncidentCounts(
+  incidentId: string | null | undefined,
+  seed: NormalisedReport | null,
+): [LiveCounts, React.Dispatch<React.SetStateAction<LiveCounts>>] {
+  const [counts, setCounts] = useState<LiveCounts>(() => ({
+    sanction: seed?.sanctionCount ?? 0,
+    breach: seed?.breachCount ?? 0,
+    escalation: seed?.escalationCount ?? 0,
+    timestamp: seed?.timestamp ?? null,
+  }));
+
+  // Re-seed from the report whenever the incident changes. Keeping the
+  // local seed behind an effect (instead of inside render) prevents a
+  // stale overlay reopen from rendering the previous incident's counts
+  // for a frame.
   useEffect(() => {
-    setLiveSanctionCount(report?.sanctionCount ?? 0);
-    setLiveBreachCount(report?.breachCount ?? 0);
-    setLiveEscalationCount(report?.escalationCount ?? 0);
-    setLiveTimestamp(report?.timestamp ?? null);
+    setCounts({
+      sanction: seed?.sanctionCount ?? 0,
+      breach: seed?.breachCount ?? 0,
+      escalation: seed?.escalationCount ?? 0,
+      timestamp: seed?.timestamp ?? null,
+    });
+    // Re-run only when the incident itself changes. `seed` is a fresh
+    // object every render so including it would cause a re-seed loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incidentId]);
 
-  // Live-subscribe to counter fields while overlay is open
   useEffect(() => {
     if (!incidentId) return;
     return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
@@ -253,17 +250,71 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         );
         return;
       }
-      setLiveSanctionCount(sc);
-      setLiveBreachCount(bc);
-      setLiveEscalationCount(ec);
       const ts = data.timestamp;
-      if (ts && typeof ts.toDate === 'function') {
-        setLiveTimestamp(ts.toDate());
-      }
+      const nextTimestamp = ts && typeof ts.toDate === 'function' ? ts.toDate() as Date : null;
+      setCounts({ sanction: sc, breach: bc, escalation: ec, timestamp: nextTimestamp });
     }, (error) => {
       console.error('[IncidentReportOverlay] Live count subscription failed:', error);
     });
   }, [incidentId]);
+
+  return [counts, setCounts];
+}
+
+/**
+ * Drives the native <dialog> element's open/close lifecycle. `showModal()`
+ * handles focus trapping, the ::backdrop, body scroll inhibition, and the
+ * `cancel` (Escape) event for us — every piece of manual machinery this
+ * component used to carry. The caller wires the returned ref to the
+ * <dialog> and binds `onCancel` to `preventDefault() + onClose()` so the
+ * browser's default Escape handling doesn't skip the parent's state
+ * cleanup.
+ */
+function useModalDialog(onClose: () => void): React.RefObject<HTMLDialogElement | null> {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || dialog.open) return;
+    dialog.showModal();
+    return () => {
+      if (dialog.open) dialog.close();
+    };
+  }, []);
+  // Escape closes the dialog via the `cancel` event; forward that to the
+  // parent's onClose so React state stays in sync with the DOM state.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const handleCancel = (e: Event) => {
+      e.preventDefault();
+      onClose();
+    };
+    dialog.addEventListener('cancel', handleCancel);
+    return () => dialog.removeEventListener('cancel', handleCancel);
+  }, [onClose]);
+  return dialogRef;
+}
+
+export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose }) => {
+  assertOverlayInputs(analysis, log, incidentId);
+  const report = normalise(analysis, log);
+  const dialogRef = useModalDialog(onClose);
+  const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
+  const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
+  const [counts] = useLiveIncidentCounts(incidentId, report);
+  const liveCountsForImpact = {
+    sanction_count: counts.sanction,
+    escalation_count: counts.escalation,
+    breach_count: counts.breach,
+  };
+  const {
+    escalated,
+    isToggling: isTogglingEscalation,
+    toggle: toggleEscalate,
+  } = useEscalation(incidentId ?? null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const headingId = useId();
 
   // Derive incident URL from incidentId — used for the copy-link button
   const incidentUrl = incidentId ? buildIncidentUrl(incidentId) : null;
@@ -275,75 +326,15 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     };
   }, []);
 
-  useEffect(() => {
-    lastActiveElementRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    panelRef.current?.focus();
-
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (e.key !== 'Tab' || !panelRef.current) return;
-
-      const focusables = getFocusableElements(panelRef.current);
-      if (focusables.length === 0) {
-        e.preventDefault();
-        panelRef.current.focus();
-        return;
-      }
-
-      const first = focusables[0];
-      const last = focusables.at(-1)!;
-      const activeEl = document.activeElement as HTMLElement | null;
-      const isInsidePanel = activeEl ? panelRef.current.contains(activeEl) : false;
-
-      if (e.shiftKey) {
-        if (!isInsidePanel || activeEl === first) {
-          e.preventDefault();
-          last.focus();
-        }
-        return;
-      }
-
-      if (!isInsidePanel || activeEl === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleKey);
-    return () => {
-      document.removeEventListener('keydown', handleKey);
-      lastActiveElementRef.current?.focus();
-    };
-  }, [onClose]);
-
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
+  const handleDialogClick = useCallback((e: React.MouseEvent<HTMLDialogElement>) => {
+    // Clicks on the ::backdrop bubble up with `e.target === dialog`
+    // (the dialog element itself, not any descendant). That's the cue
+    // to dismiss — matches the old backdrop-click-to-close UX without
+    // needing a separate clickable backdrop div.
+    if (e.target === dialogRef.current) onClose();
+  }, [dialogRef, onClose]);
 
   if (!report) return null;
-
-  const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === overlayRef.current) onClose();
-  };
-
-  const handleCopyText = async () => {
-    try {
-      await navigator.clipboard.writeText(buildMarkdown(report, liveBreachCount, liveEscalationCount, liveSanctionCount, liveTimestamp));
-      setCopyTextState('copied');
-      if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
-      copyTimeoutRef.current = setTimeout(() => setCopyTextState('idle'), 2000);
-      recordBreachAsync();
-    } catch (err) {
-      console.error('[IncidentReportOverlay] Clipboard write failed:', err);
-    }
-  };
 
   // Breaches feed the Impact score (2× weight) and drive the P0 feed sort —
   // this is product state, not analytics. All failures (Firestore errors,
@@ -361,7 +352,23 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       });
   };
 
-  const handleEscalate = () => void toggleEscalate();
+  const handleCopyText = async () => {
+    try {
+      await navigator.clipboard.writeText(buildMarkdown(report, counts.breach, counts.escalation, counts.sanction, counts.timestamp));
+      setCopyTextState('copied');
+      if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopyTextState('idle'), 2000);
+      recordBreachAsync();
+    } catch (err) {
+      console.error('[IncidentReportOverlay] Clipboard write failed:', err);
+    }
+  };
+
+  const handleEscalate = () => {
+    toggleEscalate().catch((err: unknown) => {
+      console.error('[IncidentReportOverlay] toggleEscalate failed:', err);
+    });
+  };
 
   const handleCopyLink = async () => {
     if (!incidentUrl) return;
@@ -378,28 +385,15 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   const platforms = (shareLinks ?? []).filter(l => SHARE_PLATFORMS[l.label]);
 
-  const handleBackdropKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.key === 'Enter' || e.key === ' ') && e.target === overlayRef.current) {
-      e.preventDefault();
-      onClose();
-    }
-  };
-
   return (
-    <div
-      ref={overlayRef}
-      onClick={handleBackdropClick}
-      onKeyDown={handleBackdropKeyDown}
-      role="presentation"
-      className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+    <dialog
+      ref={dialogRef}
+      onClick={handleDialogClick}
+      aria-labelledby={headingId}
+      className="bg-transparent p-0 m-0 max-w-none max-h-none w-screen h-[100dvh] backdrop:bg-black/80 backdrop:backdrop-blur-sm open:flex items-end sm:items-center justify-center sm:p-4"
     >
       <div
-        ref={panelRef}
         className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={headingId}
-        tabIndex={-1}
       >
         {/* Color strip — always left */}
         <div className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden" aria-hidden="true">
@@ -481,7 +475,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                   {report.severity}
                 </span>
               </div>
-              {liveSanctionCount > 0 && (
+              {counts.sanction > 0 && (
                 <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold">
                   <ShieldCheck size={9} aria-hidden="true" />
                   Sanctioned
@@ -504,10 +498,10 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             {/* Stats row */}
             <div className="flex items-baseline justify-between py-3 border-y border-[#2a2a2a]">
               {[
-                { value: computeImpact(liveCounts), label: 'Impact' },
-                { value: liveSanctionCount, label: 'Sanctions' },
-                { value: liveEscalationCount, label: 'Escalations' },
-                { value: liveBreachCount, label: 'Breaches' },
+                { value: computeImpact(liveCountsForImpact), label: 'Impact' },
+                { value: counts.sanction, label: 'Sanctions' },
+                { value: counts.escalation, label: 'Escalations' },
+                { value: counts.breach, label: 'Breaches' },
               ].map(({ value, label }) => (
                 <div key={label} className="text-center">
                   <div className="text-hazard-amber font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
@@ -569,7 +563,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </section>
 
             {/* Sanction Rationale */}
-            {liveSanctionCount > 0 && report.sanctionRationale && (
+            {counts.sanction > 0 && report.sanctionRationale && (
               <section className="border-t border-hazard-amber/20 pt-4">
                 <p className="text-hazard-amber font-mono text-[10px] uppercase tracking-[0.15em] flex items-center gap-1.5">
                   <ShieldCheck size={10} aria-hidden="true" />
@@ -582,7 +576,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             {/* Case footer */}
             <div className="border-t border-[#2a2a2a] pt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-xs text-stone-gray">
               <span>Filed by <span className="text-hazard-amber font-bold">{report.anonHandle}</span></span>
-              {liveTimestamp && <span>{formatTimestamp(liveTimestamp)}</span>}
+              {counts.timestamp && <span>{formatTimestamp(counts.timestamp)}</span>}
               <span>{report.chromaticProfile}</span>
             </div>
 
@@ -590,6 +584,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         </div>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

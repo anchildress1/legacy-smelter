@@ -14,7 +14,7 @@ interface EscalationStateChangeDetail {
 }
 
 function emitEscalationStateChange(detail: EscalationStateChangeDetail): void {
-  if (typeof globalThis.window === 'undefined') return;
+  if (globalThis.window === undefined) return;
   globalThis.window.dispatchEvent(new CustomEvent<EscalationStateChangeDetail>(ESCALATION_STATE_EVENT, { detail }));
 }
 
@@ -48,7 +48,7 @@ export function hasEscalated(incidentId: string): boolean {
 export function subscribeEscalationStateChange(
   listener: (detail: EscalationStateChangeDetail) => void,
 ): () => void {
-  if (typeof globalThis.window === 'undefined') return () => {};
+  if (globalThis.window === undefined) return () => {};
   const onChange = (event: Event) => {
     const custom = event as CustomEvent<EscalationStateChangeDetail>;
     if (!custom.detail) return;

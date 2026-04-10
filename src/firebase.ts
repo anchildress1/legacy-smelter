@@ -33,7 +33,7 @@ const auth = getAuth(app);
 let anonymousAuthPromise: Promise<void> | null = null;
 
 export async function ensureAnonymousAuth(): Promise<void> {
-  if (typeof globalThis.window === 'undefined') return;
+  if (globalThis.window === undefined) return;
   if (auth.currentUser) return;
   if (!anonymousAuthPromise) {
     anonymousAuthPromise = signInAnonymously(auth).then(() => undefined).catch((err) => {

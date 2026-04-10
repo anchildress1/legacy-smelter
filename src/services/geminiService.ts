@@ -38,7 +38,7 @@ function parseSmeltAnalysis(raw: unknown): SmeltAnalysis {
 
   const dominantColors = raw.dominantColors;
   if (!Array.isArray(dominantColors)) {
-    throw new Error('API response missing dominantColors array');
+    throw new TypeError('API response missing dominantColors array');
   }
 
   const subjectBox = raw.subjectBox;

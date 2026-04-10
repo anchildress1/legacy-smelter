@@ -18,7 +18,7 @@
 
 import 'dotenv/config';
 import { FieldValue } from 'firebase-admin/firestore';
-import type { DocumentData, QueryDocumentSnapshot } from 'firebase-admin/firestore';
+import type { DocumentData, QueryDocumentSnapshot, WriteBatch } from 'firebase-admin/firestore';
 import { randomUUID } from 'node:crypto';
 import { db } from './lib/admin-init.js';
 import { computeImpactScore } from '../shared/impactScore.js';
@@ -37,10 +37,19 @@ const REQUIRED_DEFAULTS = {
   sanction_rationale: null,
 } as const;
 
+type CounterKey = 'breach_count' | 'escalation_count' | 'sanction_count';
+
+interface BackfillState {
+  batch: WriteBatch;
+  batchSize: number;
+  scanned: number;
+  patched: number;
+}
+
 function resolveFiniteNumber(
   data: Record<string, unknown>,
   updates: Record<string, unknown>,
-  key: 'breach_count' | 'escalation_count' | 'sanction_count'
+  key: CounterKey,
 ): number {
   const fromUpdate = updates[key];
   if (typeof fromUpdate === 'number' && Number.isFinite(fromUpdate)) return fromUpdate;
@@ -49,85 +58,104 @@ function resolveFiniteNumber(
   return 0;
 }
 
-async function run(): Promise<void> {
-  console.log(`[backfill] Scanning incident_logs collection…`);
-
-  let patched = 0;
-  let scanned = 0;
-  let batch = db.batch();
-  let batchSize = 0;
-  let cursor: QueryDocumentSnapshot<DocumentData> | null = null;
-
-  while (true) {
-    let queryRef = db
-      .collection('incident_logs')
-      .orderBy('__name__')
-      .limit(READ_PAGE_SIZE);
-    if (cursor) queryRef = queryRef.startAfter(cursor);
-
-    const pageSnap = await queryRef.get();
-    if (pageSnap.empty) break;
-
-    scanned += pageSnap.size;
-
-    for (const doc of pageSnap.docs) {
-      const data = doc.data();
-      const updates: Record<string, unknown> = {};
-
-      for (const [field, defaultValue] of Object.entries(REQUIRED_DEFAULTS)) {
-        const value = data[field];
-        if (field === 'sanction_rationale') {
-          if (value !== null && typeof value !== 'string') updates[field] = defaultValue;
-        } else if (typeof defaultValue === 'number') {
-          if (typeof value !== 'number' || !Number.isFinite(value)) updates[field] = defaultValue;
-        } else if (typeof defaultValue === 'boolean') {
-          if (typeof value !== 'boolean') updates[field] = defaultValue;
-        }
-      }
-
-      const breachCount = resolveFiniteNumber(data, updates, 'breach_count');
-      const escalationCount = resolveFiniteNumber(data, updates, 'escalation_count');
-      const sanctionCount = resolveFiniteNumber(data, updates, 'sanction_count');
-      const impactScore = computeImpactScore({
-        sanction_count: sanctionCount,
-        escalation_count: escalationCount,
-        breach_count: breachCount,
-      });
-      const currentImpact = data.impact_score;
-      if (typeof currentImpact !== 'number' || !Number.isFinite(currentImpact) || currentImpact !== impactScore) {
-        updates.impact_score = impactScore;
-      }
-
-      if (Object.keys(updates).length === 0) continue;
-
-      console.log(`[backfill] ${doc.id} <- ${JSON.stringify(updates)}`);
-      batch.update(doc.ref, updates);
-      patched++;
-      batchSize++;
-
-      if (batchSize >= BATCH_LIMIT) {
-        await batch.commit();
-        console.log(`[backfill] Committed batch of ${batchSize}`);
-        batch = db.batch();
-        batchSize = 0;
-      }
-    }
-
-    cursor = pageSnap.docs[pageSnap.docs.length - 1];
+/**
+ * Decides whether a single field needs a default filled in. Returns the
+ * default value when it does, or `undefined` when the existing value is
+ * acceptable. Keeping the per-field type-check out of the main loop is
+ * what drops the enclosing `run()` under the cognitive-complexity ceiling.
+ */
+function missingDefaultFor(
+  field: keyof typeof REQUIRED_DEFAULTS,
+  value: unknown,
+): unknown {
+  const defaultValue = REQUIRED_DEFAULTS[field];
+  if (field === 'sanction_rationale') {
+    return value !== null && typeof value !== 'string' ? defaultValue : undefined;
   }
-
-  if (batchSize > 0) {
-    await batch.commit();
-    console.log(`[backfill] Committed final batch of ${batchSize}`);
+  if (typeof defaultValue === 'number') {
+    return typeof value !== 'number' || !Number.isFinite(value) ? defaultValue : undefined;
   }
-
-  console.log(`[backfill] ${scanned} documents scanned`);
-  if (patched === 0) {
-    console.log(`[backfill] All ${scanned} documents already conform. No changes.`);
-  } else {
-    console.log(`[backfill] Patched ${patched} document(s) out of ${scanned}.`);
+  if (typeof defaultValue === 'boolean') {
+    return typeof value !== 'boolean' ? defaultValue : undefined;
   }
+  return undefined;
+}
 
+function collectDefaultUpdates(data: Record<string, unknown>): Record<string, unknown> {
+  const updates: Record<string, unknown> = {};
+  for (const field of Object.keys(REQUIRED_DEFAULTS) as (keyof typeof REQUIRED_DEFAULTS)[]) {
+    const patched = missingDefaultFor(field, data[field]);
+    if (patched !== undefined) updates[field] = patched;
+  }
+  return updates;
+}
+
+/**
+ * Computes the authoritative `impact_score` from the post-update counter
+ * values and patches it into `updates` if the stored value is missing,
+ * non-finite, or drifted from the weighted sum.
+ */
+function applyImpactScorePatch(
+  data: Record<string, unknown>,
+  updates: Record<string, unknown>,
+): void {
+  const impactScore = computeImpactScore({
+    sanction_count: resolveFiniteNumber(data, updates, 'sanction_count'),
+    escalation_count: resolveFiniteNumber(data, updates, 'escalation_count'),
+    breach_count: resolveFiniteNumber(data, updates, 'breach_count'),
+  });
+  const currentImpact = data.impact_score;
+  if (
+    typeof currentImpact !== 'number' ||
+    !Number.isFinite(currentImpact) ||
+    currentImpact !== impactScore
+  ) {
+    updates.impact_score = impactScore;
+  }
+}
+
+function buildDocPatch(data: Record<string, unknown>): Record<string, unknown> | null {
+  const updates = collectDefaultUpdates(data);
+  applyImpactScorePatch(data, updates);
+  return Object.keys(updates).length === 0 ? null : updates;
+}
+
+async function flushBatchIfFull(state: BackfillState): Promise<void> {
+  if (state.batchSize < BATCH_LIMIT) return;
+  await state.batch.commit();
+  console.log(`[backfill] Committed batch of ${state.batchSize}`);
+  state.batch = db.batch();
+  state.batchSize = 0;
+}
+
+async function backfillPage(
+  docs: QueryDocumentSnapshot<DocumentData>[],
+  state: BackfillState,
+): Promise<void> {
+  for (const doc of docs) {
+    const updates = buildDocPatch(doc.data());
+    if (!updates) continue;
+    console.log(`[backfill] ${doc.id} <- ${JSON.stringify(updates)}`);
+    state.batch.update(doc.ref, updates);
+    state.patched++;
+    state.batchSize++;
+    await flushBatchIfFull(state);
+  }
+}
+
+async function fetchNextPage(
+  cursor: QueryDocumentSnapshot<DocumentData> | null,
+): Promise<QueryDocumentSnapshot<DocumentData>[]> {
+  let queryRef = db
+    .collection('incident_logs')
+    .orderBy('__name__')
+    .limit(READ_PAGE_SIZE);
+  if (cursor) queryRef = queryRef.startAfter(cursor);
+  const pageSnap = await queryRef.get();
+  return pageSnap.docs;
+}
+
+async function recordMigrationRun(scanned: number, patched: number): Promise<void> {
   // Append an immutable run entry so the audit trail is preserved across
   // re-runs. The top-level marker doc records `first_run_at` once and
   // `last_run_at` on every run; the `runs` subcollection holds the full
@@ -156,10 +184,49 @@ async function run(): Promise<void> {
     markerUpdate.first_run_id = RUN_ID;
   }
   await markerRef.set(markerUpdate, { merge: true });
-  console.log(`[backfill] Marked migration ${MIGRATION_COLLECTION}/${MIGRATION_DOC_ID} run ${RUN_ID} as complete.`);
+  console.log(
+    `[backfill] Marked migration ${MIGRATION_COLLECTION}/${MIGRATION_DOC_ID} run ${RUN_ID} as complete.`,
+  );
 }
 
-run().catch((err) => {
+async function run(): Promise<void> {
+  console.log(`[backfill] Scanning incident_logs collection…`);
+
+  const state: BackfillState = {
+    batch: db.batch(),
+    batchSize: 0,
+    scanned: 0,
+    patched: 0,
+  };
+  let cursor: QueryDocumentSnapshot<DocumentData> | null = null;
+
+  while (true) {
+    const pageDocs = await fetchNextPage(cursor);
+    if (pageDocs.length === 0) break;
+
+    state.scanned += pageDocs.length;
+    await backfillPage(pageDocs, state);
+    cursor = pageDocs[pageDocs.length - 1];
+  }
+
+  if (state.batchSize > 0) {
+    await state.batch.commit();
+    console.log(`[backfill] Committed final batch of ${state.batchSize}`);
+  }
+
+  console.log(`[backfill] ${state.scanned} documents scanned`);
+  if (state.patched === 0) {
+    console.log(`[backfill] All ${state.scanned} documents already conform. No changes.`);
+  } else {
+    console.log(`[backfill] Patched ${state.patched} document(s) out of ${state.scanned}.`);
+  }
+
+  await recordMigrationRun(state.scanned, state.patched);
+}
+
+try {
+  await run();
+} catch (err) {
   console.error('[backfill] Fatal:', err);
   process.exit(1);
-});
+}

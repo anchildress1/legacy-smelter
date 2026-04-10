@@ -40,6 +40,12 @@ interface AppProps {
   readonly deepLinkId?: string | null;
 }
 
+interface CanvasReadyWaiter {
+  resolve: (handle: SmelterCanvasHandle) => void;
+  reject: (error: Error) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+}
+
 export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProps>) {
   const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
   const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
@@ -57,11 +63,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<SmelterCanvasHandle | null>(null);
-  const canvasReadyWaitersRef = useRef<Array<{
-    resolve: (handle: SmelterCanvasHandle) => void;
-    reject: (error: Error) => void;
-    timeoutId: ReturnType<typeof setTimeout>;
-  }>>([]);
+  const canvasReadyWaitersRef = useRef<CanvasReadyWaiter[]>([]);
   const activeRequestIdRef = useRef(0);
   const analysisRef = useRef<SmeltAnalysis | null>(null);
   const postmortemAutoOpenedRef = useRef(false);
@@ -88,20 +90,30 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     }
   }, []);
 
+  // Extracted so the setTimeout call in `waitForCanvasHandle` stays flat
+  // (S2004: no more than 4 nested function literals). `setTimeout(fn, ms,
+  // ...args)` passes the waiter through directly instead of closing over
+  // it in an inner arrow.
+  const onCanvasReadyTimeout = useCallback((waiter: CanvasReadyWaiter) => {
+    canvasReadyWaitersRef.current = canvasReadyWaitersRef.current.filter((entry) => entry !== waiter);
+    waiter.reject(new Error('Smelter canvas did not initialize in time.'));
+  }, []);
+
   const waitForCanvasHandle = useCallback((): Promise<SmelterCanvasHandle> => {
     if (canvasRef.current) return Promise.resolve(canvasRef.current);
-    return new Promise((resolve, reject) => {
-      const waiter = {
+    return new Promise<SmelterCanvasHandle>((resolve, reject) => {
+      const waiter: CanvasReadyWaiter = {
         resolve,
         reject,
-        timeoutId: setTimeout(() => {
-          canvasReadyWaitersRef.current = canvasReadyWaitersRef.current.filter((entry) => entry !== waiter);
-          reject(new Error('Smelter canvas did not initialize in time.'));
-        }, CANVAS_READY_TIMEOUT_MS),
+        // Populated immediately below; we need the waiter reference inside
+        // the timeout callback, so the id can't be assigned until after
+        // the object literal exists.
+        timeoutId: 0 as unknown as ReturnType<typeof setTimeout>,
       };
+      waiter.timeoutId = setTimeout(onCanvasReadyTimeout, CANVAS_READY_TIMEOUT_MS, waiter);
       canvasReadyWaitersRef.current.push(waiter);
     });
-  }, []);
+  }, [onCanvasReadyTimeout]);
 
   useEffect(() => {
     const statsDoc = doc(db, 'global_stats', 'main');
@@ -201,11 +213,16 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       cameraAttachTimerRef.current = setTimeout(() => {
         cameraAttachTimerRef.current = null;
         if (!videoRef.current || pendingCameraStreamRef.current !== stream) return;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          pendingCameraStreamRef.current = null;
-          void videoRef.current.play();
-        }
+        videoRef.current.srcObject = stream;
+        pendingCameraStreamRef.current = null;
+        // `.play()` returns a promise that rejects when autoplay is
+        // interrupted (e.g. stopCamera() nuked srcObject before playback
+        // resolved). Surface it as a diagnostic instead of dropping the
+        // rejection on the floor — silent failures here look like a
+        // frozen camera preview.
+        videoRef.current.play().catch((playErr: unknown) => {
+          console.error('[App] Camera play() failed:', playErr);
+        });
       }, 100);
     } catch (err) {
       const name = err instanceof Error ? err.name : '';
