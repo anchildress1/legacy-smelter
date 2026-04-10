@@ -416,6 +416,52 @@ describe('useEscalation', () => {
     expect(result.current.escalated).toBe(true);
   });
 
+  it('guards re-entry synchronously so two rapid toggles cannot both begin', async () => {
+    // React state updates are async, so `isToggling` in the toggle closure
+    // lags by a render: two toggles dispatched in the same tick would both
+    // observe `isToggling === false` and issue concurrent writes + conflicting
+    // optimistic UI. The hook must therefore hold the guard in a ref that
+    // flips synchronously before any await. A regression that reverted the
+    // guard to `isToggling` state would let both calls through and fail this
+    // test on the `mockToggleEscalation` call count.
+    mockHasEscalated.mockReturnValue(false);
+    mockSyncEscalationState.mockResolvedValue(false);
+
+    // Hold the first call open so the second call has a chance to observe
+    // the in-flight state and (incorrectly, under a buggy guard) start its
+    // own toggle.
+    let resolveFirst!: (value: boolean) => void;
+    mockToggleEscalation.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+
+    const { useEscalation } = await loadHook();
+    const { result } = renderHook(() => useEscalation('inc-reentry'));
+
+    await act(async () => {
+      // Dispatch two toggles synchronously in the same tick. The second call
+      // must early-return without invoking `toggleEscalation`.
+      result.current.toggle().catch(() => {});
+      result.current.toggle().catch(() => {});
+    });
+
+    expect(mockToggleEscalation).toHaveBeenCalledTimes(1);
+    expect(result.current.isToggling).toBe(true);
+    // Optimistic flip happened exactly once — a double-toggle would have
+    // flipped twice and landed back on the starting value.
+    expect(result.current.escalated).toBe(true);
+
+    await act(async () => {
+      resolveFirst(true);
+      await Promise.resolve();
+    });
+
+    expect(result.current.isToggling).toBe(false);
+  });
+
   it('unsubscribes from the escalation event channel on unmount', async () => {
     // The effect's cleanup calls `unsubscribe()`. Without this test a
     // regression that drops the return handler would leak listeners

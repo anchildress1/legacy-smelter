@@ -39,12 +39,19 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
   const [toggleError, setToggleError] = useState<Error | null>(null);
   const localMutationEpochRef = useRef(0);
   const activeToggleRequestRef = useRef(0);
+  // Synchronous re-entry guard. `isToggling` state cannot be used here
+  // because React state updates are async — two rapid calls in the same
+  // tick would both observe `isToggling === false` and start concurrent
+  // toggles (double writes + conflicting optimistic UI). The ref flips
+  // before any await, so the second call sees the guard immediately.
+  const toggleInFlightRef = useRef(false);
 
   useEffect(() => {
     // Any incident switch invalidates stale async completions from the previous
     // incident. This includes toggles still in-flight.
     localMutationEpochRef.current += 1;
     activeToggleRequestRef.current += 1;
+    toggleInFlightRef.current = false;
     setIsToggling(false);
     setToggleError(null);
 
@@ -82,7 +89,12 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
   }, [incidentId]);
 
   const toggle = async () => {
-    if (!incidentId || isToggling) return;
+    if (!incidentId) return;
+    // Synchronous guard flips BEFORE any state update so a second call in
+    // the same tick returns immediately. Do not use `isToggling` here — React
+    // state updates are async and the closure would still see `false`.
+    if (toggleInFlightRef.current) return;
+    toggleInFlightRef.current = true;
     setIsToggling(true);
     setToggleError(null);
     localMutationEpochRef.current += 1;
@@ -124,6 +136,11 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
       setToggleError(wrapped);
       console.error('[useEscalation] Toggle failed:', wrapped);
     } finally {
+      // Release the synchronous guard so the next user click can run. Only
+      // clear `isToggling` state when this call is still the latest request —
+      // a concurrent incident switch may have already issued a new toggle
+      // whose pending state would be clobbered by a stale reset.
+      toggleInFlightRef.current = false;
       if (activeToggleRequestRef.current === toggleRequestId) {
         setIsToggling(false);
       }
