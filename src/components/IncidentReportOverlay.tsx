@@ -359,6 +359,10 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   } = useEscalation(incidentId ?? null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Breach epoch — bumped on every incident switch so a `recordBreach`
+  // promise that settles after the user has moved to a different incident
+  // cannot write its error (or success) into the new incident's state.
+  const breachEpochRef = useRef(0);
   const headingId = useId();
 
   // Derive incident URL from incidentId — used for the copy-link button
@@ -370,6 +374,18 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       if (copyLinkTimeoutRef.current !== null) clearTimeout(copyLinkTimeoutRef.current);
     };
   }, []);
+
+  // Reset transient per-incident state when `incidentId` changes. The overlay
+  // instance can be reused across incidents (App.tsx renders it conditionally
+  // but does not key it on `incidentId`), so without this reset a breach
+  // error from incident A would leak into incident B until the user
+  // triggered a new breach attempt. Also bumps `breachEpochRef` so an
+  // in-flight `recordBreach` resolution from the previous incident is
+  // ignored rather than racing into the new incident's state.
+  useEffect(() => {
+    breachEpochRef.current += 1;
+    setBreachError(null);
+  }, [incidentId]);
 
   // Backdrop click-to-close: clicks on the <dialog> element itself
   // (not a descendant) mean the user clicked the translucent backdrop.
@@ -399,8 +415,12 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const recordBreachAsync = () => {
     if (!incidentId) return;
     setBreachError(null);
+    const requestEpoch = breachEpochRef.current;
     recordBreach(incidentId)
       .then((result) => {
+        // Ignore completions for a previous incident — the overlay has moved
+        // on and the error/success belongs to a now-invisible state machine.
+        if (breachEpochRef.current !== requestEpoch) return;
         if (result.ok || result.skipped) return;
         console.error('[IncidentReportOverlay] Breach record failed:', result.error);
         // `BreachResult.error` is the underlying error's `.message` (a
@@ -410,6 +430,16 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         setBreachError(new Error(result.error ?? 'Breach record failed'));
       })
       .catch((err) => {
+        if (breachEpochRef.current !== requestEpoch) {
+          // Late rejection from the previous incident. Log at warn level so
+          // a real Firestore failure is still observable, but do NOT touch
+          // UI state — the user has moved on.
+          console.warn(
+            '[IncidentReportOverlay] Ignoring stale breach failure for previous incident:',
+            err,
+          );
+          return;
+        }
         console.error('[IncidentReportOverlay] Breach record threw unexpectedly:', err);
         setBreachError(err instanceof Error ? err : new Error(String(err)));
       });

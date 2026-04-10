@@ -390,4 +390,109 @@ describe('IncidentReportOverlay escalation error surface', () => {
     expect(breachAlert.textContent).toMatch(/write denied/i);
     consoleErrorSpy.mockRestore();
   });
+
+  it('clears breachError when incidentId changes so a stale alert does not leak across incidents', async () => {
+    // The overlay component instance can be reused when `selectedRecentLog`
+    // changes in App.tsx (the component is rendered conditionally but is
+    // NOT keyed on `incidentId`). Without a reset effect keyed on
+    // `incidentId`, a breach error from incident A would still render when
+    // the user opens incident B. This test rerenders with a new incidentId
+    // and asserts the alert disappears.
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockRecordBreachResult.current = { ok: false, error: 'write denied' };
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(async () => {}) },
+      configurable: true,
+    });
+
+    const { rerender } = render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+
+    await act(async () => {
+      screen.getByRole('button', { name: /copy brief/i }).click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('breach-error')).toBeInTheDocument();
+
+    // Swap to a different incident — the breach error must not leak.
+    rerender(
+      <IncidentReportOverlay
+        analysis={{ ...makeAnalysis(), incidentId: 'incident-2' }}
+        incidentId="incident-2"
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.queryByTestId('breach-error')).toBeNull();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('ignores a late recordBreach rejection from a previous incident', async () => {
+    // A slow Firestore write for incident A should not bleed into incident B.
+    // This test holds the `recordBreach` promise open across an incidentId
+    // change, then rejects it — the overlay must NOT render a breach alert
+    // in the new incident's state and must log at warn level so the late
+    // failure is still observable for support triage.
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let rejectBreach!: (err: Error) => void;
+    mockRecordBreachResult.current = new Error('stale incident-1 failure');
+    // Override the mock with a manually-controllable promise for this test.
+    const { recordBreach } = await import('../services/breachService');
+    vi.mocked(recordBreach).mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectBreach = reject;
+        }),
+    );
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(async () => {}) },
+      configurable: true,
+    });
+
+    const { rerender } = render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+
+    // Fire a breach attempt that will hang until we reject it.
+    await act(async () => {
+      screen.getByRole('button', { name: /copy brief/i }).click();
+      await Promise.resolve();
+    });
+
+    // Swap incidents before the breach promise settles.
+    rerender(
+      <IncidentReportOverlay
+        analysis={{ ...makeAnalysis(), incidentId: 'incident-2' }}
+        incidentId="incident-2"
+        onClose={() => {}}
+      />,
+    );
+
+    // Now reject the original breach — the overlay must ignore it.
+    await act(async () => {
+      rejectBreach(new Error('stale incident-1 failure'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('breach-error')).toBeNull();
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      '[IncidentReportOverlay] Ignoring stale breach failure for previous incident:',
+      expect.any(Error),
+    );
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
 });
