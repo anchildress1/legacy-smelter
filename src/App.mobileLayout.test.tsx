@@ -46,9 +46,23 @@ vi.mock('./firebase', () => ({
   getDoc: vi.fn(async () => ({ exists: () => false, data: () => ({}) })),
 }));
 
-vi.mock('./services/geminiService', () => ({
-  analyzeLegacyTech: vi.fn(),
-}));
+// Partial mock: App.tsx imports `AnalysisError` (a class) and the
+// `AnalysisErrorCategory` type alongside `analyzeLegacyTech`. A flat
+// factory that only returns `analyzeLegacyTech` would leave
+// `AnalysisError` as `undefined` at import time — today the mobile
+// layout test never hits the `error instanceof AnalysisError` branch
+// so nothing crashes, but a future refactor that referenced the class
+// at module scope would break this suite silently. Re-export the real
+// module and override only the analyzer.
+vi.mock('./services/geminiService', async () => {
+  const actual = await vi.importActual<typeof import('./services/geminiService')>(
+    './services/geminiService',
+  );
+  return {
+    ...actual,
+    analyzeLegacyTech: vi.fn(),
+  };
+});
 
 vi.mock('./lib/firestoreErrors', () => ({
   handleFirestoreError: vi.fn(),

@@ -136,12 +136,17 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
       setToggleError(wrapped);
       console.error('[useEscalation] Toggle failed:', wrapped);
     } finally {
-      // Release the synchronous guard so the next user click can run. Only
-      // clear `isToggling` state when this call is still the latest request —
-      // a concurrent incident switch may have already issued a new toggle
-      // whose pending state would be clobbered by a stale reset.
-      toggleInFlightRef.current = false;
+      // Release the guard AND clear `isToggling` only when this call is
+      // still the latest request. If the incident changed mid-flight, the
+      // effect bumped `activeToggleRequestRef`; the new incident may have
+      // already issued its own toggle (which flipped `toggleInFlightRef`
+      // back to true via the fresh call). A stale completion clearing the
+      // ref here would unblock a second concurrent toggle for the new
+      // incident — the exact race this guard exists to prevent. Same
+      // argument applies to `setIsToggling(false)`: clearing it would
+      // clobber the pending state of the newer request.
       if (activeToggleRequestRef.current === toggleRequestId) {
+        toggleInFlightRef.current = false;
         setIsToggling(false);
       }
     }

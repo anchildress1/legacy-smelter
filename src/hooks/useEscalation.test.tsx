@@ -462,6 +462,92 @@ describe('useEscalation', () => {
     expect(result.current.isToggling).toBe(false);
   });
 
+  it('does not release the re-entry guard from a stale toggle finally after an incident switch', async () => {
+    // Race: toggle A is in flight; incident switches to B; user starts
+    // toggle B (which flips `toggleInFlightRef` back to true); THEN toggle
+    // A's promise settles and runs its finally. If the stale finally
+    // unconditionally clears the ref, toggle B is running but the guard
+    // says "free", so a concurrent third toggle can start — exactly the
+    // double-write race the ref exists to prevent. The finally must be
+    // gated on the active request id.
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockHasEscalated.mockImplementation((id: string) => id === 'inc-a');
+    mockSyncEscalationState.mockResolvedValue(false);
+
+    let rejectOldToggle!: (err: Error) => void;
+    let resolveNewToggle!: (value: boolean) => void;
+    mockToggleEscalation
+      .mockImplementationOnce(
+        () =>
+          new Promise<boolean>((_, reject) => {
+            rejectOldToggle = reject;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolveNewToggle = resolve;
+          }),
+      );
+
+    const { useEscalation } = await loadHook();
+    const { result, rerender } = renderHook(
+      ({ incidentId }) => useEscalation(incidentId),
+      { initialProps: { incidentId: 'inc-a' as string | null } },
+    );
+
+    // Fire toggle A on inc-a (will hang).
+    await act(async () => {
+      result.current.toggle().catch(() => {});
+    });
+    await waitFor(() => {
+      expect(result.current.isToggling).toBe(true);
+    });
+
+    // Switch to inc-b — effect bumps epoch + active request id, clears ref.
+    rerender({ incidentId: 'inc-b' });
+
+    // Fire toggle B on inc-b (also hangs). This must succeed — the
+    // previous effect correctly freed the ref.
+    await act(async () => {
+      result.current.toggle().catch(() => {});
+    });
+    await waitFor(() => {
+      expect(result.current.isToggling).toBe(true);
+    });
+    expect(mockToggleEscalation).toHaveBeenCalledTimes(2);
+
+    // Settle toggle A (the stale one). Its finally runs — with the fix in
+    // place, the stale finally's `activeToggleRequestRef` check fails and
+    // the ref stays `true`, protecting toggle B. Without the fix, the ref
+    // would be cleared to `false` here.
+    await act(async () => {
+      rejectOldToggle(new Error('stale inc-a write failed'));
+      await Promise.resolve();
+    });
+
+    // Now attempt a third toggle while toggle B is still in flight. If the
+    // stale finally leaked the guard clear, this call would proceed and
+    // increment the invocation count. The fix keeps the guard held.
+    await act(async () => {
+      result.current.toggle().catch(() => {});
+    });
+
+    expect(mockToggleEscalation).toHaveBeenCalledTimes(2);
+    expect(result.current.isToggling).toBe(true);
+
+    // Clean up — settle toggle B so the test teardown does not leak a
+    // pending promise chain into subsequent tests.
+    await act(async () => {
+      resolveNewToggle(true);
+      await Promise.resolve();
+    });
+
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
   it('unsubscribes from the escalation event channel on unmount', async () => {
     // The effect's cleanup calls `unsubscribe()`. Without this test a
     // regression that drops the return handler would leak listeners
