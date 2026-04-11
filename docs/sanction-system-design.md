@@ -6,29 +6,22 @@ This document describes the sanction judging pipeline as it runs in production: 
 
 ## 1. Components
 
-```
-┌──────────────┐        ┌──────────────┐        ┌──────────────────────┐
-│   Browser    │──POST─▶│   Cloud Run  │──────▶│   Firestore          │
-│  (React SPA) │        │  server.js   │  admin│  incident_logs       │
-└──────────────┘        │  POST /api/  │  SDK  │  database:           │
-                        │   analyze    │       │  `legacy-smelter`    │
-                        └──────┬───────┘       └──────────┬───────────┘
-                               │                          │
-                               │ analyzeImage             │ onDocumentCreated
-                               ▼                          ▼
-                        ┌──────────────┐        ┌──────────────────────┐
-                        │    Gemini    │        │  Cloud Functions v2  │
-                        │  3.1-flash-  │◀───────│  onIncidentCreated   │
-                        │ lite-preview │ judging│  functions/          │
-                        │              │ prompt │  sanction.js         │
-                        └──────────────┘        └──────────┬───────────┘
-                                                           │
-                                                           │ defineSecret
-                                                           ▼
-                                                ┌──────────────────────┐
-                                                │  Secret Manager      │
-                                                │  GEMINI_API_KEY      │
-                                                └──────────────────────┘
+```mermaid
+flowchart LR
+    Browser["Browser<br/>(React SPA)"]
+    CloudRun["Cloud Run<br/>server.js<br/>POST /api/analyze"]
+    Firestore[("Firestore<br/>incident_logs<br/>db: legacy-smelter")]
+    Functions["Cloud Functions v2<br/>onIncidentCreated<br/>functions/sanction.js"]
+    Gemini["Gemini<br/>3.1-flash-lite-preview"]
+    Secrets["Secret Manager<br/>GEMINI_API_KEY"]
+
+    Browser -- "POST" --> CloudRun
+    CloudRun -- "classify" --> Gemini
+    CloudRun -- "admin SDK" --> Firestore
+    Firestore -- "onDocumentCreated" --> Functions
+    Functions -- "judging prompt" --> Gemini
+    Functions -- "defineSecret" --> Secrets
+    Functions -- "admin SDK" --> Firestore
 ```
 
 | Component | Responsibility |
@@ -42,85 +35,73 @@ This document describes the sanction judging pipeline as it runs in production: 
 
 ## 2. Sequence — happy path
 
-```
-User          Cloud Run       Firestore            Functions       Gemini
- │                │               │                   │               │
- │── POST ──────▶│                │                   │               │
- │  /analyze      │               │                   │               │
- │                │── classify ──────────────────────────────────────▶│
- │                │◀────── analysis JSON ──────────────────────────────│
- │                │── writeBatch ▶│                   │               │
- │                │               │  (incident +      │               │
- │                │               │   stats bump)     │               │
- │                │◀──── ok ──────│                   │               │
- │◀── 200 ───────│                │                   │               │
- │  JSON          │               │                   │               │
- │                │               │── onDocumentCreated ──────────────▶│
- │                │               │                   │               │
- │                │               │                   │── sweep ──▶│  (no stale leases)
- │                │               │                   │◀── 0 ─────│
- │                │               │                   │── claim ──▶│ tx: read 5 oldest
- │                │               │                   │            │     evaluated=false
- │                │               │                   │            │     ordered by timestamp
- │                │               │                   │            │ tx: update all 5
- │                │               │                   │            │     evaluated=true
- │                │               │                   │            │     sanction_lease_at=now
- │                │               │                   │◀── 5 ─────│
- │                │               │                   │── judge ──────────────▶│
- │                │               │                   │                        │ prompt + 5 candidates
- │                │               │                   │◀────── {winner, rationale} ─│
- │                │               │                   │── finalize ▶│ batch:
- │                │               │                   │            │   update winner
- │                │               │                   │            │     sanctioned=true
- │                │               │                   │            │     sanction_count=1
- │                │               │                   │            │     sanction_rationale
- │                │               │                   │            │     impact_score (recomputed)
- │                │               │                   │            │     sanction_lease_at=null
- │                │               │                   │            │   update 4 losers
- │                │               │                   │            │     sanction_lease_at=null
- │                │               │                   │◀── ok ────│
+```mermaid
+sequenceDiagram
+    participant User
+    participant CR as Cloud Run<br/>server.js
+    participant FS as Firestore
+    participant Fn as Functions<br/>sanction.js
+    participant G as Gemini
+
+    User->>CR: POST /api/analyze
+    CR->>G: classify image
+    G-->>CR: analysis JSON
+    CR->>FS: writeBatch (incident + stats bump)
+    FS-->>CR: ok
+    CR-->>User: 200 JSON
+
+    FS->>Fn: onDocumentCreated
+    Fn->>FS: sweep stale leases
+    FS-->>Fn: 0 recovered
+    Fn->>FS: claim (tx): read 5 oldest evaluated=false
+    Note over Fn,FS: tx.update all 5<br/>evaluated=true<br/>sanction_lease_at=now
+    FS-->>Fn: 5 claimed
+    Fn->>G: judge (prompt + 5 candidates)
+    G-->>Fn: {winner, rationale}
+    Fn->>FS: finalize (batch)
+    Note over Fn,FS: winner: sanctioned=true,<br/>sanction_count=1,<br/>rationale, impact_score,<br/>lease=null<br/>losers: lease=null
+    FS-->>Fn: ok
 ```
 
 Key observation: the user's `/api/analyze` response returns after the Cloud Run write commits. The trigger fires asynchronously via Eventarc and has its own failure budget. The user never waits for sanction judging — if the trigger is stuck, the user experience is unaffected.
 
 ## 3. Sequence — failure path and recovery
 
-```
-Functions              Firestore
-  │                      │
-  │── sweep ────────────▶│   (0 stale leases)
-  │── claim ─tx─────────▶│
-  │◀── 5 claimed ────────│   evaluated=true, lease=now
-  │── judge ▶── Gemini ──× (API outage / invalid response after 2 retries)
-  │                      │
-  │── THROW ─────────────▶│   Cloud Functions v2 event retry enabled
-  │                      │
-  (5 docs stuck: evaluated=true, lease=<now>)
-  │                      │
-  │                      │
-  ──── Cloud Functions redelivers the original event ────
-  │                      │
-  │── sweep ────────────▶│   (still < TTL — no sweep action)
-  │── claim ─tx─────────▶│
-  │◀── 5 claimed ────────│   (same 5, new lease)  ← optimistic reclaim
-  │── judge ▶── Gemini ──× (still failing)
-  │── THROW ─────────────▶│
-  │                      │
-  ──── ... Cloud Functions continues retry backoff ... ────
-  │                      │
-  ──── LEASE_TTL_MS (5 min) has elapsed since first claim ────
-  │                      │
-  │── sweep ────────────▶│   Query: sanction_lease_at < (now - TTL)
-  │                      │     → match 5 docs with stale lease
-  │                      │     batch update:
-  │                      │       evaluated=false
-  │                      │       sanction_lease_at=null
-  │◀── recovered=5 ──────│
-  │── claim ─tx─────────▶│   5 (or more) unevaluated docs — new batch wins
-  │◀── 5 claimed ────────│
-  │── judge ▶── Gemini ──▶│ (Gemini recovered)
-  │◀── winner ──────────│
-  │── finalize ▶─ ok ───▶│
+```mermaid
+sequenceDiagram
+    participant Fn as Functions<br/>sanction.js
+    participant FS as Firestore
+    participant G as Gemini
+
+    Note over Fn,FS: First attempt
+    Fn->>FS: sweep
+    FS-->>Fn: 0 stale
+    Fn->>FS: claim (tx)
+    FS-->>Fn: 5 claimed (lease=now)
+    Fn->>G: judge
+    G--xFn: API outage / invalid (after 2 retries)
+    Fn--xFS: THROW (Cloud Functions retry enabled)
+    Note over Fn,FS: 5 docs stuck:<br/>evaluated=true, lease=now
+
+    Note over Fn,FS: Retry before TTL elapses
+    Fn->>FS: sweep
+    FS-->>Fn: 0 stale (still fresh)
+    Fn->>FS: claim (tx)
+    FS-->>Fn: same 5 reclaimed (new lease)
+    Fn->>G: judge
+    G--xFn: still failing
+    Fn--xFS: THROW
+
+    Note over Fn,FS: LEASE_TTL_MS (5 min) elapsed
+    Fn->>FS: sweep (lease_at < now - TTL)
+    Note over Fn,FS: batch update:<br/>evaluated=false<br/>lease=null
+    FS-->>Fn: recovered=5
+    Fn->>FS: claim (tx)
+    FS-->>Fn: 5 claimed (fresh batch)
+    Fn->>G: judge
+    G-->>Fn: winner (Gemini recovered)
+    Fn->>FS: finalize
+    FS-->>Fn: ok
 ```
 
 Invariants this recovery flow depends on:
