@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
-import { X, Check, Copy, Link2, ShieldCheck, Siren, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
 import { SeverityBadge } from './SeverityBadge';
 import { recordBreach } from '../services/breachService';
 import { useEscalation } from '../hooks/useEscalation';
@@ -315,7 +315,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
   const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
   const [breachError, setBreachError] = useState<Error | null>(null);
-  const [archiveExpanded, setArchiveExpanded] = useState(false);
   const { counts, staleReason } = useLiveIncidentCounts(incidentId, report);
   const staleMessage = staleReasonCopy(staleReason);
   const liveCountsForImpact = {
@@ -502,9 +501,12 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
               {/* ═══ SECTION 1 — INCIDENT OVERVIEW ═══
                   Title + status cluster at the top, then summary,
-                  quote (quieter), metrics. Tight internal spacing
-                  makes these four read as one unit. */}
-              <section aria-label="Incident overview" className="space-y-3">
+                  quote (quieter), metrics. Relaxed internal spacing
+                  (`space-y-6`) gives the quote in particular room to
+                  breathe between the summary above and the metrics
+                  band below, so the quieter tertiary emphasis does
+                  not feel crammed. */}
+              <section aria-label="Incident overview" className="space-y-6">
 
                 {/* Title row: title (left) + severity + escalate (right) */}
                 <div>
@@ -572,31 +574,63 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 </p>
 
                 {/* Quote — tertiary, reduced contrast so it doesn't
-                    compete with the summary above it. */}
-                <blockquote className="border-l-2 border-hazard-amber/60 pl-4">
+                    compete with the summary above it. Internal `py-1`
+                    adds a touch of vertical breathing inside the
+                    border frame so the italicized pull-quote feels
+                    distinct from the surrounding text blocks. */}
+                <blockquote className="border-l-2 border-hazard-amber/60 pl-4 py-1">
                   <p className="text-hazard-amber/75 font-mono text-sm italic leading-snug">
                     "{report.shareQuote}"
                   </p>
                 </blockquote>
 
-                {/* Metrics — no box, just breathing room.
-                    Stale indicator rendered inline below the row. */}
+                {/* Metrics — Impact is the derived score so it lives in
+                    its own fixed-width slot on the left (roughly one
+                    third of the row), separated from the three raw
+                    counters by a vertical divider. The fixed width
+                    pushes the divider off-center to the right and
+                    gives Impact room for its number + label to sit
+                    centered inside the slot with breathing space on
+                    both sides of the glow.
+
+                    The Impact number carries a subtle static warm
+                    drop-shadow glow to tie it visually to the hazard-
+                    amber palette and signal that it is the lead metric.
+                    When `escalated` is true, the glow intensifies and
+                    the number's contrast steps up a notch — a quiet
+                    visual echo of the ARMED escalate button above. */}
                 <div
-                  className="flex items-baseline justify-between pt-2"
+                  className="flex items-stretch py-4 border-t border-b border-concrete-border"
                   data-testid="incident-stats-row"
                   data-live-stale={staleReason ?? 'fresh'}
                 >
-                  {[
-                    { value: computeImpact(liveCountsForImpact), label: 'Impact' },
-                    { value: counts.sanction, label: 'Sanctions' },
-                    { value: counts.escalation, label: 'Escalations' },
-                    { value: counts.breach, label: 'Breaches' },
-                  ].map(({ value, label }) => (
-                    <div key={label} className="text-center">
-                      <div className="text-hazard-amber font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
-                      <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-ash-white/60">{label}</div>
+                  <div className="basis-1/3 flex flex-col items-center justify-center">
+                    <div
+                      className={`font-mono text-2xl sm:text-3xl font-black leading-none transition-all ${
+                        escalated
+                          ? 'text-hazard-amber [filter:drop-shadow(0_0_8px_rgba(245,200,66,0.55))]'
+                          : 'text-hazard-amber/95 [filter:drop-shadow(0_0_6px_rgba(245,200,66,0.3))]'
+                      }`}
+                    >
+                      {computeImpact(liveCountsForImpact)}
                     </div>
-                  ))}
+                    <div className="mt-1.5 text-[10px] font-mono uppercase tracking-[0.18em] font-bold text-hazard-amber">
+                      Impact
+                    </div>
+                  </div>
+                  <div className="w-px self-stretch bg-concrete-border" aria-hidden="true" />
+                  <div className="flex flex-1 items-baseline justify-around">
+                    {[
+                      { value: counts.sanction, label: 'Sanctions' },
+                      { value: counts.escalation, label: 'Escalations' },
+                      { value: counts.breach, label: 'Breaches' },
+                    ].map(({ value, label }) => (
+                      <div key={label} className="text-center">
+                        <div className="text-ash-white font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
+                        <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-ash-white/60">{label}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 {staleMessage && (
                   <output
@@ -640,29 +674,17 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               </section>
 
               {/* ═══ SECTION 4 — ARCHIVE ═══
-                  Lowest priority. Archive note collapsed by default —
-                  long postmortems are evidence, not primary reading. */}
+                  Lowest priority. Always rendered in full. */}
               <section aria-label="Archive" className="mt-8 border-t border-concrete-border/50 pt-6 space-y-4">
 
-                {/* Archive note — collapsible */}
+                {/* Archive note */}
                 <div>
-                  <button
-                    type="button"
-                    onClick={() => setArchiveExpanded(v => !v)}
-                    className="flex items-center gap-2 text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em] hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber rounded"
-                    aria-expanded={archiveExpanded}
-                  >
-                    <h4 className="pointer-events-none">Archive Note</h4>
-                    {archiveExpanded
-                      ? <ChevronUp size={11} aria-hidden="true" />
-                      : <ChevronDown size={11} aria-hidden="true" />
-                    }
-                  </button>
-                  {archiveExpanded && (
-                    <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">
-                      {report.archiveNote}
-                    </p>
-                  )}
+                  <h4 className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em]">
+                    Archive Note
+                  </h4>
+                  <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">
+                    {report.archiveNote}
+                  </p>
                 </div>
 
                 {/* Sanction rationale */}

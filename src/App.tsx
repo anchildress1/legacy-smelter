@@ -570,18 +570,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                 </div>
               )}
 
-              {/* Idle guidance — anchored to the TOP of the window so the
-                  dragon's feet (which rest near the bottom of the frame
-                  during the idle animation) never cover the text. Visible
-                  only before any processing begins. */}
-              {!isAnalyzing && !isComplete && !isCameraActive && (
-                <div className="absolute top-4 left-0 w-full flex justify-center pointer-events-none z-10">
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-stone-gray/40">
-                    Drop artifact or deploy scanner to begin
-                  </p>
-                </div>
-              )}
-
               {/* Post-smelt controls — replay + view report */}
               {isComplete && !isPlaying && (
                 <div className="absolute inset-0 z-40 bg-concrete/70 backdrop-blur-sm flex items-center justify-center gap-3">
