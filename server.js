@@ -99,27 +99,40 @@ function getSpaHtml() {
   return _spaHtmlCache;
 }
 
-function injectIncidentOg(html, incident, canonicalUrl) {
+// Each entry maps a matching regex in `dist/index.html` to the replacement
+// rendered with the incident context. Kept as a flat table (instead of 14
+// chained `.replace()` calls) so the list is easy to keep in sync with
+// `index.html` and so the per-request cost is a single reduce instead of
+// 14 independent scans over the ~50KB SPA template.
+function buildOgReplacements(incident, canonicalUrl) {
   const title = `${incident.og_headline} — Legacy Smelter`;
   const rawDesc = `[${incident.severity}] ${incident.legacy_infra_class}: ${incident.incident_feed_summary}`;
   const desc = rawDesc.slice(0, 300);
   const imageAlt = `${incident.og_headline} — ${incident.severity} incident`;
 
-  return html
-    .replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`)
-    .replace(/<meta name="description" content="[^"]*"/, `<meta name="description" content="${esc(desc)}"`)
-    .replace(/<meta property="og:title" content="[^"]*"/, `<meta property="og:title" content="${esc(title)}"`)
-    .replace(/<meta property="og:description" content="[^"]*"/, `<meta property="og:description" content="${esc(desc)}"`)
-    .replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${esc(canonicalUrl)}"`)
-    .replace(/<meta property="og:image" content="[^"]*"/, `<meta property="og:image" content="${OG_IMAGE}"`)
-    .replace(/<meta property="og:image:width" content="[^"]*"/, `<meta property="og:image:width" content="${OG_IMAGE_WIDTH}"`)
-    .replace(/<meta property="og:image:height" content="[^"]*"/, `<meta property="og:image:height" content="${OG_IMAGE_HEIGHT}"`)
-    .replace(/<meta property="og:image:alt" content="[^"]*"/, `<meta property="og:image:alt" content="${esc(imageAlt)}"`)
-    .replace(/<meta property="og:type" content="[^"]*"/, `<meta property="og:type" content="article"`)
-    .replace(/<meta name="twitter:title" content="[^"]*"/, `<meta name="twitter:title" content="${esc(title)}"`)
-    .replace(/<meta name="twitter:description" content="[^"]*"/, `<meta name="twitter:description" content="${esc(desc)}"`)
-    .replace(/<meta name="twitter:image" content="[^"]*"/, `<meta name="twitter:image" content="${OG_IMAGE}"`)
-    .replace(/<meta name="twitter:image:alt" content="[^"]*"/, `<meta name="twitter:image:alt" content="${esc(imageAlt)}"`);
+  return [
+    [/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`],
+    [/<meta name="description" content="[^"]*"/, `<meta name="description" content="${esc(desc)}"`],
+    [/<meta property="og:title" content="[^"]*"/, `<meta property="og:title" content="${esc(title)}"`],
+    [/<meta property="og:description" content="[^"]*"/, `<meta property="og:description" content="${esc(desc)}"`],
+    [/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${esc(canonicalUrl)}"`],
+    [/<meta property="og:image" content="[^"]*"/, `<meta property="og:image" content="${OG_IMAGE}"`],
+    [/<meta property="og:image:width" content="[^"]*"/, `<meta property="og:image:width" content="${OG_IMAGE_WIDTH}"`],
+    [/<meta property="og:image:height" content="[^"]*"/, `<meta property="og:image:height" content="${OG_IMAGE_HEIGHT}"`],
+    [/<meta property="og:image:alt" content="[^"]*"/, `<meta property="og:image:alt" content="${esc(imageAlt)}"`],
+    [/<meta property="og:type" content="[^"]*"/, `<meta property="og:type" content="article"`],
+    [/<meta name="twitter:title" content="[^"]*"/, `<meta name="twitter:title" content="${esc(title)}"`],
+    [/<meta name="twitter:description" content="[^"]*"/, `<meta name="twitter:description" content="${esc(desc)}"`],
+    [/<meta name="twitter:image" content="[^"]*"/, `<meta name="twitter:image" content="${OG_IMAGE}"`],
+    [/<meta name="twitter:image:alt" content="[^"]*"/, `<meta name="twitter:image:alt" content="${esc(imageAlt)}"`],
+  ];
+}
+
+function injectIncidentOg(html, incident, canonicalUrl) {
+  return buildOgReplacements(incident, canonicalUrl).reduce(
+    (acc, [pattern, replacement]) => acc.replace(pattern, replacement),
+    html,
+  );
 }
 
 // ── Gemini analysis ─────────────────────────────────────────────────────────

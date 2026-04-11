@@ -244,7 +244,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={recordBreachAsync}
-                    className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                    className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                     aria-label={`Post to ${cfg.name}`}
                     title={cfg.name}
                   >
@@ -255,7 +255,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               {incidentUrl && (
                 <button
                   onClick={handleCopyLink}
-                  className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                  className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                   aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
                   title={copyLinkState === 'copied' ? 'Copied!' : 'Copy link'}
                 >
@@ -264,7 +264,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               )}
               <button
                 onClick={handleCopyText}
-                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                 aria-label={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
                 title={copyTextState === 'copied' ? 'Copied!' : 'Copy brief'}
               >
@@ -273,7 +273,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <div className="w-px h-4 bg-concrete-border mx-0.5" aria-hidden="true" />
               <button
                 onClick={onClose}
-                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                 aria-label="Close report"
               >
                 <X size={14} aria-hidden="true" />
@@ -312,7 +312,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                           <button
                             onClick={handleEscalate}
                             disabled={isTogglingEscalation}
-                            className={`${HEADER_PILL_BASE} transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                            className={`${HEADER_PILL_BASE} transition-all focus-ring ${
                               escalated
                                 ? `border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber ${IMPACT_GLOW_FILTER_ESCALATED}`
                                 : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'

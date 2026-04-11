@@ -46,6 +46,25 @@
 }
 
 @layer components {
+  /* Focus-ring utilities — single source of truth for the hazard-amber
+     focus indicator that every interactive surface shares. `focus-ring`
+     is the default 2px ring; `focus-ring-inset` pins it to the inner
+     edge (used when the element has no safe margin for an outer ring);
+     `focus-ring-tight` is the 1px variant used for the overlay's dense
+     header button cluster where a 2px ring would collide with sibling
+     controls. The `modern-button` and `nav-btn` components below bake
+     their own rings because they add layout/padding concerns that the
+     utilities do not. */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber;
+  }
+  .focus-ring-inset {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset;
+  }
+  .focus-ring-tight {
+    @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber;
+  }
+
   .modern-card {
     @apply bg-concrete-light border border-concrete-border shadow-xl rounded-xl;
   }

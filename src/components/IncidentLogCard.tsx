@@ -65,7 +65,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
       {/* Primary action: open incident detail */}
       <button
         onClick={onClick}
-        className="p-4 flex-1 min-w-0 cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset"
+        className="p-4 flex-1 min-w-0 cursor-pointer text-left focus-ring-inset"
       >
         {/* ── HEADER ROW ──
             Fixed right cluster reserves space for all possible badges
@@ -178,7 +178,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
       <button
         onClick={handleEscalate}
         disabled={isToggling}
-        className={`shrink-0 w-16 flex flex-col items-center justify-center gap-1 border-l transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset ${
+        className={`shrink-0 w-16 flex flex-col items-center justify-center gap-1 border-l transition-all focus-ring-inset ${
           escalated
             ? `bg-hazard-amber/15 text-hazard-amber border-l-hazard-amber/30 ${IMPACT_GLOW_FILTER_ESCALATED}`
             : 'border-l-concrete-border text-stone-gray/60 hover:text-hazard-amber hover:bg-hazard-amber/10 hover:border-l-hazard-amber/40'

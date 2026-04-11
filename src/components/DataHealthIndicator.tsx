@@ -21,7 +21,7 @@ export const DataHealthIndicator: React.FC<DataHealthIndicatorProps> = ({ issues
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex items-center gap-1.5 rounded border border-hazard-amber/40 bg-hazard-amber/10 px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-hazard-amber hover:bg-hazard-amber/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
+        className="inline-flex items-center gap-1.5 rounded border border-hazard-amber/40 bg-hazard-amber/10 px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-hazard-amber hover:bg-hazard-amber/15 focus-ring"
         aria-expanded={open}
         aria-controls={panelId}
       >
