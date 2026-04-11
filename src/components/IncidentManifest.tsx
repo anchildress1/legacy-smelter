@@ -13,6 +13,7 @@ import {
   MANIFEST_FETCH_LIMIT,
   type ManifestSortMode,
 } from '../hooks/useManifestLogs';
+import { useRecentIncidentLogs } from '../hooks/useRecentIncidentLogs';
 
 const PAGE_SIZE = 20;
 type ManifestFilter = 'all' | 'escalated' | 'sanctioned';
@@ -31,6 +32,19 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   const [filterMode, setFilterMode] = useState<ManifestFilter>('all');
   const [sortMode, setSortMode] = useState<ManifestSort>('impact');
   const { allLogs, isLoading, manifestIssue } = useManifestLogs(sortMode);
+  // Mirror the home queue's top-3 subscription here so the manifest
+  // can mark the same incidents as P0 regardless of the user's
+  // current filter or sort. Using the exact same hook guarantees
+  // the two surfaces agree on "who is in the top 3" — impact desc,
+  // then timestamp desc — without the manifest having to redo the
+  // sort or care whether its own `allLogs` window is wide enough.
+  const { recentLogs: topPriorityLogs } = useRecentIncidentLogs({
+    source: 'IncidentManifest',
+  });
+  const topPriorityIds = useMemo(
+    () => new Set(topPriorityLogs.map((log) => log.id)),
+    [topPriorityLogs],
+  );
 
   const manifestCounts = useMemo(() => ({
     all: allLogs.length,
@@ -167,6 +181,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             <li key={log.id}>
               <IncidentLogCard
                 log={log}
+                showP0Badge={topPriorityIds.has(log.id)}
                 onClick={() => setSelectedLog(log)}
               />
             </li>
