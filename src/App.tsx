@@ -620,7 +620,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                   P0 INCIDENT QUEUE
                 </h2>
                 <p className="mt-1 text-stone-gray font-mono text-[9px] uppercase tracking-[0.18em]">
-                  Top Incidents Ranked By Impact Score
+                  Ranked By Impact
                 </p>
                 <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" />
               </div>

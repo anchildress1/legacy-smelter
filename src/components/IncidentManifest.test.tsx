@@ -1,7 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Timestamp } from 'firebase/firestore';
 import type { SmeltLog } from '../types';
+import {
+  makeFixtureLog as makeLog,
+  makeFixtureTimestamp as makeTimestamp,
+} from '../test/smeltLogFixtures';
 
 // This suite pins the P0 badge propagation on the manifest side.
 // The manifest uses `useRecentIncidentLogs` (the exact same hook the
@@ -68,26 +71,10 @@ vi.mock('../hooks/useGlobalStats', () => ({
 // directly via a data attribute. The real card's rendering is
 // covered in IncidentLogCard.test.tsx — this suite only cares
 // about what the MANIFEST decides to pass in.
-vi.mock('./IncidentLogCard', () => ({
-  IncidentLogCard: ({
-    log,
-    showP0Badge,
-    onClick,
-  }: {
-    log: SmeltLog;
-    showP0Badge?: boolean;
-    onClick: () => void;
-  }) => (
-    <button
-      type="button"
-      data-testid="incident-log-card-stub"
-      data-log-id={log.id}
-      data-show-p0={showP0Badge ? 'true' : 'false'}
-      onClick={onClick}
-      aria-label={`open ${log.id}`}
-    />
-  ),
-}));
+vi.mock('./IncidentLogCard', async () => {
+  const { IncidentLogCardP0Stub } = await import('../test/p0BadgeStubs');
+  return { IncidentLogCard: IncidentLogCardP0Stub };
+});
 
 // The manifest also pulls in the detail overlay, footer,
 // decommission index, and data health indicator. Of these, the
@@ -95,21 +82,10 @@ vi.mock('./IncidentLogCard', () => ({
 // the front card's badge treatment. Stub it to surface `showP0Badge`
 // and `incidentId` as data attributes so overlay propagation can be
 // asserted at the prop level without rendering the real report body.
-vi.mock('./IncidentReportOverlay', () => ({
-  IncidentReportOverlay: ({
-    incidentId,
-    showP0Badge,
-  }: {
-    incidentId?: string | null;
-    showP0Badge?: boolean;
-  }) => (
-    <div
-      data-testid="incident-report-overlay-stub"
-      data-incident-id={incidentId ?? ''}
-      data-show-p0={showP0Badge ? 'true' : 'false'}
-    />
-  ),
-}));
+vi.mock('./IncidentReportOverlay', async () => {
+  const { IncidentReportOverlayP0Stub } = await import('../test/p0BadgeStubs');
+  return { IncidentReportOverlay: IncidentReportOverlayP0Stub };
+});
 vi.mock('./DecommissionIndex', () => ({
   DecommissionIndex: () => null,
 }));
@@ -130,62 +106,25 @@ vi.mock('../lib/utils', () => ({
 
 import { IncidentManifest } from './IncidentManifest';
 
-function makeTimestamp(iso = '2026-04-10T12:00:00Z'): Timestamp {
-  const date = new Date(iso);
-  return {
-    toDate: () => date,
-    toMillis: () => date.getTime(),
-    seconds: Math.floor(date.getTime() / 1000),
-    nanoseconds: 0,
-    isEqual: () => false,
-    toJSON: () => ({ seconds: 0, nanoseconds: 0 }),
-    valueOf: () => String(date.getTime()),
-  } as unknown as Timestamp;
-}
-
-function makeLog(id: string, overrides: Partial<SmeltLog> = {}): SmeltLog {
-  return {
-    id,
-    impact_score: 0,
-    pixel_count: 100,
-    incident_feed_summary: 'summary',
-    color_1: '#ff0000',
-    color_2: '#00ff00',
-    color_3: '#0000ff',
-    color_4: '#ffff00',
-    color_5: '#00ffff',
-    subject_box_ymin: 0,
-    subject_box_xmin: 0,
-    subject_box_ymax: 1000,
-    subject_box_xmax: 1000,
-    legacy_infra_class: `Node ${id}`,
-    diagnosis: 'd',
-    chromatic_profile: 'p',
-    severity: 'Severe',
-    primary_contamination: 'c',
-    contributing_factor: 'c',
-    failure_origin: 'o',
-    disposition: 'd',
-    archive_note: 'n',
-    og_headline: 'h',
-    share_quote: 'q',
-    anon_handle: 'a',
-    timestamp: makeTimestamp(),
-    uid: 'u',
-    breach_count: 0,
-    escalation_count: 0,
-    sanction_count: 0,
-    sanctioned: false,
-    sanction_rationale: null,
-    ...overrides,
-  };
-}
-
 function cardsById(): Map<string, HTMLElement> {
   const cards = screen.getAllByTestId('incident-log-card-stub');
   return new Map(
-    cards.map((el) => [el.getAttribute('data-log-id') ?? '', el]),
+    cards.map((el) => [el.dataset.logId ?? '', el]),
   );
+}
+
+function clickCardAndExpectOverlayBadge(
+  cardId: string,
+  expectedBadge: 'true' | 'false',
+): void {
+  const card = cardsById().get(cardId);
+  expect(card).toBeDefined();
+  if (!card) throw new Error(`${cardId} card should be rendered`);
+  fireEvent.click(card);
+
+  const overlay = screen.getByTestId('incident-report-overlay-stub');
+  expect(overlay.dataset.incidentId).toBe(cardId);
+  expect(overlay.dataset.showP0).toBe(expectedBadge);
 }
 
 beforeEach(() => {
@@ -219,9 +158,9 @@ describe('IncidentManifest — P0 badge propagation', () => {
     render(<IncidentManifest onNavigateHome={() => {}} />);
 
     const byId = cardsById();
-    expect(byId.get('top-a')?.getAttribute('data-show-p0')).toBe('true');
-    expect(byId.get('top-b')?.getAttribute('data-show-p0')).toBe('true');
-    expect(byId.get('top-c')?.getAttribute('data-show-p0')).toBe('true');
+    expect(byId.get('top-a')?.dataset.showP0).toBe('true');
+    expect(byId.get('top-b')?.dataset.showP0).toBe('true');
+    expect(byId.get('top-c')?.dataset.showP0).toBe('true');
   });
 
   // NEGATIVE: every card whose id is NOT in the top-3 set must pass
@@ -239,9 +178,9 @@ describe('IncidentManifest — P0 badge propagation', () => {
     render(<IncidentManifest onNavigateHome={() => {}} />);
 
     const byId = cardsById();
-    expect(byId.get('top-a')?.getAttribute('data-show-p0')).toBe('true');
-    expect(byId.get('other-1')?.getAttribute('data-show-p0')).toBe('false');
-    expect(byId.get('other-2')?.getAttribute('data-show-p0')).toBe('false');
+    expect(byId.get('top-a')?.dataset.showP0).toBe('true');
+    expect(byId.get('other-1')?.dataset.showP0).toBe('false');
+    expect(byId.get('other-2')?.dataset.showP0).toBe('false');
   });
 
   // EDGE: empty top-3 list. During initial load or if Firestore
@@ -259,7 +198,7 @@ describe('IncidentManifest — P0 badge propagation', () => {
 
     const cards = screen.getAllByTestId('incident-log-card-stub');
     for (const card of cards) {
-      expect(card.getAttribute('data-show-p0')).toBe('false');
+      expect(card.dataset.showP0).toBe('false');
     }
   });
 
@@ -289,11 +228,11 @@ describe('IncidentManifest — P0 badge propagation', () => {
     // top-b was filtered out; the two top-3 cards that remain must
     // still carry the badge.
     expect(byId.has('top-b')).toBe(false);
-    expect(byId.get('top-a')?.getAttribute('data-show-p0')).toBe('true');
-    expect(byId.get('top-c')?.getAttribute('data-show-p0')).toBe('true');
+    expect(byId.get('top-a')?.dataset.showP0).toBe('true');
+    expect(byId.get('top-c')?.dataset.showP0).toBe('true');
     // And the non-top-3 escalated card must not pick up the badge
     // just because it happened to survive the filter.
-    expect(byId.get('other-1')?.getAttribute('data-show-p0')).toBe('false');
+    expect(byId.get('other-1')?.dataset.showP0).toBe('false');
   });
 
   // EDGE: sort swap does not wipe the P0 badge. Switching to
@@ -324,9 +263,9 @@ describe('IncidentManifest — P0 badge propagation', () => {
     });
 
     const byId = cardsById();
-    expect(byId.get('top-a')?.getAttribute('data-show-p0')).toBe('true');
-    expect(byId.get('top-b')?.getAttribute('data-show-p0')).toBe('true');
-    expect(byId.get('new-1')?.getAttribute('data-show-p0')).toBe('false');
+    expect(byId.get('top-a')?.dataset.showP0).toBe('true');
+    expect(byId.get('top-b')?.dataset.showP0).toBe('true');
+    expect(byId.get('new-1')?.dataset.showP0).toBe('false');
   });
 
   // EDGE: the badge follows the incident, not the Set identity. A
@@ -343,14 +282,10 @@ describe('IncidentManifest — P0 badge propagation', () => {
     hookState.recentLogs = [makeLog('top-a')];
 
     const { rerender } = render(<IncidentManifest onNavigateHome={() => {}} />);
-    expect(
-      cardsById().get('top-a')?.getAttribute('data-show-p0'),
-    ).toBe('true');
+    expect(cardsById().get('top-a')?.dataset.showP0).toBe('true');
 
     rerender(<IncidentManifest onNavigateHome={() => {}} />);
-    expect(
-      cardsById().get('top-a')?.getAttribute('data-show-p0'),
-    ).toBe('true');
+    expect(cardsById().get('top-a')?.dataset.showP0).toBe('true');
   });
 
   // ERROR / DEFENSIVE: a top-3 id that is NOT present in the
@@ -374,7 +309,7 @@ describe('IncidentManifest — P0 badge propagation', () => {
 
     const cards = screen.getAllByTestId('incident-log-card-stub');
     for (const card of cards) {
-      expect(card.getAttribute('data-show-p0')).toBe('false');
+      expect(card.dataset.showP0).toBe('false');
     }
   });
 
@@ -393,11 +328,7 @@ describe('IncidentManifest — P0 badge propagation', () => {
     hookState.recentLogs = [makeLog('top-a')];
 
     render(<IncidentManifest onNavigateHome={() => {}} />);
-    fireEvent.click(cardsById().get('top-a')!);
-
-    const overlay = screen.getByTestId('incident-report-overlay-stub');
-    expect(overlay.getAttribute('data-incident-id')).toBe('top-a');
-    expect(overlay.getAttribute('data-show-p0')).toBe('true');
+    clickCardAndExpectOverlayBadge('top-a', 'true');
   });
 
   it('passes showP0Badge=false to the overlay when a non-top-3 card is clicked', () => {
@@ -408,10 +339,6 @@ describe('IncidentManifest — P0 badge propagation', () => {
     hookState.recentLogs = [makeLog('top-a')];
 
     render(<IncidentManifest onNavigateHome={() => {}} />);
-    fireEvent.click(cardsById().get('other-1')!);
-
-    const overlay = screen.getByTestId('incident-report-overlay-stub');
-    expect(overlay.getAttribute('data-incident-id')).toBe('other-1');
-    expect(overlay.getAttribute('data-show-p0')).toBe('false');
+    clickCardAndExpectOverlayBadge('other-1', 'false');
   });
 });

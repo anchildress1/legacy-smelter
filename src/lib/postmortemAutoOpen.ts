@@ -6,12 +6,12 @@ interface AutoOpenPolicyOptions {
 }
 
 function getWindowSafe(): Pick<Window, 'matchMedia'> | null {
-  if (typeof globalThis.window === 'undefined') return null;
+  if (globalThis.window === undefined) return null;
   return globalThis.window;
 }
 
 function getLocalStorageSafe(): Pick<Storage, 'getItem'> | null {
-  if (typeof globalThis.window === 'undefined') return null;
+  if (globalThis.window === undefined) return null;
   try {
     return globalThis.window.localStorage;
   } catch {

@@ -108,42 +108,15 @@ vi.mock('../hooks/useRecentIncidentLogs', () => ({
   }),
 }));
 
-vi.mock('../components/IncidentReportOverlay', () => ({
-  IncidentReportOverlay: ({
-    incidentId,
-    showP0Badge,
-  }: {
-    incidentId: string;
-    showP0Badge?: boolean;
-  }) => (
-    <div
-      data-testid="incident-report-overlay"
-      data-incident-id={incidentId}
-      data-show-p0={showP0Badge ? 'true' : 'false'}
-    />
-  ),
-}));
+vi.mock('../components/IncidentReportOverlay', async () => {
+  const { createIncidentReportOverlayP0Stub } = await import('./p0BadgeStubs');
+  return { IncidentReportOverlay: createIncidentReportOverlayP0Stub('incident-report-overlay') };
+});
 
-vi.mock('../components/IncidentLogCard', () => ({
-  IncidentLogCard: ({
-    log,
-    showP0Badge,
-    onClick,
-  }: {
-    log: SmeltLog;
-    showP0Badge?: boolean;
-    onClick: () => void;
-  }) => (
-    <button
-      type="button"
-      data-testid="incident-log-card-stub"
-      data-log-id={log.id}
-      data-show-p0={showP0Badge ? 'true' : 'false'}
-      onClick={onClick}
-      aria-label={`open ${log.id}`}
-    />
-  ),
-}));
+vi.mock('../components/IncidentLogCard', async () => {
+  const { IncidentLogCardP0Stub } = await import('./p0BadgeStubs');
+  return { IncidentLogCard: IncidentLogCardP0Stub };
+});
 
 vi.mock('../components/DecommissionIndex', () => ({
   DecommissionIndex: () => <div data-testid="decommission-index-stub" />,

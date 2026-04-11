@@ -1,7 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SmeltLog } from './types';
-import type { Timestamp } from 'firebase/firestore';
 import {
   ensureMatchMediaStub,
   mockAnalyzeLegacyTech,
@@ -10,6 +9,7 @@ import {
   recentIncidentLogsMockState,
   resetRecentIncidentLogsMockState,
 } from './test/appSharedMocks';
+import { makeFixtureLog as makeLog } from './test/smeltLogFixtures';
 
 // Behaviour tests for App.tsx state transitions. `App.mobileLayout.test.tsx`
 // pins the header classnames against a screenshot regression and does NOT
@@ -23,60 +23,6 @@ import {
 // that touches Firebase, PIXI, Howler, or Gemini is stubbed.
 
 import App from './App';
-
-// Scoped helpers (hoisted to module scope so Sonar S7721 is happy and each
-// describe-block does not re-create them on every render).
-function makeTimestamp(iso = '2026-04-10T12:00:00Z'): Timestamp {
-  const date = new Date(iso);
-  return {
-    toDate: () => date,
-    toMillis: () => date.getTime(),
-    seconds: Math.floor(date.getTime() / 1000),
-    nanoseconds: 0,
-    isEqual: () => false,
-    toJSON: () => ({ seconds: 0, nanoseconds: 0 }),
-    valueOf: () => String(date.getTime()),
-  } as unknown as Timestamp;
-}
-
-function makeLog(id: string, overrides: Partial<SmeltLog> = {}): SmeltLog {
-  return {
-    id,
-    impact_score: 0,
-    pixel_count: 100,
-    incident_feed_summary: 'summary',
-    color_1: '#ff0000',
-    color_2: '#00ff00',
-    color_3: '#0000ff',
-    color_4: '#ffff00',
-    color_5: '#00ffff',
-    subject_box_ymin: 0,
-    subject_box_xmin: 0,
-    subject_box_ymax: 1000,
-    subject_box_xmax: 1000,
-    legacy_infra_class: `Node ${id}`,
-    diagnosis: 'd',
-    chromatic_profile: 'p',
-    severity: 'Severe',
-    primary_contamination: 'c',
-    contributing_factor: 'c',
-    failure_origin: 'o',
-    disposition: 'd',
-    archive_note: 'n',
-    og_headline: 'h',
-    share_quote: 'q',
-    anon_handle: 'a',
-    timestamp: makeTimestamp(),
-    uid: 'u',
-    breach_count: 0,
-    escalation_count: 0,
-    sanction_count: 0,
-    sanctioned: false,
-    sanction_rationale: null,
-    ...overrides,
-  };
-}
-
 
 function stubFileReaderSuccess(payload: string): void {
   class MockFileReader {
@@ -121,6 +67,26 @@ async function triggerFilePicker(file: File) {
     await Promise.resolve();
     await Promise.resolve();
   });
+}
+
+async function expectAnalyzeIssueMessage(
+  analysisError: unknown,
+  expectedIssueText: string,
+): Promise<void> {
+  stubFileReaderSuccess('payload');
+  mockAnalyzeLegacyTech.mockRejectedValue(analysisError);
+  const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  render(<App onNavigateManifest={() => {}} />);
+  await triggerFilePicker(new File(['fake'], 'artifact.png', { type: 'image/png' }));
+
+  await waitFor(() => {
+    const issues = screen.getAllByTestId('data-health-issue');
+    expect(issues.some((el) => el.textContent?.includes(expectedIssueText))).toBe(true);
+  });
+
+  consoleErrorSpy.mockRestore();
+  vi.unstubAllGlobals();
 }
 
 describe('App state transitions', () => {
@@ -240,39 +206,17 @@ describe('App state transitions', () => {
 
     it('shows the server-busy message when analyzer throws a 503 AnalysisError', async () => {
       const { AnalysisError } = await import('./services/geminiService');
-      stubFileReaderSuccess('payload');
-      mockAnalyzeLegacyTech.mockRejectedValue(
+      await expectAnalyzeIssueMessage(
         new AnalysisError(503, 'Server busy.', 'server_busy'),
+        'FURNACE AT CAPACITY',
       );
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      render(<App onNavigateManifest={() => {}} />);
-      await triggerFilePicker(new File(['fake'], 'artifact.png', { type: 'image/png' }));
-
-      await waitFor(() => {
-        const issues = screen.getAllByTestId('data-health-issue');
-        expect(issues.some((el) => el.textContent?.includes('FURNACE AT CAPACITY'))).toBe(true);
-      });
-
-      consoleErrorSpy.mockRestore();
-      vi.unstubAllGlobals();
     });
 
     it('shows the unknown-category message when analyzer throws a plain Error', async () => {
-      stubFileReaderSuccess('payload');
-      mockAnalyzeLegacyTech.mockRejectedValue(new Error('network down'));
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      render(<App onNavigateManifest={() => {}} />);
-      await triggerFilePicker(new File(['fake'], 'artifact.png', { type: 'image/png' }));
-
-      await waitFor(() => {
-        const issues = screen.getAllByTestId('data-health-issue');
-        expect(issues.some((el) => el.textContent?.includes('UNKNOWN FAULT'))).toBe(true);
-      });
-
-      consoleErrorSpy.mockRestore();
-      vi.unstubAllGlobals();
+      await expectAnalyzeIssueMessage(
+        new Error('network down'),
+        'UNKNOWN FAULT',
+      );
     });
 
     it('shows the file-read message when FileReader fails before the analyzer runs', async () => {
@@ -323,7 +267,7 @@ describe('App state transitions', () => {
       const cards = screen.getAllByTestId('incident-log-card-stub');
       expect(cards).toHaveLength(3);
       for (const card of cards) {
-        expect(card.getAttribute('data-show-p0')).toBe('true');
+        expect(card.dataset.showP0).toBe('true');
       }
     });
 
@@ -344,7 +288,7 @@ describe('App state transitions', () => {
       await waitFor(() => {
         const overlay = screen.queryByTestId('incident-report-overlay');
         expect(overlay).not.toBeNull();
-        expect(overlay?.getAttribute('data-show-p0')).toBe('true');
+        expect(overlay?.dataset.showP0).toBe('true');
       });
     });
 
@@ -370,7 +314,7 @@ describe('App state transitions', () => {
       await waitFor(() => {
         const overlay = screen.queryByTestId('incident-report-overlay');
         expect(overlay).not.toBeNull();
-        expect(overlay?.getAttribute('data-show-p0')).toBe('false');
+        expect(overlay?.dataset.showP0).toBe('false');
       });
     });
 
@@ -416,7 +360,7 @@ describe('App state transitions', () => {
       await waitFor(() => {
         const overlay = screen.queryByTestId('incident-report-overlay');
         expect(overlay).not.toBeNull();
-        expect(overlay?.getAttribute('data-show-p0')).toBe('true');
+        expect(overlay?.dataset.showP0).toBe('true');
       });
     });
 
@@ -444,7 +388,7 @@ describe('App state transitions', () => {
       await waitFor(() => {
         const overlay = screen.queryByTestId('incident-report-overlay');
         expect(overlay).not.toBeNull();
-        expect(overlay?.getAttribute('data-show-p0')).toBe('false');
+        expect(overlay?.dataset.showP0).toBe('false');
       });
     });
   });

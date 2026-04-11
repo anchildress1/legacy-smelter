@@ -107,6 +107,23 @@ function makeLog(overrides: Partial<SmeltLog> = {}): SmeltLog {
   };
 }
 
+function findImpactSpan(container: HTMLElement): HTMLElement {
+  const match = container.querySelector('[data-testid="incident-card-impact-number"]');
+  if (!(match instanceof HTMLElement)) {
+    throw new Error('Impact number not found');
+  }
+  return match;
+}
+
+function findEscalateColumn(): HTMLElement {
+  // The escalate column is the only <button> whose accessible name
+  // starts with "Escalate" or "Remove escalation" — matches both
+  // states of the aria-label.
+  return screen.getByRole('button', {
+    name: /^(Escalate|Remove escalation for) /i,
+  });
+}
+
 describe('IncidentLogCard — title tooltip', () => {
   // POSITIVE: baseline title case. The card should always render the
   // incident title verbatim AND mirror it into the `title` attribute on
@@ -383,23 +400,6 @@ describe('IncidentLogCard — Impact glow + escalate halo', () => {
   // glow values only has to update impactGlow.ts and impactGlow.test.ts,
   // and these component-level tests will still pass because they
   // compare against the imported constant.
-
-  function findImpactSpan(container: HTMLElement): HTMLElement {
-    const match = container.querySelector(
-      '[data-testid="incident-card-impact-number"]',
-    );
-    if (!match) throw new Error('Impact number not found');
-    return match as HTMLElement;
-  }
-
-  function findEscalateColumn(): HTMLElement {
-    // The escalate column is the only <button> whose accessible name
-    // starts with "Escalate" or "Remove escalation" — matches both
-    // states of the aria-label.
-    return screen.getByRole('button', {
-      name: /^(Escalate|Remove escalation for) /i,
-    });
-  }
 
   // POSITIVE — at-rest visual tier.
 

@@ -31,9 +31,9 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 FROM node:24-alpine AS server
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=server-deps /app/node_modules ./node_modules
-COPY package.json server.js ./
-COPY --from=builder /app/dist ./dist
+COPY --from=server-deps --chown=node:node --chmod=0555 /app/node_modules ./node_modules
+COPY --chown=node:node --chmod=0555 package.json server.js ./
+COPY --from=builder --chown=node:node --chmod=0555 /app/dist ./dist
 USER node
 EXPOSE 8080
 CMD ["node", "server.js"]

@@ -119,13 +119,13 @@ describe('impactGlow — monotonicity and empty-string guards', () => {
   // once; this numeric comparison catches the inversion.
 
   const radiusOf = (cls: string): number => {
-    const m = cls.match(/0_0_(\d+)px/);
+    const m = /0_0_(\d+)px/.exec(cls);
     if (!m) throw new Error(`no radius parsed from ${cls}`);
     return Number(m[1]);
   };
 
   const alphaOf = (cls: string): number => {
-    const m = cls.match(/rgba\(245,200,66,([0-9.]+)\)/);
+    const m = /rgba\(245,200,66,([0-9.]+)\)/.exec(cls);
     if (!m) throw new Error(`no alpha parsed from ${cls}`);
     return Number(m[1]);
   };

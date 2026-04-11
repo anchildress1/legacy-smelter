@@ -119,6 +119,25 @@ function resetEscalationState() {
   escalationState.toggle = vi.fn(async () => {});
 }
 
+function findImpactNumber(container: HTMLElement): HTMLElement {
+  // The stats row carries the test id; the Impact number is the
+  // first child's first numeric leaf. Scope to the row so other
+  // numeric content on the page (timestamps, counts) can't shadow.
+  const row = container.querySelector('[data-testid="incident-stats-row"]');
+  if (!(row instanceof HTMLElement)) {
+    throw new Error('stats row not rendered');
+  }
+  const nodes = Array.from(row.querySelectorAll('div')).filter((el) =>
+    /^\d+$/.test((el.textContent ?? '').trim()),
+  );
+  if (nodes.length === 0) {
+    throw new Error('no numeric leaf found inside stats row');
+  }
+  // The Impact number is the FIRST numeric leaf because the Impact
+  // slot is the first child of the row (basis-1/3 on the left).
+  return nodes[0];
+}
+
 describe('IncidentReportOverlay escalation error surface', () => {
   beforeAll(() => {
     // jsdom does not implement <dialog>.showModal / close. Stub them so the
@@ -512,25 +531,6 @@ describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
   beforeEach(() => {
     resetEscalationState();
   });
-
-  function findImpactNumber(container: HTMLElement): HTMLElement {
-    // The stats row carries the test id; the Impact number is the
-    // first child's first numeric leaf. Scope to the row so other
-    // numeric content on the page (timestamps, counts) can't shadow.
-    const row = container.querySelector(
-      '[data-testid="incident-stats-row"]',
-    ) as HTMLElement | null;
-    if (!row) throw new Error('stats row not rendered');
-    const nodes = Array.from(row.querySelectorAll('div')).filter((el) =>
-      /^\d+$/.test((el.textContent ?? '').trim()),
-    );
-    if (nodes.length === 0) {
-      throw new Error('no numeric leaf found inside stats row');
-    }
-    // The Impact number is the FIRST numeric leaf because the Impact
-    // slot is the first child of the row (basis-1/3 on the left).
-    return nodes[0];
-  }
 
   // POSITIVE — at-rest glow tier on the Impact number.
 
