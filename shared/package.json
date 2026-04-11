@@ -1,0 +1,13 @@
+{
+  "name": "@legacy-smelter/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Code shared between the Cloud Run server and the Cloud Functions sanction trigger. Declared as a local package so functions/package.json can depend on it via file:../shared; Firebase CLI vendors the resolved files into the function upload at deploy time. server.js and scripts/ still import the files directly by relative path — the package.json is load-bearing only for the functions deploy.",
+  "type": "module",
+  "main": "./impactScore.js",
+  "exports": {
+    "./impactScore.js": "./impactScore.js",
+    "./colors.js": "./colors.js",
+    "./admin-init.js": "./admin-init.js"
+  }
+}

@@ -11,9 +11,10 @@ export default defineConfig({
     include: [
       'src/**/*.test.{ts,tsx}',
       'scripts/**/*.test.ts',
-      'functions/**/*.test.js',
+      'functions/*.test.js',
     ],
     exclude: [
+      '**/node_modules/**',
       'scripts/firestore.rules.integration.test.ts',
       'scripts/server.analyze.emulator.integration.test.ts',
       'functions/sanction.integration.test.js',

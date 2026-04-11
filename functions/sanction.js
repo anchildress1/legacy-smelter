@@ -33,7 +33,12 @@
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { GoogleGenAI, Type } from '@google/genai';
-import { computeImpactScore } from '../shared/impactScore.js';
+// Resolved via functions/package.json's `"@legacy-smelter/shared": "file:../shared"`
+// dependency. Firebase CLI vendors the linked files into the upload at deploy
+// time, so the running container sees `node_modules/@legacy-smelter/shared/...`
+// instead of a parent-directory relative path that would fall outside the
+// functions source root.
+import { computeImpactScore } from '@legacy-smelter/shared/impactScore.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
