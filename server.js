@@ -487,6 +487,13 @@ async function persistIncident(analysis, pixelCount, authUid) {
     impact_score: 0,
     sanctioned: false,
     sanction_rationale: null,
+    // Sanction judging pipeline claim flag and lease timestamp. The Cloud
+    // Functions v2 `onIncidentCreated` trigger reads `evaluated=false` to
+    // find unjudged candidates, and `sanction_lease_at` carries the claim
+    // lease so a crashed invocation's stranded batch can be swept back into
+    // the pool after `LEASE_TTL_MS`. See `functions/sanction.js`.
+    evaluated: false,
+    sanction_lease_at: null,
   });
   writeBatch.set(
     statsRef,
