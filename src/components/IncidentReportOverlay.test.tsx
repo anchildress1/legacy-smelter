@@ -1,5 +1,10 @@
 import { act, render, screen, within } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  IMPACT_GLOW_BASE,
+  IMPACT_GLOW_ESCALATED,
+  IMPACT_GLOW_FILTER_ESCALATED,
+} from '../lib/impactGlow';
 
 // `useEscalation` itself is covered in src/hooks/useEscalation.test.tsx —
 // this suite pins the UI side of the contract: when the hook surfaces a
@@ -493,5 +498,118 @@ describe('IncidentReportOverlay escalation error surface', () => {
     );
     consoleErrorSpy.mockRestore();
     consoleWarnSpy.mockRestore();
+  });
+});
+
+describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
+  // The back card mirrors the front card's glow treatment. These
+  // tests confirm the overlay imports and applies the shared
+  // constants from `lib/impactGlow` — matching the coverage already
+  // in place for IncidentLogCard. The literal class strings are
+  // pinned in src/lib/impactGlow.test.ts so both surfaces can be
+  // updated in lockstep by editing the constants alone.
+
+  beforeEach(() => {
+    resetEscalationState();
+  });
+
+  function findImpactNumber(container: HTMLElement): HTMLElement {
+    // The stats row carries the test id; the Impact number is the
+    // first child's first numeric leaf. Scope to the row so other
+    // numeric content on the page (timestamps, counts) can't shadow.
+    const row = container.querySelector(
+      '[data-testid="incident-stats-row"]',
+    ) as HTMLElement | null;
+    if (!row) throw new Error('stats row not rendered');
+    const nodes = Array.from(row.querySelectorAll('div')).filter((el) =>
+      /^\d+$/.test((el.textContent ?? '').trim()),
+    );
+    if (nodes.length === 0) {
+      throw new Error('no numeric leaf found inside stats row');
+    }
+    // The Impact number is the FIRST numeric leaf because the Impact
+    // slot is the first child of the row (basis-1/3 on the left).
+    return nodes[0];
+  }
+
+  // POSITIVE — at-rest glow tier on the Impact number.
+
+  it('applies IMPACT_GLOW_BASE to the Impact number when not armed', () => {
+    const { container } = render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+    const impact = findImpactNumber(container);
+    for (const token of IMPACT_GLOW_BASE.split(' ')) {
+      expect(impact.className).toContain(token);
+    }
+  });
+
+  it('does not apply the escalated glow filter to the Armed button when not armed', () => {
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+    const button = screen.getByRole('button', { name: /^escalate$/i });
+    expect(button.className).not.toContain(IMPACT_GLOW_FILTER_ESCALATED);
+  });
+
+  // POSITIVE — armed tier on both Impact number and button.
+
+  it('applies IMPACT_GLOW_ESCALATED to the Impact number when armed', () => {
+    escalationState.escalated = true;
+    const { container } = render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+    const impact = findImpactNumber(container);
+    for (const token of IMPACT_GLOW_ESCALATED.split(' ')) {
+      expect(impact.className).toContain(token);
+    }
+  });
+
+  it('applies IMPACT_GLOW_FILTER_ESCALATED to the Armed button when armed', () => {
+    escalationState.escalated = true;
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+    const button = screen.getByRole('button', { name: /remove escalation/i });
+    expect(button.className).toContain(IMPACT_GLOW_FILTER_ESCALATED);
+    // The armed color treatment stays intact — the halo is additive.
+    expect(button.className).toContain('bg-hazard-amber/15');
+    expect(button.className).toContain('text-hazard-amber');
+  });
+
+  // EDGE — exactly one glow tier on the Impact number at a time.
+  // A refactor that concatenated both tiers (dropping the ternary)
+  // would produce a double-dose of filter classes and fight
+  // Tailwind's own precedence rules at render time.
+
+  it('applies exactly one glow tier to the Impact number at a time', () => {
+    const { container } = render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+    const impact = findImpactNumber(container);
+    const hasBaseRadius = impact.className.includes('0_0_6px');
+    const hasEscalatedRadius = impact.className.includes('0_0_8px');
+    expect(hasBaseRadius || hasEscalatedRadius).toBe(true);
+    expect(hasBaseRadius && hasEscalatedRadius).toBe(false);
   });
 });

@@ -1,5 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  IMPACT_GLOW_BASE,
+  IMPACT_GLOW_ESCALATED,
+  IMPACT_GLOW_FILTER_ESCALATED,
+} from '../lib/impactGlow';
 
 // This suite pins the hover-tooltip surface on IncidentLogCard. The card
 // caps the incident title and the share quote at exactly two lines each
@@ -20,14 +25,28 @@ import { describe, expect, it, vi } from 'vitest';
 // src/components/IncidentReportOverlay.test.tsx; this file is only
 // about the card's text-overflow contract.
 
+// Mutable mock state so individual tests can flip `escalated` to
+// exercise the "armed" visual tier (Impact glow + escalate column
+// halo) without tearing down and re-mocking the hook per case.
+// `beforeEach` reseeds this to the at-rest defaults so tests stay
+// independent regardless of declaration order.
+const escalationState = {
+  escalated: false,
+  isToggling: false,
+  toggleError: null as Error | null,
+  toggle: vi.fn(async () => {}),
+};
+
 vi.mock('../hooks/useEscalation', () => ({
-  useEscalation: () => ({
-    escalated: false,
-    isToggling: false,
-    toggleError: null,
-    toggle: vi.fn(async () => {}),
-  }),
+  useEscalation: () => escalationState,
 }));
+
+beforeEach(() => {
+  escalationState.escalated = false;
+  escalationState.isToggling = false;
+  escalationState.toggleError = null;
+  escalationState.toggle = vi.fn(async () => {});
+});
 
 import { IncidentLogCard } from './IncidentLogCard';
 import type { SmeltLog } from '../types';
@@ -326,5 +345,133 @@ describe('IncidentLogCard — interaction contract', () => {
     // content tree; any non-empty text inside it is sufficient to
     // confirm the row rendered at all.
     expect(within(primaryButton).getByText(/Impact/i)).toBeInTheDocument();
+  });
+});
+
+describe('IncidentLogCard — Impact glow + escalate halo', () => {
+  // The Impact number and the escalate column share the same warm
+  // amber glow as the incident report overlay. Both tiers are defined
+  // in `lib/impactGlow`, so these tests assert the component applies
+  // the right constant for the current `escalated` state — not the
+  // literal class strings themselves (which are pinned in
+  // src/lib/impactGlow.test.ts). That split means a refactor of the
+  // glow values only has to update impactGlow.ts and impactGlow.test.ts,
+  // and these component-level tests will still pass because they
+  // compare against the imported constant.
+
+  function findImpactSpan(container: HTMLElement): HTMLElement {
+    // The metadata row's Impact span is the only element whose text
+    // starts with "Impact " followed by a number. Scope the query to
+    // <span> so it can't collide with the escalate button's aria-label.
+    const spans = Array.from(container.querySelectorAll('span'));
+    const match = spans.find((el) => /^Impact \d+$/.test(el.textContent ?? ''));
+    if (!match) throw new Error('Impact metadata span not found');
+    return match;
+  }
+
+  function findEscalateColumn(): HTMLElement {
+    // The escalate column is the only <button> whose accessible name
+    // starts with "Escalate" or "Remove escalation" — matches both
+    // states of the aria-label.
+    return screen.getByRole('button', {
+      name: /^(Escalate|Remove escalation for) /i,
+    });
+  }
+
+  // POSITIVE — at-rest visual tier.
+
+  it('applies IMPACT_GLOW_BASE to the Impact span when not escalated', () => {
+    const { container } = render(
+      <IncidentLogCard log={makeLog()} onClick={() => {}} />,
+    );
+    const impact = findImpactSpan(container);
+    // Every class token in the BASE constant must be present on the
+    // element. Split the constant into tokens so the assertion still
+    // passes if React/Tailwind reorders classes on render.
+    for (const token of IMPACT_GLOW_BASE.split(' ')) {
+      expect(impact.className).toContain(token);
+    }
+  });
+
+  it('does not apply the escalated glow filter to the escalate column when not escalated', () => {
+    // The filter class is the marker for the "armed" halo. At rest
+    // the column uses plain hover/transition classes; leaking the
+    // filter would make every card look permanently armed.
+    render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
+    const col = findEscalateColumn();
+    expect(col.className).not.toContain(IMPACT_GLOW_FILTER_ESCALATED);
+  });
+
+  // POSITIVE — escalated visual tier. Flip the mock state and
+  // re-render to exercise the intensified glow on both surfaces.
+
+  it('applies IMPACT_GLOW_ESCALATED to the Impact span when escalated', () => {
+    escalationState.escalated = true;
+    const { container } = render(
+      <IncidentLogCard log={makeLog()} onClick={() => {}} />,
+    );
+    const impact = findImpactSpan(container);
+    for (const token of IMPACT_GLOW_ESCALATED.split(' ')) {
+      expect(impact.className).toContain(token);
+    }
+  });
+
+  it('applies IMPACT_GLOW_FILTER_ESCALATED to the escalate column when escalated', () => {
+    escalationState.escalated = true;
+    render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
+    const col = findEscalateColumn();
+    expect(col.className).toContain(IMPACT_GLOW_FILTER_ESCALATED);
+    // And the armed-state background/text classes stay intact — the
+    // glow is additive, not a replacement for the color treatment.
+    expect(col.className).toContain('bg-hazard-amber/15');
+    expect(col.className).toContain('text-hazard-amber');
+  });
+
+  // NEGATIVE — the glow constants are mutually exclusive.
+
+  it('does not apply the base-tier glow to the Impact span when escalated', () => {
+    // The 95% alpha variant and the solid variant are the only
+    // difference between the two combined constants; a regression
+    // that always applied BASE (even when escalated) would flatten
+    // the contrast step. Check for the unique BASE-only token.
+    escalationState.escalated = true;
+    const { container } = render(
+      <IncidentLogCard log={makeLog()} onClick={() => {}} />,
+    );
+    const impact = findImpactSpan(container);
+    expect(impact.className).not.toContain('text-hazard-amber/95');
+  });
+
+  // NEGATIVE — chevron regression guard. The ChevronRight icon was
+  // removed from the header right-cluster because it wasn't carrying
+  // its weight. Pin its absence so a copy-paste refactor that
+  // reintroduces it is caught in CI.
+
+  it('does not render the ChevronRight icon in the header right-cluster', () => {
+    // Lucide icons render as <svg> with `lucide-chevron-right` in the
+    // class list. A direct class-based query keeps the assertion
+    // decoupled from lucide's internal DOM structure.
+    const { container } = render(
+      <IncidentLogCard log={makeLog()} onClick={() => {}} />,
+    );
+    const chevron = container.querySelector('svg.lucide-chevron-right');
+    expect(chevron).toBeNull();
+  });
+
+  // EDGE — the Impact metadata span always has exactly ONE glow
+  // tier applied. A refactor that accidentally concatenated both
+  // tiers (e.g. by dropping the ternary) would silently double the
+  // classes and fight Tailwind's specificity rules. Assert by
+  // counting occurrences of the unique filter radius tokens.
+
+  it('applies exactly one glow tier to the Impact span at a time', () => {
+    const { container } = render(
+      <IncidentLogCard log={makeLog()} onClick={() => {}} />,
+    );
+    const impact = findImpactSpan(container);
+    const hasBaseRadius = impact.className.includes('0_0_6px');
+    const hasEscalatedRadius = impact.className.includes('0_0_8px');
+    expect(hasBaseRadius || hasEscalatedRadius).toBe(true);
+    expect(hasBaseRadius && hasEscalatedRadius).toBe(false);
   });
 });
