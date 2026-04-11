@@ -4,7 +4,11 @@ import { computeImpact, SmeltLog } from '../types';
 import { formatTimestamp, buildIncidentUrl } from '../lib/utils';
 import { X, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
 import { SeverityBadge } from './SeverityBadge';
-import { IMPACT_GLOW_BASE, IMPACT_GLOW_ESCALATED } from '../lib/impactGlow';
+import {
+  IMPACT_GLOW_BASE,
+  IMPACT_GLOW_ESCALATED,
+  IMPACT_GLOW_FILTER_ESCALATED,
+} from '../lib/impactGlow';
 import { recordBreach } from '../services/breachService';
 import { useEscalation } from '../hooks/useEscalation';
 import {
@@ -296,9 +300,9 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                           <button
                             onClick={handleEscalate}
                             disabled={isTogglingEscalation}
-                            className={`inline-flex items-center gap-1 rounded border px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                            className={`inline-flex items-center gap-1 rounded border px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
                               escalated
-                                ? 'border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber'
+                                ? `border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber ${IMPACT_GLOW_FILTER_ESCALATED}`
                                 : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
                             } ${isTogglingEscalation ? 'opacity-50' : ''}`}
                             aria-label={escalated ? 'Remove escalation' : 'Escalate'}

@@ -1,10 +1,14 @@
 import React from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
-import { Siren, Quote, ChevronRight, ShieldCheck } from 'lucide-react';
+import { Siren, Quote, ShieldCheck } from 'lucide-react';
 import { useEscalation } from '../hooks/useEscalation';
 import { SeverityBadge } from './SeverityBadge';
-import { IMPACT_GLOW_ESCALATED } from '../lib/impactGlow';
+import {
+  IMPACT_GLOW_BASE,
+  IMPACT_GLOW_ESCALATED,
+  IMPACT_GLOW_FILTER_ESCALATED,
+} from '../lib/impactGlow';
 
 interface IncidentLogCardProps {
   log: SmeltLog;
@@ -65,7 +69,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
             </p>
           </div>
 
-          {/* Right cluster: [sanction placeholder] [severity] [chevron].
+          {/* Right cluster: [sanction placeholder] [severity].
               Sanction badge is always rendered; `invisible` hides it
               without collapsing its width, so the cluster width is
               constant regardless of sanction state. */}
@@ -77,11 +81,6 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
               <ShieldCheck size={8} />
             </span>
             <SeverityBadge severity={log.severity} />
-            <ChevronRight
-              size={12}
-              className="text-stone-gray/50 group-hover:text-stone-gray transition-colors"
-              aria-hidden="true"
-            />
           </div>
         </div>
 
@@ -112,12 +111,14 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
           {log.sanctioned && (
             <span className="font-bold text-hazard-amber">Sanctioned</span>
           )}
+          {/* Impact — the lead derived metric on the card. Carries the
+              same warm amber glow defined in `lib/impactGlow` as the
+              overlay's Impact number, so the visual treatment is
+              identical in both surfaces. Intensifies when escalated. */}
           <span
-            className={
-              escalated
-                ? `font-bold transition-all ${IMPACT_GLOW_ESCALATED}`
-                : 'text-stone-gray'
-            }
+            className={`font-bold transition-all ${
+              escalated ? IMPACT_GLOW_ESCALATED : IMPACT_GLOW_BASE
+            }`}
           >
             Impact {impact}
           </span>
@@ -135,9 +136,9 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
       <button
         onClick={handleEscalate}
         disabled={isToggling}
-        className={`shrink-0 w-12 flex flex-col items-center justify-start pt-3.5 gap-1 border-l transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset ${
+        className={`shrink-0 w-12 flex flex-col items-center justify-start pt-3.5 gap-1 border-l transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset ${
           escalated
-            ? 'bg-hazard-amber/15 text-hazard-amber border-l-hazard-amber/30'
+            ? `bg-hazard-amber/15 text-hazard-amber border-l-hazard-amber/30 ${IMPACT_GLOW_FILTER_ESCALATED}`
             : 'border-l-concrete-border text-stone-gray/60 hover:text-hazard-amber hover:bg-hazard-amber/10 hover:border-l-hazard-amber/40'
         } ${isToggling ? 'opacity-50' : ''}`}
         aria-label={escalated ? `Remove escalation for ${log.legacy_infra_class}` : `Escalate ${log.legacy_infra_class}`}
