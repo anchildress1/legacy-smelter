@@ -363,9 +363,9 @@ describe('firestore.rules invariants', () => {
     // counter plus `impact_score`. Neither rule permits `sanction_count` in
     // the affected keys, so any client attempt to poke that field — even
     // paired with a correctly-weighted `impact_score` — must be rejected.
-    // `sanction_count` is server-only (admin SDK bypass via
-    // scripts/sanction-incidents.ts). A regression that added
-    // `sanction_count` to any `hasOnly` list would silently open the voting
+    // `sanction_count` is server-only (admin SDK bypass via the sanction
+    // judging Cloud Function in `functions/sanction.js`). A regression
+    // that added `sanction_count` to any `hasOnly` list would silently open the voting
     // outcome to client tampering.
     await seedIncident('inc-sanction-client', {
       breach_count: 0,
