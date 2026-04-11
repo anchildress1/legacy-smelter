@@ -13,13 +13,19 @@ import {
 interface IncidentLogCardProps {
   log: SmeltLog;
   onClick: () => void;
-  priorityTier?: string | null;
+  // When true, render the static "P0" priority badge in the header
+  // right-cluster. Only set by the top-3 home-page queue (sorted by
+  // impact score desc, then timestamp desc) — every other surface
+  // that renders this card (archive manifest, filtered views) leaves
+  // it false so a filter swap never triggers a badge recomputation.
+  // There is no P1/P2/P3: the badge is either "P0" or absent.
+  showP0Badge?: boolean;
 }
 
 export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
   log,
   onClick,
-  priorityTier = null,
+  showP0Badge = false,
 }) => {
   const { escalated, isToggling, toggle } = useEscalation(log.id);
 
@@ -80,9 +86,9 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
               without collapsing its width, so the cluster width is
               constant regardless of sanction state. */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {priorityTier && (
+            {showP0Badge && (
               <span className="inline-flex items-center rounded border border-hazard-amber/40 bg-hazard-amber/10 px-1.5 py-0.5 text-[9px] font-mono font-black uppercase tracking-[0.15em] text-hazard-amber">
-                {priorityTier}
+                P0
               </span>
             )}
             <span

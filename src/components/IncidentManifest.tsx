@@ -163,11 +163,10 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             </li>
           )}
 
-          {!isLoading && pageLogs.map((log, index) => (
+          {!isLoading && pageLogs.map((log) => (
             <li key={log.id}>
               <IncidentLogCard
                 log={log}
-                priorityTier={sortMode === 'impact' ? `P${pageStart + index}` : null}
                 onClick={() => setSelectedLog(log)}
               />
             </li>

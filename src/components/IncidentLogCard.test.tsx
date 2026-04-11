@@ -494,3 +494,55 @@ describe('IncidentLogCard — Impact glow + escalate halo', () => {
     expect(hasBaseRadius && hasEscalatedRadius).toBe(false);
   });
 });
+
+describe('IncidentLogCard — P0 priority badge', () => {
+  // The P0 badge is load-bearing for the home-page queue: it marks
+  // the top-3 incidents (ordered by impact desc, timestamp desc) as
+  // "priority zero" without doing any per-card index math. The badge
+  // is binary and static — there is no P1/P2/P3 tier, and no surface
+  // other than the home queue is allowed to pass it. These tests
+  // pin that contract so a future refactor that reintroduces a
+  // numbered prop has to update the test file on purpose.
+
+  // POSITIVE — opt-in rendering.
+
+  it('renders the literal "P0" badge when showP0Badge is true', () => {
+    render(<IncidentLogCard log={makeLog()} onClick={() => {}} showP0Badge />);
+    const badge = screen.getByText('P0');
+    expect(badge).toBeInTheDocument();
+    // The badge lives in the header right-cluster next to severity,
+    // NOT in the metadata row or anywhere else on the card. Assert
+    // by tag + class so a refactor that nests it inside the primary
+    // button is still caught.
+    expect(badge.tagName).toBe('SPAN');
+    expect(badge.className).toContain('text-hazard-amber');
+  });
+
+  // NEGATIVE — the badge is absent by default and when explicitly
+  // false. The manifest and every filtered surface leave the prop
+  // unset, so the default must produce no badge.
+
+  it('does not render the P0 badge when showP0Badge is omitted (default)', () => {
+    render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
+    expect(screen.queryByText('P0')).toBeNull();
+  });
+
+  it('does not render the P0 badge when showP0Badge is false', () => {
+    render(
+      <IncidentLogCard log={makeLog()} onClick={() => {}} showP0Badge={false} />,
+    );
+    expect(screen.queryByText('P0')).toBeNull();
+  });
+
+  // EDGE — the badge text is always literally "P0". No numbered
+  // variants exist anywhere in the rendered DOM regardless of
+  // input. A regression that swapped in a numbered prop (e.g.
+  // `priorityTier="P1"`) would light this assertion up without
+  // needing to know which prop name changed.
+
+  it('renders only the literal "P0" — no P1/P2/P3 regressions', () => {
+    render(<IncidentLogCard log={makeLog()} onClick={() => {}} showP0Badge />);
+    expect(screen.queryByText(/^P[1-9]\d*$/)).toBeNull();
+    expect(screen.getByText('P0')).toBeInTheDocument();
+  });
+});

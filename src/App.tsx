@@ -592,11 +592,11 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                 <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" />
               </div>
               <ul className="space-y-4">
-                {recentLogs.map((log, index) => (
+                {recentLogs.map((log) => (
                   <li key={log.id}>
                     <IncidentLogCard
                       log={log}
-                      priorityTier={`P${index}`}
+                      showP0Badge
                       onClick={() => setSelectedRecentLog(log)}
                     />
                   </li>
