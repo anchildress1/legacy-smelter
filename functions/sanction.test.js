@@ -147,6 +147,7 @@ function makeMockDb({
   claimQuerySize = 0,
   claimQueryDocs = [],
   sweepDocs = [],
+  activeLeaseDocs = [],
 } = {}) {
   const batchUpdates = [];
   const batchCommits = [];
@@ -165,11 +166,17 @@ function makeMockDb({
     size: sweepDocs.length,
     docs: sweepDocs,
   };
+  const activeLeaseSnap = {
+    empty: activeLeaseDocs.length === 0,
+    size: activeLeaseDocs.length,
+    docs: activeLeaseDocs,
+  };
 
-  // Two different query chains are needed: sweep (where on
-  // sanction_lease_at) and claim (where on evaluated). The mock resolves
-  // which one is in play by the `where` field path.
+  // Three different query chains are needed: sweep (lease < cutoff),
+  // active-lease probe (lease > epoch), and claim (evaluated=false). The
+  // mock resolves by field + operator.
   const sweepQuery = { get: vi.fn(async () => sweepSnap) };
+  const activeLeaseQuery = { get: vi.fn(async () => activeLeaseSnap) };
   const claimQuery = {
     get: vi.fn(async () => ({
       size: claimQuerySize,
@@ -179,9 +186,12 @@ function makeMockDb({
   };
 
   const collectionHandle = {
-    where: vi.fn((field, _op, _value) => {
+    where: vi.fn((field, op, _value) => {
       if (field === 'sanction_lease_at') {
-        return sweepQuery;
+        if (op === '<') return sweepQuery;
+        return {
+          limit: vi.fn(() => activeLeaseQuery),
+        };
       }
       // 'evaluated' query chain → claim path
       return {
@@ -219,6 +229,7 @@ function makeMockDb({
     txUpdates,
     claimQuery,
     sweepQuery,
+    activeLeaseQuery,
     collectionHandle,
   };
 }
@@ -566,6 +577,23 @@ describe('runSanctionBatch', () => {
     expect(result).toEqual({ status: 'no-op' });
     // Gemini must NOT be called when the batch is short — no-op is the
     // silent, wait-for-more-uploads branch.
+    expect(generateContentMock).not.toHaveBeenCalled();
+  });
+
+  it('throws on short batch when active leases still exist', async () => {
+    const { db, activeLeaseQuery } = makeMockDb({
+      claimQuerySize: MIN_BATCH - 1,
+      claimQueryDocs: Array.from({ length: MIN_BATCH - 1 }, (_, i) =>
+        makeDocSnapshot(`inc-${i}`, makeIncidentData()),
+      ),
+      activeLeaseDocs: [makeDocSnapshot('leased-1', makeIncidentData({ evaluated: true }))],
+    });
+    const aiClient = { models: { generateContent: generateContentMock } };
+
+    await expect(runSanctionBatch({ aiClient, db })).rejects.toThrow(
+      'active leases still exist',
+    );
+    expect(activeLeaseQuery.get).toHaveBeenCalledOnce();
     expect(generateContentMock).not.toHaveBeenCalled();
   });
 

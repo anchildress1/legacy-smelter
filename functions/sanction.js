@@ -321,6 +321,20 @@ export async function claimBatch({ now = Date.now(), db = getDb() } = {}) {
 }
 
 /**
+ * Returns true when at least one incident currently holds an active (non-null)
+ * sanction lease. Used by the run orchestrator to avoid acknowledging a
+ * short-batch no-op while a previously claimed batch is still in limbo.
+ */
+export async function hasActiveLease({ db = getDb() } = {}) {
+  const activeLeaseSnap = await db
+    .collection('incident_logs')
+    .where('sanction_lease_at', '>', Timestamp.fromMillis(0))
+    .limit(1)
+    .get();
+  return !activeLeaseSnap.empty;
+}
+
+/**
  * Ask Gemini to pick one candidate from the claimed batch, retrying up to
  * `MAX_SELECTION_ATTEMPTS` times on model errors, empty responses, parse
  * failures, or invalid selections. Throws when every attempt fails — the
@@ -432,8 +446,12 @@ export async function finalizeWinner({ batchDocs, selection, db = getDb() }) {
  * Cloud Functions v2 Firestore trigger on every `incident_logs` create.
  *
  * Exit conditions:
- *   - Fewer than 5 unevaluated docs → `{ status: 'no-op' }`, function
- *     returns cleanly and waits for more uploads.
+ *   - Fewer than 5 unevaluated docs + no active leases →
+ *     `{ status: 'no-op' }`, function returns cleanly and waits for more
+ *     uploads.
+ *   - Fewer than 5 unevaluated docs + active leases → throws so Cloud
+ *     Functions retry keeps running until a lease expires and sweep can
+ *     recover the stranded claim.
  *   - Batch judged + finalized → `{ status: 'completed', winnerId }`.
  *   - Any throw inside judge or finalize → surfaced to the trigger, which
  *     rethrows to activate Cloud Functions v2 event retry. Claim stays in
@@ -447,6 +465,12 @@ export async function runSanctionBatch({ geminiApiKey, aiClient, db, now = Date.
 
   const batchDocs = await claimBatch({ now, db: dbHandle });
   if (batchDocs.length < MIN_BATCH) {
+    const activeLeaseExists = await hasActiveLease({ db: dbHandle });
+    if (activeLeaseExists) {
+      throw new Error(
+        `[sanction] Fewer than ${MIN_BATCH} unevaluated incidents and active leases still exist; retrying until lease recovery.`,
+      );
+    }
     console.log(
       `[sanction] Fewer than ${MIN_BATCH} unevaluated incidents (${batchDocs.length}); skipping.`,
     );
