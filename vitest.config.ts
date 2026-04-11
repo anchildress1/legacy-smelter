@@ -8,10 +8,15 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
+    include: [
+      'src/**/*.test.{ts,tsx}',
+      'scripts/**/*.test.ts',
+      'functions/**/*.test.js',
+    ],
     exclude: [
       'scripts/firestore.rules.integration.test.ts',
       'scripts/server.analyze.emulator.integration.test.ts',
+      'functions/sanction.integration.test.js',
     ],
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
