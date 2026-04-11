@@ -2,11 +2,6 @@ import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 
 import { Howl } from 'howler';
 import {
   db,
-  collection,
-  onSnapshot,
-  query,
-  orderBy,
-  limit,
   doc,
   getDoc,
 } from './firebase';
@@ -16,27 +11,32 @@ import {
   type AnalysisErrorCategory,
   type SmeltAnalysis,
 } from './services/geminiService';
-import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
+import { SmeltLog } from './types';
 import type { SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
 import { getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
 import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
-import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 import { DecommissionIndex } from './components/DecommissionIndex';
 import { SiteFooter } from './components/SiteFooter';
 import { DataHealthIndicator } from './components/DataHealthIndicator';
 import { SeverityBadge } from './components/SeverityBadge';
 import { shouldAutoOpenPostmortem } from './lib/postmortemAutoOpen';
-import { parseSmeltLog, parseSmeltLogBatch } from './lib/smeltLogSchema';
+import { parseSmeltLog } from './lib/smeltLogSchema';
+import {
+  useGlobalStats,
+} from './hooks/useGlobalStats';
+import {
+  useRecentIncidentLogs,
+  DEFAULT_QUEUE_SCHEMA_ISSUE_PREFIX,
+} from './hooks/useRecentIncidentLogs';
 
 // Audio
 const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false, volume: 0.5 });
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
 const CANVAS_READY_TIMEOUT_MS = 8_000;
-const QUEUE_SCHEMA_ISSUE_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
-const STATS_SCHEMA_ISSUE = 'GLOBAL STATS DATA SCHEMA VIOLATION. DECOMMISSION INDEX FROZEN.';
+const QUEUE_SCHEMA_ISSUE_PREFIX = DEFAULT_QUEUE_SCHEMA_ISSUE_PREFIX;
 
 // User-visible copy for the analyze-path error categories. Kept alongside
 // the category definitions so a category added to `AnalysisError` that
@@ -78,12 +78,14 @@ interface CanvasReadyWaiter {
 }
 
 export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProps>) {
-  const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
-  const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
+  const { globalStats, statsIssue } = useGlobalStats({ source: 'App' });
+  const { recentLogs, queueIssue } = useRecentIncidentLogs({
+    limitCount: 3,
+    source: 'App',
+    schemaIssuePrefix: QUEUE_SCHEMA_ISSUE_PREFIX,
+  });
   const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [statsIssue, setStatsIssue] = useState<string | null>(null);
-  const [queueIssue, setQueueIssue] = useState<string | null>(null);
   const [analyzeIssue, setAnalyzeIssue] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -146,48 +148,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       canvasReadyWaitersRef.current.push(waiter);
     });
   }, [onCanvasReadyTimeout]);
-
-  useEffect(() => {
-    const statsDoc = doc(db, 'global_stats', 'main');
-    const unsubStats = onSnapshot(statsDoc, (snapshot) => {
-      if (!snapshot.exists()) return;
-      const data = snapshot.data();
-      if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
-        console.error('[App] global_stats/main has invalid total_pixels_melted:', data);
-        setStatsIssue(STATS_SCHEMA_ISSUE);
-        return;
-      }
-      setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
-      setStatsIssue(null);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'global_stats/main', setStatsIssue);
-    });
-
-    // P0 queue uses server-maintained impact_score so this listener stays
-    // bounded and does not stream the full collection into the browser.
-    const logsQuery = query(
-      collection(db, 'incident_logs'),
-      orderBy('impact_score', 'desc'),
-      orderBy('timestamp', 'desc'),
-      limit(3)
-    );
-    const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
-      const { entries, invalidCount } = parseSmeltLogBatch(snapshot.docs, { source: 'App' });
-      setRecentLogs(entries);
-      if (invalidCount > 0) {
-        const noun = invalidCount === 1 ? 'incident' : 'incidents';
-        setQueueIssue(
-          `${QUEUE_SCHEMA_ISSUE_PREFIX} ${invalidCount} ${noun} hidden from queue due to invalid schema.`
-        );
-      } else {
-        setQueueIssue(null);
-      }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'incident_logs', setQueueIssue);
-    });
-
-    return () => { unsubStats(); unsubLogs(); };
-  }, []);
 
   const releaseCameraResources = () => {
     if (cameraAttachTimerRef.current !== null) {

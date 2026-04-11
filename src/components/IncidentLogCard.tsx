@@ -4,6 +4,7 @@ import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
 import { Siren, Quote, ChevronRight, ShieldCheck } from 'lucide-react';
 import { useEscalation } from '../hooks/useEscalation';
 import { SeverityBadge } from './SeverityBadge';
+import { IMPACT_GLOW_ESCALATED } from '../lib/impactGlow';
 
 interface IncidentLogCardProps {
   log: SmeltLog;
@@ -111,7 +112,15 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
           {log.sanctioned && (
             <span className="font-bold text-hazard-amber">Sanctioned</span>
           )}
-          <span className="text-stone-gray">Impact {impact}</span>
+          <span
+            className={
+              escalated
+                ? `font-bold transition-all ${IMPACT_GLOW_ESCALATED}`
+                : 'text-stone-gray'
+            }
+          >
+            Impact {impact}
+          </span>
           <span className="text-dead-gray text-xs ml-auto">
             {formatTimestamp(log.timestamp.toDate())}
           </span>

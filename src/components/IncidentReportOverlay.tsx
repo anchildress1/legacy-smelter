@@ -1,12 +1,21 @@
 import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
-import { SmeltLog, computeImpact } from '../types';
-import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
+import { computeImpact, SmeltLog } from '../types';
+import { formatTimestamp, buildIncidentUrl } from '../lib/utils';
 import { X, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
 import { SeverityBadge } from './SeverityBadge';
+import { IMPACT_GLOW_BASE, IMPACT_GLOW_ESCALATED } from '../lib/impactGlow';
 import { recordBreach } from '../services/breachService';
 import { useEscalation } from '../hooks/useEscalation';
-import { db, doc, onSnapshot } from '../firebase';
+import {
+  useLiveIncidentCounts,
+  staleReasonCopy,
+} from '../hooks/useLiveIncidentCounts';
+import { useModalDialog } from '../hooks/useModalDialog';
+import {
+  buildIncidentReportMarkdown,
+  normalizeIncidentReport,
+} from '../lib/incidentReportModel';
 
 interface OverlayProps {
   analysis?: SmeltAnalysis | null;
@@ -14,136 +23,6 @@ interface OverlayProps {
   shareLinks?: { label: string; href: string }[];
   incidentId?: string | null;
   onClose: () => void;
-}
-
-interface NormalisedReport {
-  legacyInfraClass: string;
-  incidentFeedSummary: string;
-  severity: string;
-  diagnosis: string;
-  failureOrigin: string;
-  primaryContamination: string;
-  contributingFactor: string;
-  disposition: string;
-  archiveNote: string;
-  shareQuote: string;
-  anonHandle: string;
-  chromaticProfile: string;
-  dominantColors: string[];
-  sanctionCount: number;
-  breachCount: number;
-  escalationCount: number;
-  sanctioned: boolean;
-  sanctionRationale: string | null;
-  timestamp: Date | null;
-}
-
-function buildMarkdown(
-  report: NormalisedReport,
-  liveBreachCount: number,
-  liveEscalationCount: number,
-  liveSanctionCount: number,
-  liveTimestamp: Date | null
-): string {
-  const liveCounts = { sanction_count: liveSanctionCount, escalation_count: liveEscalationCount, breach_count: liveBreachCount };
-  const impact = computeImpact(liveCounts);
-  const lines: string[] = [
-    `# ${report.legacyInfraClass}`,
-    '',
-    report.incidentFeedSummary,
-    '',
-    `**Diagnosis:** ${report.diagnosis}`,
-  ];
-
-  if (report.shareQuote) {
-    lines.push('', `> ${report.shareQuote}`);
-  }
-
-  lines.push(
-    '',
-    `**Severity:** ${report.severity}`,
-    `**Impact:** ${impact}`,
-    `**Sanctions:** ${liveSanctionCount}`,
-    `**Escalations:** ${liveEscalationCount}`,
-    `**Containment Breaches:** ${liveBreachCount}`,
-  );
-
-  if (liveTimestamp) {
-    lines.push(`**Filed:** ${formatTimestamp(liveTimestamp)}`);
-  }
-
-  const telemetry = [
-    report.failureOrigin ? `**Failure Origin:** ${report.failureOrigin}` : null,
-    report.primaryContamination ? `**Primary Contaminant:** ${report.primaryContamination}` : null,
-    report.contributingFactor ? `**Contributing Factor:** ${report.contributingFactor}` : null,
-  ].filter((s): s is string => s !== null);
-
-  if (telemetry.length > 0) {
-    lines.push('', '---', '', '## Telemetry', '', ...telemetry);
-  }
-
-  lines.push(
-    '', '---', '',
-    '## Disposition', '',
-    report.disposition,
-    '',
-    '## Archive Note', '',
-    report.archiveNote,
-    '', '---', '',
-    `*Filed by ${report.anonHandle} · Chromatic Profile: ${report.chromaticProfile}*`,
-  );
-
-  return lines.join('\n');
-}
-
-function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedReport | null {
-  if (a) {
-    return {
-      legacyInfraClass: a.legacyInfraClass,
-      incidentFeedSummary: a.incidentFeedSummary,
-      severity: a.severity,
-      diagnosis: a.diagnosis,
-      failureOrigin: a.failureOrigin,
-      primaryContamination: a.primaryContamination,
-      contributingFactor: a.contributingFactor,
-      disposition: a.disposition,
-      archiveNote: a.archiveNote,
-      shareQuote: a.shareQuote,
-      anonHandle: a.anonHandle,
-      chromaticProfile: a.chromaticProfile,
-      dominantColors: a.dominantColors,
-      sanctionCount: 0,
-      breachCount: 0,
-      escalationCount: 0,
-      sanctioned: false,
-      sanctionRationale: null,
-      timestamp: null,
-    };
-  }
-  if (l) {
-    return {
-      legacyInfraClass: l.legacy_infra_class,
-      incidentFeedSummary: l.incident_feed_summary,
-      severity: l.severity,
-      diagnosis: l.diagnosis,
-      failureOrigin: l.failure_origin,
-      primaryContamination: l.primary_contamination,
-      contributingFactor: l.contributing_factor,
-      disposition: l.disposition,
-      archiveNote: l.archive_note,
-      shareQuote: l.share_quote,
-      anonHandle: l.anon_handle,
-      chromaticProfile: l.chromatic_profile,
-      dominantColors: getFiveDistinctColors([l.color_1, l.color_2, l.color_3, l.color_4, l.color_5]),
-      sanctionCount: l.sanction_count,
-      breachCount: l.breach_count,
-      escalationCount: l.escalation_count,
-      sanctioned: l.sanctioned,
-      sanctionRationale: l.sanction_rationale,
-      timestamp: l.timestamp.toDate(),
-    };
-  }
-  return null;
 }
 
 const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> = {
@@ -195,122 +74,9 @@ function assertOverlayInputs(
   }
 }
 
-interface LiveCounts {
-  sanction: number;
-  breach: number;
-  escalation: number;
-  timestamp: Date | null;
-}
-
-type LiveCountsStaleReason = 'removed' | 'schema' | 'subscription' | null;
-
-interface LiveCountsResult {
-  readonly counts: LiveCounts;
-  readonly staleReason: LiveCountsStaleReason;
-}
-
-function useLiveIncidentCounts(
-  incidentId: string | null | undefined,
-  seed: NormalisedReport | null,
-): LiveCountsResult {
-  const [counts, setCounts] = useState<LiveCounts>(() => ({
-    sanction: seed?.sanctionCount ?? 0,
-    breach: seed?.breachCount ?? 0,
-    escalation: seed?.escalationCount ?? 0,
-    timestamp: seed?.timestamp ?? null,
-  }));
-  const [staleReason, setStaleReason] = useState<LiveCountsStaleReason>(null);
-
-  useEffect(() => {
-    setCounts({
-      sanction: seed?.sanctionCount ?? 0,
-      breach: seed?.breachCount ?? 0,
-      escalation: seed?.escalationCount ?? 0,
-      timestamp: seed?.timestamp ?? null,
-    });
-    setStaleReason(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [incidentId]);
-
-  useEffect(() => {
-    if (!incidentId) return;
-    return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
-      if (!snap.exists()) {
-        console.error(`[IncidentReportOverlay] incident_logs/${incidentId} removed from archive while overlay open.`);
-        setStaleReason('removed');
-        return;
-      }
-      const data = snap.data();
-      const sc = data.sanction_count;
-      const bc = data.breach_count;
-      const ec = data.escalation_count;
-      if (
-        !Number.isFinite(sc) ||
-        !Number.isFinite(bc) ||
-        !Number.isFinite(ec) ||
-        sc < 0 ||
-        bc < 0 ||
-        ec < 0
-      ) {
-        console.error(
-          `[IncidentReportOverlay] incident_logs/${incidentId} has invalid counter fields`,
-          { sanction_count: sc, breach_count: bc, escalation_count: ec }
-        );
-        setStaleReason('schema');
-        return;
-      }
-      const ts = data.timestamp;
-      const nextTimestamp = ts && typeof ts.toDate === 'function' ? ts.toDate() as Date : null;
-      setCounts({ sanction: sc, breach: bc, escalation: ec, timestamp: nextTimestamp });
-      setStaleReason(null);
-    }, (error) => {
-      console.error('[IncidentReportOverlay] Live count subscription failed:', error);
-      setStaleReason('subscription');
-    });
-  }, [incidentId]);
-
-  return { counts, staleReason };
-}
-
-function staleReasonCopy(reason: LiveCountsStaleReason): string | null {
-  switch (reason) {
-    case 'removed':
-      return 'LIVE COUNTS STALE. INCIDENT REMOVED FROM ARCHIVE.';
-    case 'schema':
-      return 'LIVE COUNTS STALE. ARCHIVE SCHEMA DRIFT.';
-    case 'subscription':
-      return 'LIVE COUNTS STALE. SUBSCRIPTION ERRORED.';
-    default:
-      return null;
-  }
-}
-
-function useModalDialog(onClose: () => void): React.RefObject<HTMLDialogElement | null> {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog || dialog.open) return;
-    dialog.showModal();
-    return () => {
-      if (dialog.open) dialog.close();
-    };
-  }, []);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const handleCancel = (e: Event) => {
-      e.preventDefault();
-      onClose();
-    };
-    dialog.addEventListener('cancel', handleCancel);
-    return () => dialog.removeEventListener('cancel', handleCancel);
-  }, [onClose]);
-  return dialogRef;
-}
-
 export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose }) => {
   assertOverlayInputs(analysis, log, incidentId);
-  const report = normalise(analysis, log);
+  const report = normalizeIncidentReport(analysis, log);
   const dialogRef = useModalDialog(onClose);
   const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
   const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
@@ -382,7 +148,15 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   const handleCopyText = async () => {
     try {
-      await navigator.clipboard.writeText(buildMarkdown(report, counts.breach, counts.escalation, counts.sanction, counts.timestamp));
+      await navigator.clipboard.writeText(
+        buildIncidentReportMarkdown(
+          report,
+          counts.breach,
+          counts.escalation,
+          counts.sanction,
+          counts.timestamp,
+        ),
+      );
       setCopyTextState('copied');
       if (copyTimeoutRef.current !== null) clearTimeout(copyTimeoutRef.current);
       copyTimeoutRef.current = setTimeout(() => setCopyTextState('idle'), 2000);
@@ -607,9 +381,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                   <div className="basis-1/3 flex flex-col items-center justify-center">
                     <div
                       className={`font-mono text-2xl sm:text-3xl font-black leading-none transition-all ${
-                        escalated
-                          ? 'text-hazard-amber [filter:drop-shadow(0_0_8px_rgba(245,200,66,0.55))]'
-                          : 'text-hazard-amber/95 [filter:drop-shadow(0_0_6px_rgba(245,200,66,0.3))]'
+                        escalated ? IMPACT_GLOW_ESCALATED : IMPACT_GLOW_BASE
                       }`}
                     >
                       {computeImpact(liveCountsForImpact)}

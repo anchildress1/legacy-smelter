@@ -1,106 +1,36 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  db,
-  collection,
-  onSnapshot,
-  query,
-  orderBy,
-  limit,
-  doc,
-} from '../firebase';
-import { SmeltLog, GlobalStats, computeImpact } from '../types';
+import { SmeltLog, computeImpact } from '../types';
 import { getLogShareLinks } from '../lib/utils';
 import { IncidentLogCard } from './IncidentLogCard';
-import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
 import { IncidentReportOverlay } from './IncidentReportOverlay';
 import { DecommissionIndex } from './DecommissionIndex';
 import { SiteFooter } from './SiteFooter';
 import { DataHealthIndicator } from './DataHealthIndicator';
 import { Flame, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
-import { parseSmeltLogBatch } from '../lib/smeltLogSchema';
+import { useGlobalStats } from '../hooks/useGlobalStats';
+import {
+  useManifestLogs,
+  MANIFEST_FETCH_LIMIT,
+  type ManifestSortMode,
+} from '../hooks/useManifestLogs';
 
 const PAGE_SIZE = 20;
-const MANIFEST_FETCH_LIMIT = 500;
 type ManifestFilter = 'all' | 'escalated' | 'sanctioned';
-type ManifestSort = 'impact' | 'newest' | 'breaches' | 'escalations';
-const MANIFEST_SCHEMA_ISSUE_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
-const STATS_SCHEMA_ISSUE = 'GLOBAL STATS DATA SCHEMA VIOLATION. DECOMMISSION INDEX FROZEN.';
+type ManifestSort = ManifestSortMode;
 
 interface IncidentManifestProps {
   onNavigateHome: () => void;
 }
 
 export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHome }) => {
-  const [allLogs, setAllLogs] = useState<SmeltLog[]>([]);
-  const [globalStats, setGlobalStats] = useState<GlobalStats>({ total_pixels_melted: 0 });
+  const { globalStats, statsIssue } = useGlobalStats({
+    source: 'IncidentManifest',
+  });
   const [selectedLog, setSelectedLog] = useState<SmeltLog | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [filterMode, setFilterMode] = useState<ManifestFilter>('all');
   const [sortMode, setSortMode] = useState<ManifestSort>('impact');
-  const [isLoading, setIsLoading] = useState(true);
-  const [statsIssue, setStatsIssue] = useState<string | null>(null);
-  const [manifestIssue, setManifestIssue] = useState<string | null>(null);
-
-  useEffect(() => {
-    const unsubStats = onSnapshot(doc(db, 'global_stats', 'main'), (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data();
-      if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
-        console.error('[IncidentManifest] global_stats/main has invalid total_pixels_melted:', data);
-        setStatsIssue(STATS_SCHEMA_ISSUE);
-        return;
-      }
-      setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
-      setStatsIssue(null);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'global_stats/main', setStatsIssue));
-
-    return () => { unsubStats(); };
-  }, []);
-
-  // Keep manifest reads bounded and use server-side ranking for the selected
-  // sort mode so client CPU/memory does not scale with collection size.
-  useEffect(() => {
-    const logsRef = collection(db, 'incident_logs');
-    const q = (() => {
-      switch (sortMode) {
-        case 'impact':
-          return query(logsRef, orderBy('impact_score', 'desc'), orderBy('timestamp', 'desc'), limit(MANIFEST_FETCH_LIMIT));
-        case 'breaches':
-          return query(logsRef, orderBy('breach_count', 'desc'), orderBy('timestamp', 'desc'), limit(MANIFEST_FETCH_LIMIT));
-        case 'escalations':
-          return query(logsRef, orderBy('escalation_count', 'desc'), orderBy('timestamp', 'desc'), limit(MANIFEST_FETCH_LIMIT));
-        case 'newest':
-        default:
-          return query(logsRef, orderBy('timestamp', 'desc'), limit(MANIFEST_FETCH_LIMIT));
-      }
-    })();
-
-    setIsLoading(true);
-    setManifestIssue(null);
-    let gotFirst = false;
-    const unsubLogs = onSnapshot(q, (snap) => {
-      const { entries, invalidCount } = parseSmeltLogBatch(snap.docs, { source: 'IncidentManifest' });
-      setAllLogs(entries);
-      if (invalidCount > 0) {
-        const noun = invalidCount === 1 ? 'incident' : 'incidents';
-        setManifestIssue(
-          `${MANIFEST_SCHEMA_ISSUE_PREFIX} ${invalidCount} ${noun} hidden from manifest due to invalid schema.`
-        );
-      } else {
-        setManifestIssue(null);
-      }
-      if (!gotFirst) {
-        gotFirst = true;
-        setIsLoading(false);
-      }
-    }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'incident_logs', setManifestIssue);
-      setAllLogs([]);
-      setIsLoading(false);
-    });
-
-    return () => { unsubLogs(); };
-  }, [sortMode]);
+  const { allLogs, isLoading, manifestIssue } = useManifestLogs(sortMode);
 
   const manifestCounts = useMemo(() => ({
     all: allLogs.length,
