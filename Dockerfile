@@ -33,6 +33,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=server-deps --chown=node:node --chmod=0555 /app/node_modules ./node_modules
 COPY --chown=node:node --chmod=0555 package.json server.js ./
+COPY --chown=node:node --chmod=0555 shared ./shared
 COPY --from=builder --chown=node:node --chmod=0555 /app/dist ./dist
 USER node
 EXPOSE 8080
