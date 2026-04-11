@@ -52,7 +52,7 @@ export function buildIncidentReportMarkdown(
 
   lines.push(
     '',
-    `**Severity:** ${report.severity}`,
+    `**${report.severity}**`,
     `**Impact:** ${impact}`,
     `**Sanctions:** ${liveSanctionCount}`,
     `**Escalations:** ${liveEscalationCount}`,

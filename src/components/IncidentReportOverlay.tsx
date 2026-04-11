@@ -5,6 +5,7 @@ import { formatTimestamp, buildIncidentUrl } from '../lib/utils';
 import { X, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
 import { SeverityBadge } from './SeverityBadge';
 import { P0Badge } from './P0Badge';
+import { HEADER_PILL_BASE } from './HeaderPill';
 import {
   IMPACT_GLOW_BASE,
   IMPACT_GLOW_ESCALATED,
@@ -211,12 +212,13 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       >
         {/* Left chromatic strip. Inline filter avoids Tailwind v4
             CSS-variable composition issues with overflow-hidden + rounded
-            contexts. Stronger cut (0.6/0.85) than the card strip because
-            the modal is larger on screen and needs a deeper reduction
-            to stay subordinate to the title hierarchy. */}
+            contexts. Slightly deeper cut than the card strip because the
+            modal is larger on screen, but the goal is just to keep the
+            palette from clashing with the dark chrome — not mute it into
+            dullness. */}
         <div
           className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden"
-          style={{ filter: 'saturate(0.6) brightness(0.85)' }}
+          style={{ filter: 'saturate(0.9) brightness(0.95)' }}
           aria-hidden="true"
         >
           {report.dominantColors.map((color) => (
@@ -310,7 +312,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                           <button
                             onClick={handleEscalate}
                             disabled={isTogglingEscalation}
-                            className={`inline-flex items-center gap-1 rounded border px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                            className={`${HEADER_PILL_BASE} transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
                               escalated
                                 ? `border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber ${IMPACT_GLOW_FILTER_ESCALATED}`
                                 : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'

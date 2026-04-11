@@ -48,14 +48,13 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
 
   return (
     <div className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors group">
-      {/* Left chromatic fingerprint strip. Lighter cut (0.75/0.90)
-          than the overlay's 0.6/0.85 — at the card's 8px strip width
-          a deeper reduction collapses the bands into an opaque smear
-          and loses the chroma signal. The overlay can afford a
-          stronger cut because its strip runs the full modal height
-          and has room to breathe. */}
+      {/* Left chromatic fingerprint strip. Lighter cut than the
+          overlay's strip — at the card's 8px width a deeper reduction
+          collapses the bands into an opaque smear and loses the chroma
+          signal. The goal is just to keep the palette from clashing
+          with the dark card chrome, not mute it into dullness. */}
       <div
-        className="w-2 shrink-0 flex flex-col overflow-hidden saturate-75 brightness-90"
+        className="w-2 shrink-0 flex flex-col overflow-hidden saturate-[.95] brightness-[.97]"
         aria-hidden="true"
       >
         {finalColors.map((col) => (
