@@ -24,7 +24,7 @@
     "firebase-admin": "^13.7.0",
     "howler": "^2.2.4",
     "image-size": "^2.0.2",
-    "lucide-react": "^1.7.0",
+    "lucide-react": "^1.8.0",
     "pixi.js": "^8.17.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
