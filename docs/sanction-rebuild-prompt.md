@@ -134,7 +134,6 @@ Add ONE composite to `firestore.indexes.json`:
 - `server.js` — `persistIncident()` adds `evaluated: false, sanction_lease_at: null` to the initial write. **Nothing else changes in server.js.** No sanction code in the HTTP server.
 - `firestore.indexes.json` — add composite per §5.
 - `firebase.json` — add `functions` block.
-- `firebase.test.json` — same.
 - `AGENTS.md` — rewrite the "scripts/sanction-incidents.ts" section to describe the Functions trigger, `evaluated` / `sanction_lease_at` invariants, sweep recovery, lease TTL. Remove the "losers re-enter" line. Remove the global run-lock reference. **Do not touch the `impact_score` or weights sections.**
 - `MEMORY.md` — add entries per §11.
 

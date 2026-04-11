@@ -9,7 +9,7 @@
     "node": "22"
   },
   "scripts": {
-    "serve": "firebase emulators:start --only functions,firestore --config ../firebase.test.json"
+    "serve": "cd .. && firebase emulators:start --only functions,firestore"
   },
   "dependencies": {
     "@google/genai": "^1.49.0",

@@ -7,7 +7,7 @@ This checklist has three phases: **unstable preflight**, **unstable smoke**, and
 ## Conventions
 
 - Two Firebase projects: `anchildress1-unstable` (default target) and `anchildress1` (prod). Per `feedback_firebase_deploy_unstable_only`, every command defaults to unstable only and prod requires explicit user ask.
-- Functions codebase: `default`, source `functions/`, runtime `nodejs22`. Declared in `firebase.json` and `firebase.test.json`.
+- Functions codebase: `default`, source `functions/`, runtime `nodejs22`. Declared in `firebase.json`.
 - Region: `us-east1` — pinned to both the Firestore database region and the Cloud Run service region. If Firestore moves, the function has to move with it.
 - Database: named database `legacy-smelter`, not `(default)`.
 

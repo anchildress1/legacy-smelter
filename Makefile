@@ -13,11 +13,11 @@ server:
 # Start the Firebase emulator for Cloud Functions + Firestore. Used for local
 # sanction-trigger development: writes to the emulator's `incident_logs`
 # collection fire the `onIncidentCreated` trigger defined in functions/index.js.
-# Uses firebase.test.json so the emulator binds to the same firestore port
-# (9180) the integration tests use, and does not touch the real Firebase
-# project. `make server` (Cloud Run) stays a completely separate process —
-# production still runs on one Cloud Run port; this is just the local
-# second-target for the functions side.
+# The `emulators` block in firebase.json pins firestore to port 9180 so it
+# lines up with the port the integration tests use, and does not touch the
+# real Firebase project. `make server` (Cloud Run) stays a completely separate
+# process — production still runs on one Cloud Run port; this is just the
+# local second-target for the functions side.
 functions:
 	cd functions && npm run serve
 
