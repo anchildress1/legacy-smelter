@@ -27,6 +27,7 @@ import { DecommissionIndex } from './components/DecommissionIndex';
 import { SiteFooter } from './components/SiteFooter';
 import { DataHealthIndicator } from './components/DataHealthIndicator';
 import { SeverityBadge } from './components/SeverityBadge';
+import { shouldAutoOpenPostmortem } from './lib/postmortemAutoOpen';
 import { parseSmeltLog, parseSmeltLogBatch } from './lib/smeltLogSchema';
 
 // Audio
@@ -377,13 +378,12 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     setIsComplete(true);
     // Only auto-open the postmortem the first time. On replay, the user
     // already dismissed it once — don't force it back open.
-    // Respect prefers-reduced-motion and an explicit user opt-out stored
-    // in localStorage (key: 'smelter-postmortem-auto', value: 'false').
+    // Respect reduced motion and explicit user opt-out preferences.
+    // Reads are guarded inside shouldAutoOpenPostmortem() so restricted
+    // runtimes cannot throw during smelt completion.
     if (!postmortemAutoOpenedRef.current) {
       postmortemAutoOpenedRef.current = true;
-      const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const autoOpenDisabled = localStorage.getItem('smelter-postmortem-auto') === 'false';
-      if (!prefersReduced && !autoOpenDisabled) {
+      if (shouldAutoOpenPostmortem()) {
         setShowReport(true);
       }
     }
