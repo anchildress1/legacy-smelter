@@ -33,12 +33,20 @@
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { GoogleGenAI, Type } from '@google/genai';
-// Resolved via functions/package.json's `"@legacy-smelter/shared": "file:../shared"`
-// dependency. Firebase CLI vendors the linked files into the upload at deploy
-// time, so the running container sees `node_modules/@legacy-smelter/shared/...`
-// instead of a parent-directory relative path that would fall outside the
-// functions source root.
-import { computeImpactScore } from '@legacy-smelter/shared/impactScore.js';
+
+// Impact score weights — intentionally duplicated from shared/impactScore.js.
+// Firebase CLI only packages files under functions/ into the Cloud Function
+// upload, so `../shared/*` and `file:../shared` package deps both fail at
+// container start. The formula is also duplicated in firestore.rules and
+// src/types.ts for the same reason (no cross-boundary module sharing). If
+// you change these weights, update all four sites together.
+const IMPACT_WEIGHTS = Object.freeze({ sanction: 5, escalation: 3, breach: 2 });
+function computeImpactScore(counts) {
+  const s = Math.max(0, counts.sanction_count);
+  const e = Math.max(0, counts.escalation_count);
+  const b = Math.max(0, counts.breach_count);
+  return IMPACT_WEIGHTS.sanction * s + IMPACT_WEIGHTS.escalation * e + IMPACT_WEIGHTS.breach * b;
+}
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
