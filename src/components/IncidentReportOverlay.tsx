@@ -210,15 +210,9 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
       <div
         className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
       >
-        {/* Left chromatic strip. Inline filter avoids Tailwind v4
-            CSS-variable composition issues with overflow-hidden + rounded
-            contexts. Slightly deeper cut than the card strip because the
-            modal is larger on screen, but the goal is just to keep the
-            palette from clashing with the dark chrome — not mute it into
-            dullness. */}
+        {/* Left chromatic strip — shows dominant colors at full saturation. */}
         <div
           className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden"
-          style={{ filter: 'saturate(0.9) brightness(0.95)' }}
           aria-hidden="true"
         >
           {report.dominantColors.map((color) => (
@@ -230,7 +224,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 
           {/* ── HEADER BAR ── */}
-          <div className="shrink-0 flex items-center justify-between gap-2 pl-5 sm:pl-8 pr-2 py-2.5">
+          <div className="shrink-0 flex items-center justify-between gap-0 pl-5 sm:pl-8 pr-2 py-2.5">
             <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
               Postmortem
             </h2>
