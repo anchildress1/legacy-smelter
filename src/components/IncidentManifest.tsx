@@ -38,11 +38,19 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
   // the two surfaces agree on "who is in the top 3" — impact desc,
   // then timestamp desc — without the manifest having to redo the
   // sort or care whether its own `allLogs` window is wide enough.
-  const { recentLogs: topPriorityLogs } = useRecentIncidentLogs({
-    source: 'IncidentManifest',
-  });
+  //
+  // `queueIssue` is aliased to `topPriorityIssue` and plumbed through
+  // `activeIssues` below. Dropping it would silently hide a permission
+  // or schema error on the top-3 query — the P0 badges would just
+  // vanish from the manifest with no user-visible signal.
+  const { recentLogs: topPriorityLogs, queueIssue: topPriorityIssue } =
+    useRecentIncidentLogs({ source: 'IncidentManifest' });
   const topPriorityIds = useMemo(
-    () => new Set(topPriorityLogs.map((log) => log.id)),
+    // Filter falsy ids defensively: Firestore guarantees non-empty
+    // `snap.id` for real docs, but a synthetic log or an optimistic
+    // insert with an empty id would otherwise pollute the Set and
+    // silently mark every other empty-id log as P0.
+    () => new Set(topPriorityLogs.map((log) => log.id).filter(Boolean)),
     [topPriorityLogs],
   );
 
@@ -85,7 +93,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
   const totalPages = Math.max(1, Math.ceil(sortedLogs.length / PAGE_SIZE));
   const isWindowTruncated = allLogs.length === MANIFEST_FETCH_LIMIT;
-  const activeIssues = [statsIssue, manifestIssue].filter((message): message is string => !!message);
+  const activeIssues = [statsIssue, manifestIssue, topPriorityIssue].filter((message): message is string => !!message);
   // Clamp page if the dataset shrinks (e.g. docs deleted) while user is on a later page
   const safePage = Math.min(currentPage, totalPages - 1);
   const pageStart = safePage * PAGE_SIZE;

@@ -23,6 +23,17 @@ interface UseRecentIncidentLogsOptions {
 interface UseRecentIncidentLogsResult {
   readonly recentLogs: SmeltLog[];
   readonly queueIssue: string | null;
+  /**
+   * `true` once the Firestore subscription has delivered its first
+   * callback (success OR error). Consumers that need to distinguish
+   * "queue empty" from "queue not yet loaded" should gate decisions on
+   * this flag — for example, the deep-link overlay in App.tsx delays
+   * opening until the top-3 set is known so the P0 badge does not
+   * flash false-then-true for a deep-linked incident. The flag stays
+   * `true` once set; subsequent snapshot updates just replace
+   * `recentLogs` in place.
+   */
+  readonly loaded: boolean;
 }
 
 export function useRecentIncidentLogs({
@@ -32,8 +43,15 @@ export function useRecentIncidentLogs({
 }: UseRecentIncidentLogsOptions = {}): UseRecentIncidentLogsResult {
   const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
   const [queueIssue, setQueueIssue] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    // Reset the loaded sentinel when the query inputs change (e.g. a
+    // different `limitCount`) so consumers see a clean "not yet
+    // loaded" state for the new subscription before its first
+    // callback fires.
+    setLoaded(false);
+
     const logsQuery = query(
       collection(db, 'incident_logs'),
       orderBy('impact_score', 'desc'),
@@ -56,6 +74,7 @@ export function useRecentIncidentLogs({
         } else {
           setQueueIssue(null);
         }
+        setLoaded(true);
       },
       (error) => {
         handleFirestoreError(
@@ -64,6 +83,11 @@ export function useRecentIncidentLogs({
           'incident_logs',
           setQueueIssue,
         );
+        // Mark as loaded even on error so consumers gated on the
+        // sentinel do not hang forever when Firestore is unreachable.
+        // `queueIssue` carries the failure detail; a DataHealthIndicator
+        // surface will still show the user why the top-3 is empty.
+        setLoaded(true);
       },
     );
 
@@ -72,5 +96,5 @@ export function useRecentIncidentLogs({
     };
   }, [limitCount, schemaIssuePrefix, source]);
 
-  return { recentLogs, queueIssue };
+  return { recentLogs, queueIssue, loaded };
 }

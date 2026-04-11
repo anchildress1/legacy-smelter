@@ -14,11 +14,14 @@ interface IncidentLogCardProps {
   log: SmeltLog;
   onClick: () => void;
   // When true, render the static "P0" priority badge in the header
-  // right-cluster. Only set by the top-3 home-page queue (sorted by
-  // impact score desc, then timestamp desc) — every other surface
-  // that renders this card (archive manifest, filtered views) leaves
-  // it false so a filter swap never triggers a badge recomputation.
-  // There is no P1/P2/P3: the badge is either "P0" or absent.
+  // right-cluster. Set by callers that know the incident is in the
+  // live top-3 set — the home queue hard-codes it, the manifest
+  // derives it from a Set built off `useRecentIncidentLogs`, and the
+  // detail overlay mirrors the card's treatment via the same
+  // derivation. There is no P1/P2/P3: the badge is either "P0" or
+  // absent. Filter/sort changes on surfaces that render this card
+  // cannot wipe the badge — membership is independent of local
+  // presentation state.
   showP0Badge?: boolean;
 }
 
@@ -101,7 +104,9 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
           </div>
         </div>
 
-        {/* Summary — increased top spacing from header (+8px vs prev mt-1) */}
+        {/* Summary — the extra top gap (mt-3) separates the clamped
+            two-line title from the summary so the eye registers a
+            clean section break between header and body. */}
         <p className="text-ash-white font-mono text-sm leading-snug mt-3 line-clamp-2">
           {log.incident_feed_summary}
         </p>

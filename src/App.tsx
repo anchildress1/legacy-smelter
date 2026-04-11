@@ -79,12 +79,21 @@ interface CanvasReadyWaiter {
 
 export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProps>) {
   const { globalStats, statsIssue } = useGlobalStats({ source: 'App' });
-  const { recentLogs, queueIssue } = useRecentIncidentLogs({
+  const { recentLogs, queueIssue, loaded: recentLogsLoaded } = useRecentIncidentLogs({
     limitCount: 3,
     source: 'App',
     schemaIssuePrefix: QUEUE_SCHEMA_ISSUE_PREFIX,
   });
   const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
+  // Deep-link targets are staged here until the top-3 subscription
+  // has delivered its first snapshot. Otherwise the overlay could open
+  // with `showP0Badge=false` during the cold-load window and then flash
+  // to `true` the moment `recentLogs` populates — misleading the user
+  // about the incident's priority for one render. The staging effect
+  // below transfers the pending log into `selectedRecentLog` once
+  // `recentLogsLoaded` flips true. On Firestore error the hook still
+  // sets `loaded` to true, so this gating cannot hang.
+  const [pendingDeepLinkLog, setPendingDeepLinkLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeIssue, setAnalyzeIssue] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
@@ -172,8 +181,11 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     };
   }, [rejectCanvasWaiters]);
 
-  // Deep link: fetch incident by Firestore doc ID and open its overlay.
-  // The URL is already cleared by Root — deepLinkId is a one-shot value.
+  // Deep link: fetch incident by Firestore doc ID and stage it for the
+  // overlay. Actually opening the overlay is deferred to the staging
+  // effect below so the P0 badge derivation has a populated top-3 set
+  // to check against. The URL is already cleared by Root — deepLinkId
+  // is a one-shot value.
   useEffect(() => {
     if (!deepLinkId) return;
     let cancelled = false;
@@ -186,7 +198,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
           return;
         }
         const parsedLog = parseSmeltLog(snap.id, snap.data());
-        setSelectedRecentLog(parsedLog);
+        setPendingDeepLinkLog(parsedLog);
       } catch (err) {
         if (!cancelled) {
           console.error('[App] Deep link fetch/parsing failed:', err);
@@ -195,6 +207,18 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     })();
     return () => { cancelled = true; };
   }, [deepLinkId]);
+
+  // Staging effect: a pending deep-link log waits here until the top-3
+  // subscription has delivered its first snapshot, then transfers into
+  // `selectedRecentLog` to open the overlay. This runs exactly once per
+  // pending log because it clears `pendingDeepLinkLog` on transfer.
+  // Reading `recentLogsLoaded` guarantees the P0 derivation below sees
+  // a populated Set on first render, avoiding a false→true badge flash.
+  useEffect(() => {
+    if (!pendingDeepLinkLog || !recentLogsLoaded) return;
+    setSelectedRecentLog(pendingDeepLinkLog);
+    setPendingDeepLinkLog(null);
+  }, [pendingDeepLinkLog, recentLogsLoaded]);
 
   const startCamera = async () => {
     try {
@@ -393,6 +417,15 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
   const activeIssues = [statsIssue, queueIssue].filter(
     (message): message is string => !!message,
   );
+  // Single derivation for "is this incident in the live top-3 set?".
+  // Guards against falsy ids on both sides (Firestore doc ids are
+  // non-empty but a malformed analysis payload could carry an empty
+  // `incidentId`). A falsy id can never be P0 — returns false rather
+  // than matching the first falsy-id log in `recentLogs`.
+  const isInTopPriority = (id: string | null | undefined): boolean => {
+    if (!id) return false;
+    return recentLogs.some((log) => log.id === id);
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
@@ -587,7 +620,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                   P0 INCIDENT QUEUE
                 </h2>
                 <p className="mt-1 text-stone-gray font-mono text-[9px] uppercase tracking-[0.18em]">
-                  Ranked By Impact Score
+                  Top Incidents Ranked By Impact Score
                 </p>
                 <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" />
               </div>
@@ -624,15 +657,18 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
           which surface opened the overlay — a deep link can land on an
           incident that was never in the queue, and a home-queue click
           can open an incident that just aged out between render and
-          click. `recentLogs.some(...)` is the single source of truth
-          for both overlay call sites so the badge stays consistent
-          with the cards visible underneath. */}
+          click. `isInTopPriority` is the single source of truth for
+          both overlay call sites so the badge stays consistent with
+          the cards visible underneath. Deep links are additionally
+          gated on `recentLogsLoaded` upstream (see the staging effect)
+          so the badge cannot flash false-then-true while the top-3
+          subscription is still landing. */}
       {selectedRecentLog && (
         <IncidentReportOverlay
           log={selectedRecentLog}
           shareLinks={getLogShareLinks(selectedRecentLog)}
           incidentId={selectedRecentLog.id}
-          showP0Badge={recentLogs.some((l) => l.id === selectedRecentLog.id)}
+          showP0Badge={isInTopPriority(selectedRecentLog.id)}
           onClose={() => setSelectedRecentLog(null)}
         />
       )}
@@ -642,7 +678,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
           analysis={analysis}
           shareLinks={reportShareLinks}
           incidentId={analysis.incidentId}
-          showP0Badge={recentLogs.some((l) => l.id === analysis.incidentId)}
+          showP0Badge={isInTopPriority(analysis.incidentId)}
           onClose={() => setShowReport(false)}
         />
       )}

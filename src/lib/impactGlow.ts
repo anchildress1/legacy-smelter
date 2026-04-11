@@ -17,9 +17,6 @@
  * future refactors.
  */
 
-// Filter-only classes. Apply these anywhere a warm amber halo is
-// needed without implying a text-color change (e.g. on buttons that
-// already manage their own text color).
 export const IMPACT_GLOW_FILTER_BASE =
   '[filter:drop-shadow(0_0_6px_rgba(245,200,66,0.3))]';
 

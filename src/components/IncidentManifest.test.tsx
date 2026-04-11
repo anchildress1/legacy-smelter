@@ -8,9 +8,9 @@ import type { SmeltLog } from '../types';
 // home queue uses, limited to 3 docs, sorted impact desc then
 // timestamp desc) to derive the authoritative top-3 ids. A matching
 // card anywhere on the manifest — regardless of current filter or
-// sort — must carry the `showP0Badge` prop. The home queue has no
-// logic to test (it hard-codes `showP0Badge` on every recentLog),
-// so this file focuses on the manifest's derivation.
+// sort — must carry the `showP0Badge` prop. Home-page and deep-link
+// overlay propagation is covered in `App.behavior.test.tsx`; this
+// file focuses on the manifest's derivation.
 //
 // `IncidentLogCard` is stubbed to a transparent wrapper that
 // surfaces the `showP0Badge` prop as a data attribute, so the

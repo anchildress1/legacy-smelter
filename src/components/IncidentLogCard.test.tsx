@@ -6,24 +6,28 @@ import {
   IMPACT_GLOW_FILTER_ESCALATED,
 } from '../lib/impactGlow';
 
-// This suite pins the hover-tooltip surface on IncidentLogCard. The card
-// caps the incident title and the share quote at exactly two lines each
-// (`line-clamp-2 min-h-[2lh]`) so every card in the feed has the same
-// vertical footprint. Truncated text would be unreadable without the
-// native `title` attribute fallback, so these tests assert:
+// This suite pins multiple IncidentLogCard contracts that would
+// otherwise only be covered indirectly. Each describe block below
+// targets a distinct concern:
 //
-//   1. The full text is always written to the `title` attribute, even
-//      when it fits on one line (so the attribute-selector contract is
-//      stable regardless of content length).
-//   2. The clamp classes stay in place (a refactor that drops
-//      `line-clamp-2` would silently return the card to free-flow).
-//   3. Special characters (quotes, angle brackets, ampersands) make it
-//      into the DOM attribute without double-escaping.
+//   1. Title + quote tooltip surface — the card caps both at two
+//      lines (`line-clamp-2 min-h-[2lh]`) for a uniform vertical
+//      footprint, so the full text must be preserved in the native
+//      `title` attribute. Tests assert presence on short AND long
+//      content and check special-character pass-through.
+//   2. Interaction contract — click and keyboard affordances.
+//   3. Impact glow + escalate halo — the card must pull its glow
+//      classes from `lib/impactGlow` for both tiers (base and
+//      escalated) and apply the filter-only halo to the Escalate
+//      column when armed.
+//   4. P0 priority badge — the static "P0" pill in the header
+//      right-cluster is rendered only when `showP0Badge` is true.
 //
-// `useEscalation` is mocked to a stable no-op state — escalation
-// behavior is covered by src/hooks/useEscalation.test.tsx and
-// src/components/IncidentReportOverlay.test.tsx; this file is only
-// about the card's text-overflow contract.
+// `useEscalation` is mocked to a mutable state object so individual
+// tests can flip `escalated` to exercise the armed visual tier
+// without re-mocking per case. The hook's own behavior (toggle,
+// sync, error handling) is covered by src/hooks/useEscalation.test.tsx
+// and src/components/IncidentReportOverlay.test.tsx.
 
 // Mutable mock state so individual tests can flip `escalated` to
 // exercise the "armed" visual tier (Impact glow + escalate column
