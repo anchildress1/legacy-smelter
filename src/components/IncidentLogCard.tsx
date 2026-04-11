@@ -100,7 +100,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
               className={`inline-flex items-center text-[9px] font-mono font-bold text-zinc-950 bg-hazard-amber/90 px-1 py-0.5 rounded ${log.sanctioned ? '' : 'invisible'}`}
               aria-hidden={!log.sanctioned}
             >
-              <ShieldCheck size={8} />
+              <ShieldCheck size={8} aria-hidden="true" />
             </span>
             <SeverityBadge severity={log.severity} />
           </div>

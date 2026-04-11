@@ -11,3 +11,5 @@ coverage/
 *.tmp
 .env*
 !.env.example
+
+.vite.env
