@@ -102,8 +102,8 @@ function getSpaHtml() {
 // Each entry maps a matching regex in `dist/index.html` to the replacement
 // rendered with the incident context. Kept as a flat table (instead of 14
 // chained `.replace()` calls) so the list is easy to keep in sync with
-// `index.html` and so the per-request cost is a single reduce instead of
-// 14 independent scans over the ~50KB SPA template.
+// `index.html` and so adding/removing an OG tag is a single-line diff
+// instead of touching call-site plumbing.
 function buildOgReplacements(incident, canonicalUrl) {
   const title = `${incident.og_headline} — Legacy Smelter`;
   const rawDesc = `[${incident.severity}] ${incident.legacy_infra_class}: ${incident.incident_feed_summary}`;

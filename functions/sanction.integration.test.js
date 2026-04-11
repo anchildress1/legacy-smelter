@@ -129,6 +129,15 @@ async function purgeCollection(collectionPath) {
   }
 }
 
+function stubGeminiWinner(id, rationale = 'integration-picked') {
+  generateContentMock.mockResolvedValueOnce({
+    text: JSON.stringify({
+      sanctioned_incident_id: id,
+      sanction_rationale: rationale,
+    }),
+  });
+}
+
 beforeAll(() => {
   if (!process.env.FIRESTORE_EMULATOR_HOST) {
     throw new Error(
@@ -314,15 +323,6 @@ describe('finalizeWinner (emulator)', () => {
 });
 
 describe('runSanctionBatch (emulator)', () => {
-  function stubGeminiWinner(id, rationale = 'integration-picked') {
-    generateContentMock.mockResolvedValueOnce({
-      text: JSON.stringify({
-        sanctioned_incident_id: id,
-        sanction_rationale: rationale,
-      }),
-    });
-  }
-
   it('completes a full sweep → claim → judge → finalize round-trip', async () => {
     const ids = await seedIncidents(MIN_BATCH);
     stubGeminiWinner(ids[1]);
@@ -394,6 +394,7 @@ describe('runSanctionBatch (emulator)', () => {
       .get();
     expect(stranded.size).toBe(MIN_BATCH);
     expect(stranded.docs.every((d) => d.data().sanction_lease_at !== null)).toBe(true);
-    expect(stranded.docs.map((d) => d.id).sort()).toEqual([...ids].sort());
+    const byId = (a, b) => a.localeCompare(b);
+    expect(stranded.docs.map((d) => d.id).sort(byId)).toEqual([...ids].sort(byId));
   });
 });
