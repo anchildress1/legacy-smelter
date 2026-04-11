@@ -2,11 +2,6 @@ import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 
 import { Howl } from 'howler';
 import {
   db,
-  collection,
-  onSnapshot,
-  query,
-  orderBy,
-  limit,
   doc,
   getDoc,
 } from './firebase';
@@ -16,25 +11,32 @@ import {
   type AnalysisErrorCategory,
   type SmeltAnalysis,
 } from './services/geminiService';
-import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
+import { SmeltLog } from './types';
 import type { SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
 import { IncidentLogCard } from './components/IncidentLogCard';
 import { getLogShareLinks, buildShareLinks, buildIncidentUrl } from './lib/utils';
 import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
-import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 import { DecommissionIndex } from './components/DecommissionIndex';
 import { SiteFooter } from './components/SiteFooter';
 import { DataHealthIndicator } from './components/DataHealthIndicator';
-import { parseSmeltLog, parseSmeltLogBatch } from './lib/smeltLogSchema';
+import { SeverityBadge } from './components/SeverityBadge';
+import { shouldAutoOpenPostmortem } from './lib/postmortemAutoOpen';
+import { parseSmeltLog } from './lib/smeltLogSchema';
+import {
+  useGlobalStats,
+} from './hooks/useGlobalStats';
+import {
+  useRecentIncidentLogs,
+  DEFAULT_QUEUE_SCHEMA_ISSUE_PREFIX,
+} from './hooks/useRecentIncidentLogs';
 
 // Audio
 const flyInSound = new Howl({ src: ['/assets/audio/sfx-fly-in.wav'], loop: false, volume: 0.5 });
 const fireSound = new Howl({ src: ['/assets/audio/sfx-smelt.wav'], loop: false, volume: 0.6 });
 const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, volume: 0.4 });
 const CANVAS_READY_TIMEOUT_MS = 8_000;
-const QUEUE_SCHEMA_ISSUE_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
-const STATS_SCHEMA_ISSUE = 'GLOBAL STATS DATA SCHEMA VIOLATION. DECOMMISSION INDEX FROZEN.';
+const QUEUE_SCHEMA_ISSUE_PREFIX = DEFAULT_QUEUE_SCHEMA_ISSUE_PREFIX;
 
 // User-visible copy for the analyze-path error categories. Kept alongside
 // the category definitions so a category added to `AnalysisError` that
@@ -76,12 +78,23 @@ interface CanvasReadyWaiter {
 }
 
 export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProps>) {
-  const [globalStats, setGlobalStats] = useState<GlobalStatsType>({ total_pixels_melted: 0 });
-  const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
+  const { globalStats, statsIssue } = useGlobalStats({ source: 'App' });
+  const { recentLogs, queueIssue, loaded: recentLogsLoaded } = useRecentIncidentLogs({
+    limitCount: 3,
+    source: 'App',
+    schemaIssuePrefix: QUEUE_SCHEMA_ISSUE_PREFIX,
+  });
   const [selectedRecentLog, setSelectedRecentLog] = useState<SmeltLog | null>(null);
+  // Deep-link targets are staged here until the top-3 subscription
+  // has delivered its first snapshot. Otherwise the overlay could open
+  // with `showP0Badge=false` during the cold-load window and then flash
+  // to `true` the moment `recentLogs` populates — misleading the user
+  // about the incident's priority for one render. The staging effect
+  // below transfers the pending log into `selectedRecentLog` once
+  // `recentLogsLoaded` flips true. On Firestore error the hook still
+  // sets `loaded` to true, so this gating cannot hang.
+  const [pendingDeepLinkLog, setPendingDeepLinkLog] = useState<SmeltLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [statsIssue, setStatsIssue] = useState<string | null>(null);
-  const [queueIssue, setQueueIssue] = useState<string | null>(null);
   const [analyzeIssue, setAnalyzeIssue] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -145,48 +158,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     });
   }, [onCanvasReadyTimeout]);
 
-  useEffect(() => {
-    const statsDoc = doc(db, 'global_stats', 'main');
-    const unsubStats = onSnapshot(statsDoc, (snapshot) => {
-      if (!snapshot.exists()) return;
-      const data = snapshot.data();
-      if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
-        console.error('[App] global_stats/main has invalid total_pixels_melted:', data);
-        setStatsIssue(STATS_SCHEMA_ISSUE);
-        return;
-      }
-      setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
-      setStatsIssue(null);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'global_stats/main', setStatsIssue);
-    });
-
-    // P0 queue uses server-maintained impact_score so this listener stays
-    // bounded and does not stream the full collection into the browser.
-    const logsQuery = query(
-      collection(db, 'incident_logs'),
-      orderBy('impact_score', 'desc'),
-      orderBy('timestamp', 'desc'),
-      limit(3)
-    );
-    const unsubLogs = onSnapshot(logsQuery, (snapshot) => {
-      const { entries, invalidCount } = parseSmeltLogBatch(snapshot.docs, { source: 'App' });
-      setRecentLogs(entries);
-      if (invalidCount > 0) {
-        const noun = invalidCount === 1 ? 'incident' : 'incidents';
-        setQueueIssue(
-          `${QUEUE_SCHEMA_ISSUE_PREFIX} ${invalidCount} ${noun} hidden from queue due to invalid schema.`
-        );
-      } else {
-        setQueueIssue(null);
-      }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'incident_logs', setQueueIssue);
-    });
-
-    return () => { unsubStats(); unsubLogs(); };
-  }, []);
-
   const releaseCameraResources = () => {
     if (cameraAttachTimerRef.current !== null) {
       clearTimeout(cameraAttachTimerRef.current);
@@ -210,8 +181,11 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     };
   }, [rejectCanvasWaiters]);
 
-  // Deep link: fetch incident by Firestore doc ID and open its overlay.
-  // The URL is already cleared by Root — deepLinkId is a one-shot value.
+  // Deep link: fetch incident by Firestore doc ID and stage it for the
+  // overlay. Actually opening the overlay is deferred to the staging
+  // effect below so the P0 badge derivation has a populated top-3 set
+  // to check against. The URL is already cleared by Root — deepLinkId
+  // is a one-shot value.
   useEffect(() => {
     if (!deepLinkId) return;
     let cancelled = false;
@@ -224,7 +198,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
           return;
         }
         const parsedLog = parseSmeltLog(snap.id, snap.data());
-        setSelectedRecentLog(parsedLog);
+        setPendingDeepLinkLog(parsedLog);
       } catch (err) {
         if (!cancelled) {
           console.error('[App] Deep link fetch/parsing failed:', err);
@@ -233,6 +207,18 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     })();
     return () => { cancelled = true; };
   }, [deepLinkId]);
+
+  // Staging effect: a pending deep-link log waits here until the top-3
+  // subscription has delivered its first snapshot, then transfers into
+  // `selectedRecentLog` to open the overlay. This runs exactly once per
+  // pending log because it clears `pendingDeepLinkLog` on transfer.
+  // Reading `recentLogsLoaded` guarantees the P0 derivation below sees
+  // a populated Set on first render, avoiding a false→true badge flash.
+  useEffect(() => {
+    if (!pendingDeepLinkLog || !recentLogsLoaded) return;
+    setSelectedRecentLog(pendingDeepLinkLog);
+    setPendingDeepLinkLog(null);
+  }, [pendingDeepLinkLog, recentLogsLoaded]);
 
   const startCamera = async () => {
     try {
@@ -376,9 +362,14 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     setIsComplete(true);
     // Only auto-open the postmortem the first time. On replay, the user
     // already dismissed it once — don't force it back open.
+    // Respect reduced motion and explicit user opt-out preferences.
+    // Reads are guarded inside shouldAutoOpenPostmortem() so restricted
+    // runtimes cannot throw during smelt completion.
     if (!postmortemAutoOpenedRef.current) {
       postmortemAutoOpenedRef.current = true;
-      setShowReport(true);
+      if (shouldAutoOpenPostmortem()) {
+        setShowReport(true);
+      }
     }
   };
 
@@ -423,9 +414,18 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
         buildIncidentUrl(analysis.incidentId)
       )
     : [];
-  const activeIssues = [statsIssue, queueIssue, analyzeIssue].filter(
+  const activeIssues = [statsIssue, queueIssue].filter(
     (message): message is string => !!message,
   );
+  // Single derivation for "is this incident in the live top-3 set?".
+  // Guards against falsy ids on both sides (Firestore doc ids are
+  // non-empty but a malformed analysis payload could carry an empty
+  // `incidentId`). A falsy id can never be P0 — returns false rather
+  // than matching the first falsy-id log in `recentLogs`.
+  const isInTopPriority = (id: string | null | undefined): boolean => {
+    if (!id) return false;
+    return recentLogs.some((log) => log.id === id);
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
@@ -455,12 +455,12 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
             <DataHealthIndicator issues={activeIssues} />
             <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
             <button onClick={onNavigateManifest} className="nav-btn" aria-label="All incidents">
-              {/* On mobile the word "INCIDENTS" is dropped to free up
-                  horizontal room for the tagline and the Decommission
-                  Index; the aria-label above keeps screen readers on the
-                  full label. */}
+              {/* On mobile the label is dropped entirely — "ALL" alone
+                  reads as nonsense, and the tagline + Decommission Index
+                  already eat the available header width. The arrow icon
+                  carries the affordance and the aria-label keeps screen
+                  readers on the full name. */}
               <span className="hidden sm:inline">ALL INCIDENTS</span>
-              <span className="sm:hidden">ALL</span>
               <ArrowRight size={14} />
             </button>
           </div>
@@ -583,7 +583,33 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                   )}
                 </div>
               )}
+
             </div>
+
+            {/* Inline analyze error — displayed below canvas, themed as institutional fault.
+                The `data-health-issue` test id is the historical contract for the analyzer's
+                user-visible fault surface. It used to live inside DataHealthIndicator's list,
+                but the post-redesign layout puts the analyzer-specific message inline below
+                the canvas (closer to the action that triggered it) while DataHealthIndicator
+                still owns the global `statsIssue`/`queueIssue` state. Tests query this id to
+                pin the contract that an analyzer fault always reaches the UI. */}
+            {analyzeIssue && (
+              <div
+                role="alert"
+                data-testid="data-health-issue"
+                className="font-mono text-[10px] uppercase tracking-widest text-hazard-amber border border-hazard-amber/25 bg-hazard-amber/5 rounded-lg px-4 py-3 leading-relaxed"
+              >
+                {analyzeIssue}
+              </div>
+            )}
+
+            {/* Compact result summary — shown after smelt completes */}
+            {isComplete && analysis && (
+              <div className="font-mono text-[10px] uppercase tracking-widest border border-concrete-border bg-concrete-mid rounded-lg px-4 py-3 flex items-center gap-3 min-w-0">
+                <SeverityBadge severity={analysis.severity} />
+                <span className="text-stone-gray truncate min-w-0">{analysis.ogHeadline}</span>
+              </div>
+            )}
           </div>
 
           {/* Right Column: Incident Queue */}
@@ -591,8 +617,11 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
             <div>
               <div className="mb-3">
                 <h2 className="text-hazard-amber font-mono text-xs lg:text-sm uppercase tracking-wide lg:tracking-widest font-bold">
-                  P0 INCIDENTS
+                  P0 INCIDENT QUEUE
                 </h2>
+                <p className="mt-1 text-stone-gray font-mono text-[9px] uppercase tracking-[0.18em]">
+                  Ranked By Impact
+                </p>
                 <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" />
               </div>
               <ul className="space-y-4">
@@ -600,6 +629,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                   <li key={log.id}>
                     <IncidentLogCard
                       log={log}
+                      showP0Badge
                       onClick={() => setSelectedRecentLog(log)}
                     />
                   </li>
@@ -621,12 +651,24 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
 
       <SiteFooter />
 
-      {/* Post-mortem overlay */}
+      {/* Post-mortem overlay.
+
+          `showP0Badge` is derived from live top-3 membership, not from
+          which surface opened the overlay — a deep link can land on an
+          incident that was never in the queue, and a home-queue click
+          can open an incident that just aged out between render and
+          click. `isInTopPriority` is the single source of truth for
+          both overlay call sites so the badge stays consistent with
+          the cards visible underneath. Deep links are additionally
+          gated on `recentLogsLoaded` upstream (see the staging effect)
+          so the badge cannot flash false-then-true while the top-3
+          subscription is still landing. */}
       {selectedRecentLog && (
         <IncidentReportOverlay
           log={selectedRecentLog}
           shareLinks={getLogShareLinks(selectedRecentLog)}
           incidentId={selectedRecentLog.id}
+          showP0Badge={isInTopPriority(selectedRecentLog.id)}
           onClose={() => setSelectedRecentLog(null)}
         />
       )}
@@ -636,6 +678,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
           analysis={analysis}
           shareLinks={reportShareLinks}
           incidentId={analysis.incidentId}
+          showP0Badge={isInTopPriority(analysis.incidentId)}
           onClose={() => setShowReport(false)}
         />
       )}

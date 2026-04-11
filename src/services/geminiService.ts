@@ -53,7 +53,6 @@ export interface SmeltAnalysis {
   diagnosis: string;
   dominantColors: string[];
   chromaticProfile: string;
-  systemDx: string;
   severity: string;
   primaryContamination: string;
   contributingFactor: string;
@@ -102,7 +101,6 @@ function parseSmeltAnalysis(raw: unknown): SmeltAnalysis {
     diagnosis: expectString(raw, 'diagnosis'),
     dominantColors: dominantColors.filter((c): c is string => typeof c === 'string'),
     chromaticProfile: expectString(raw, 'chromaticProfile'),
-    systemDx: expectString(raw, 'systemDx'),
     severity: expectString(raw, 'severity'),
     primaryContamination: expectString(raw, 'primaryContamination'),
     contributingFactor: expectString(raw, 'contributingFactor'),

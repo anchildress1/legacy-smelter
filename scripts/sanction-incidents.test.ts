@@ -43,7 +43,6 @@ function makeCandidate(id: string): Candidate {
     archive_note: 'archive',
     failure_origin: 'origin',
     chromatic_profile: 'profile',
-    system_dx: 'dx',
     incident_feed_summary: 'summary',
     share_quote: 'quote',
   };
@@ -75,7 +74,6 @@ describe('sanction-incidents helpers', () => {
           archive_note: 'archive',
           failure_origin: 'origin',
           chromatic_profile: 'profile',
-          system_dx: 'dx',
           incident_feed_summary: 'summary',
           share_quote: 'quote',
         },
@@ -89,7 +87,6 @@ describe('sanction-incidents helpers', () => {
       archive_note: 'archive',
       failure_origin: 'origin',
       chromatic_profile: 'profile',
-      system_dx: 'dx',
       incident_feed_summary: 'summary',
       share_quote: 'quote',
     });

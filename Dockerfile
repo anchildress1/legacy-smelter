@@ -1,22 +1,18 @@
 # ── build stage ──────────────────────────────────────────────────────────────
 # Installs all deps (including devDeps) and compiles the Vite SPA.
-# VITE_* args are inlined into the client bundle by Vite at build time.
+# VITE_* values are provided as a BuildKit secret env file at build time.
+# This keeps secret-like names out of ARG/ENV image metadata.
 FROM node:24-alpine AS builder
 WORKDIR /app
 
-ARG VITE_FIREBASE_API_KEY
-ARG VITE_FIREBASE_AUTH_DOMAIN
-ARG VITE_FIREBASE_PROJECT_ID
-ARG VITE_FIREBASE_STORAGE_BUCKET
-ARG VITE_FIREBASE_MESSAGING_SENDER_ID
-ARG VITE_FIREBASE_APP_ID
-ARG VITE_FIREBASE_FIRESTORE_DATABASE_ID
-ARG VITE_APP_URL
-
 COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
-COPY . .
-RUN npm run build
+COPY index.html vite.config.ts tsconfig.json ./
+COPY public ./public
+COPY shared ./shared
+COPY src ./src
+RUN --mount=type=secret,id=vite_env,target=/run/secrets/vite_env \
+  sh -eu -c 'set -a; . /run/secrets/vite_env; set +a; npm run build'
 
 # ── production dependencies stage ─────────────────────────────────────────────
 # Installs runtime dependencies from lockfile for deterministic image builds.
@@ -35,8 +31,9 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 FROM node:24-alpine AS server
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=server-deps /app/node_modules ./node_modules
-COPY package.json server.js ./
-COPY --from=builder /app/dist ./dist
+COPY --from=server-deps --chown=node:node --chmod=0555 /app/node_modules ./node_modules
+COPY --chown=node:node --chmod=0555 package.json server.js ./
+COPY --from=builder --chown=node:node --chmod=0555 /app/dist ./dist
+USER node
 EXPOSE 8080
 CMD ["node", "server.js"]

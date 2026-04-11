@@ -1,5 +1,10 @@
 import { act, render, screen, within } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  IMPACT_GLOW_BASE,
+  IMPACT_GLOW_ESCALATED,
+  IMPACT_GLOW_FILTER_ESCALATED,
+} from '../lib/impactGlow';
 
 // `useEscalation` itself is covered in src/hooks/useEscalation.test.tsx —
 // this suite pins the UI side of the contract: when the hook surfaces a
@@ -91,7 +96,6 @@ function makeAnalysis(): SmeltAnalysis {
     diagnosis: 'Critical mismatch detected',
     dominantColors: ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff'],
     chromaticProfile: 'Thermal Beige',
-    systemDx: 'Acute Drift Syndrome',
     severity: 'Severe',
     primaryContamination: 'Legacy residue',
     contributingFactor: 'Config rot',
@@ -113,6 +117,25 @@ function resetEscalationState() {
   escalationState.isToggling = false;
   escalationState.toggleError = null;
   escalationState.toggle = vi.fn(async () => {});
+}
+
+function findImpactNumber(container: HTMLElement): HTMLElement {
+  // The stats row carries the test id; the Impact number is the
+  // first child's first numeric leaf. Scope to the row so other
+  // numeric content on the page (timestamps, counts) can't shadow.
+  const row = container.querySelector('[data-testid="incident-stats-row"]');
+  if (!(row instanceof HTMLElement)) {
+    throw new TypeError('stats row not rendered');
+  }
+  const nodes = Array.from(row.querySelectorAll('div')).filter((el) =>
+    /^\d+$/.test((el.textContent ?? '').trim()),
+  );
+  if (nodes.length === 0) {
+    throw new Error('no numeric leaf found inside stats row');
+  }
+  // The Impact number is the FIRST numeric leaf because the Impact
+  // slot is the first child of the row (basis-1/3 on the left).
+  return nodes[0];
 }
 
 describe('IncidentReportOverlay escalation error surface', () => {
@@ -494,5 +517,184 @@ describe('IncidentReportOverlay escalation error surface', () => {
     );
     consoleErrorSpy.mockRestore();
     consoleWarnSpy.mockRestore();
+  });
+});
+
+describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
+  // The back card mirrors the front card's glow treatment. These
+  // tests confirm the overlay imports and applies the shared
+  // constants from `lib/impactGlow` — matching the coverage already
+  // in place for IncidentLogCard. The literal class strings are
+  // pinned in src/lib/impactGlow.test.ts so both surfaces can be
+  // updated in lockstep by editing the constants alone.
+
+  beforeEach(() => {
+    resetEscalationState();
+  });
+
+  // POSITIVE — at-rest glow tier on the Impact number.
+
+  it('applies IMPACT_GLOW_BASE to the Impact number when not armed', () => {
+    const { container } = render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+    const impact = findImpactNumber(container);
+    for (const token of IMPACT_GLOW_BASE.split(' ')) {
+      expect(impact.className).toContain(token);
+    }
+  });
+
+  it('does not apply the escalated glow filter to the Armed button when not armed', () => {
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+    const button = screen.getByRole('button', { name: /^escalate$/i });
+    expect(button.className).not.toContain(IMPACT_GLOW_FILTER_ESCALATED);
+  });
+
+  // POSITIVE — armed tier on both Impact number and button.
+
+  it('applies IMPACT_GLOW_ESCALATED to the Impact number when armed', () => {
+    escalationState.escalated = true;
+    const { container } = render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+    const impact = findImpactNumber(container);
+    for (const token of IMPACT_GLOW_ESCALATED.split(' ')) {
+      expect(impact.className).toContain(token);
+    }
+  });
+
+  it('applies IMPACT_GLOW_FILTER_ESCALATED to the Armed button when armed', () => {
+    escalationState.escalated = true;
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+    const button = screen.getByRole('button', { name: /remove escalation/i });
+    expect(button.className).toContain(IMPACT_GLOW_FILTER_ESCALATED);
+    // The armed color treatment stays intact — the halo is additive.
+    expect(button.className).toContain('bg-hazard-amber/15');
+    expect(button.className).toContain('text-hazard-amber');
+  });
+
+  // EDGE — exactly one glow tier on the Impact number at a time.
+  // A refactor that concatenated both tiers (dropping the ternary)
+  // would produce a double-dose of filter classes and fight
+  // Tailwind's own precedence rules at render time.
+
+  it('applies exactly one glow tier to the Impact number at a time', () => {
+    const { container } = render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+    const impact = findImpactNumber(container);
+    const hasBaseRadius = impact.className.includes('0_0_6px');
+    const hasEscalatedRadius = impact.className.includes('0_0_8px');
+    expect(hasBaseRadius || hasEscalatedRadius).toBe(true);
+    expect(hasBaseRadius && hasEscalatedRadius).toBe(false);
+  });
+});
+
+describe('IncidentReportOverlay — P0 priority badge', () => {
+  // The back-card must mirror the front-card's P0 treatment so the
+  // badge follows the incident wherever it is rendered. The overlay
+  // doesn't subscribe to `useRecentIncidentLogs` itself — callers
+  // pass `showP0Badge` based on live top-3 membership — so these
+  // tests pin the render contract, not the membership logic (that
+  // side is covered in IncidentManifest.test.tsx and App.behavior
+  // test coverage).
+
+  beforeEach(() => {
+    resetEscalationState();
+  });
+
+  // POSITIVE: the "P0" text appears in the header right-cluster
+  // when the caller passes `showP0Badge`.
+
+  it('renders the P0 badge when showP0Badge is true', () => {
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        showP0Badge
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('P0')).toBeInTheDocument();
+  });
+
+  // NEGATIVE: the badge is absent when the caller explicitly passes
+  // `showP0Badge={false}`. A regression that always rendered the
+  // badge would silently mark every incident as P0.
+
+  it('does not render the P0 badge when showP0Badge is false', () => {
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        showP0Badge={false}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('P0')).toBeNull();
+  });
+
+  // DEFAULT: omitting the prop behaves the same as false. This is
+  // the common case for any future caller that doesn't yet know
+  // about the P0 treatment — the overlay must not accidentally flag
+  // the incident just because the prop is unset.
+
+  it('does not render the P0 badge when showP0Badge is omitted', () => {
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('P0')).toBeNull();
+  });
+
+  // REGRESSION GUARD: the old numbered `priorityTier` scheme used
+  // P1/P2/P3 strings that leaked into the rendered UI during the
+  // refactor. Pin the binary contract: only "P0" exists on the
+  // badge, nothing else. A future regression that re-introduces a
+  // tier prop would fail this test loudly.
+
+  it('never renders P1, P2, or P3 text (binary P0 badge only)', () => {
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        showP0Badge
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('P1')).toBeNull();
+    expect(screen.queryByText('P2')).toBeNull();
+    expect(screen.queryByText('P3')).toBeNull();
   });
 });

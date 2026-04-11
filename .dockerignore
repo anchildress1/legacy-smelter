@@ -7,3 +7,5 @@ dist/
 *.log
 *.tmp
 .DS_Store
+
+.vite.env

@@ -1,106 +1,58 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  db,
-  collection,
-  onSnapshot,
-  query,
-  orderBy,
-  limit,
-  doc,
-} from '../firebase';
-import { SmeltLog, GlobalStats, computeImpact } from '../types';
+import { SmeltLog, computeImpact } from '../types';
 import { getLogShareLinks } from '../lib/utils';
 import { IncidentLogCard } from './IncidentLogCard';
-import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
 import { IncidentReportOverlay } from './IncidentReportOverlay';
 import { DecommissionIndex } from './DecommissionIndex';
 import { SiteFooter } from './SiteFooter';
 import { DataHealthIndicator } from './DataHealthIndicator';
 import { Flame, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
-import { parseSmeltLogBatch } from '../lib/smeltLogSchema';
+import { useGlobalStats } from '../hooks/useGlobalStats';
+import {
+  useManifestLogs,
+  MANIFEST_FETCH_LIMIT,
+  type ManifestSortMode,
+} from '../hooks/useManifestLogs';
+import { useRecentIncidentLogs } from '../hooks/useRecentIncidentLogs';
 
 const PAGE_SIZE = 20;
-const MANIFEST_FETCH_LIMIT = 500;
 type ManifestFilter = 'all' | 'escalated' | 'sanctioned';
-type ManifestSort = 'impact' | 'newest' | 'breaches' | 'escalations';
-const MANIFEST_SCHEMA_ISSUE_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
-const STATS_SCHEMA_ISSUE = 'GLOBAL STATS DATA SCHEMA VIOLATION. DECOMMISSION INDEX FROZEN.';
+type ManifestSort = ManifestSortMode;
 
 interface IncidentManifestProps {
   onNavigateHome: () => void;
 }
 
 export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHome }) => {
-  const [allLogs, setAllLogs] = useState<SmeltLog[]>([]);
-  const [globalStats, setGlobalStats] = useState<GlobalStats>({ total_pixels_melted: 0 });
+  const { globalStats, statsIssue } = useGlobalStats({
+    source: 'IncidentManifest',
+  });
   const [selectedLog, setSelectedLog] = useState<SmeltLog | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [filterMode, setFilterMode] = useState<ManifestFilter>('all');
   const [sortMode, setSortMode] = useState<ManifestSort>('impact');
-  const [isLoading, setIsLoading] = useState(true);
-  const [statsIssue, setStatsIssue] = useState<string | null>(null);
-  const [manifestIssue, setManifestIssue] = useState<string | null>(null);
-
-  useEffect(() => {
-    const unsubStats = onSnapshot(doc(db, 'global_stats', 'main'), (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data();
-      if (typeof data.total_pixels_melted !== 'number' || !Number.isFinite(data.total_pixels_melted)) {
-        console.error('[IncidentManifest] global_stats/main has invalid total_pixels_melted:', data);
-        setStatsIssue(STATS_SCHEMA_ISSUE);
-        return;
-      }
-      setGlobalStats({ total_pixels_melted: data.total_pixels_melted });
-      setStatsIssue(null);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'global_stats/main', setStatsIssue));
-
-    return () => { unsubStats(); };
-  }, []);
-
-  // Keep manifest reads bounded and use server-side ranking for the selected
-  // sort mode so client CPU/memory does not scale with collection size.
-  useEffect(() => {
-    const logsRef = collection(db, 'incident_logs');
-    const q = (() => {
-      switch (sortMode) {
-        case 'impact':
-          return query(logsRef, orderBy('impact_score', 'desc'), orderBy('timestamp', 'desc'), limit(MANIFEST_FETCH_LIMIT));
-        case 'breaches':
-          return query(logsRef, orderBy('breach_count', 'desc'), orderBy('timestamp', 'desc'), limit(MANIFEST_FETCH_LIMIT));
-        case 'escalations':
-          return query(logsRef, orderBy('escalation_count', 'desc'), orderBy('timestamp', 'desc'), limit(MANIFEST_FETCH_LIMIT));
-        case 'newest':
-        default:
-          return query(logsRef, orderBy('timestamp', 'desc'), limit(MANIFEST_FETCH_LIMIT));
-      }
-    })();
-
-    setIsLoading(true);
-    setManifestIssue(null);
-    let gotFirst = false;
-    const unsubLogs = onSnapshot(q, (snap) => {
-      const { entries, invalidCount } = parseSmeltLogBatch(snap.docs, { source: 'IncidentManifest' });
-      setAllLogs(entries);
-      if (invalidCount > 0) {
-        const noun = invalidCount === 1 ? 'incident' : 'incidents';
-        setManifestIssue(
-          `${MANIFEST_SCHEMA_ISSUE_PREFIX} ${invalidCount} ${noun} hidden from manifest due to invalid schema.`
-        );
-      } else {
-        setManifestIssue(null);
-      }
-      if (!gotFirst) {
-        gotFirst = true;
-        setIsLoading(false);
-      }
-    }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'incident_logs', setManifestIssue);
-      setAllLogs([]);
-      setIsLoading(false);
-    });
-
-    return () => { unsubLogs(); };
-  }, [sortMode]);
+  const { allLogs, isLoading, manifestIssue } = useManifestLogs(sortMode);
+  // Mirror the home queue's top-3 subscription here so the manifest
+  // can mark the same incidents as P0 regardless of the user's
+  // current filter or sort. Using the exact same hook guarantees
+  // the two surfaces agree on "who is in the top 3" — impact desc,
+  // then timestamp desc — without the manifest having to redo the
+  // sort or care whether its own `allLogs` window is wide enough.
+  //
+  // `queueIssue` is aliased to `topPriorityIssue` and plumbed through
+  // `activeIssues` below. Dropping it would silently hide a permission
+  // or schema error on the top-3 query — the P0 badges would just
+  // vanish from the manifest with no user-visible signal.
+  const { recentLogs: topPriorityLogs, queueIssue: topPriorityIssue } =
+    useRecentIncidentLogs({ source: 'IncidentManifest' });
+  const topPriorityIds = useMemo(
+    // Filter falsy ids defensively: Firestore guarantees non-empty
+    // `snap.id` for real docs, but a synthetic log or an optimistic
+    // insert with an empty id would otherwise pollute the Set and
+    // silently mark every other empty-id log as P0.
+    () => new Set(topPriorityLogs.map((log) => log.id).filter(Boolean)),
+    [topPriorityLogs],
+  );
 
   const manifestCounts = useMemo(() => ({
     all: allLogs.length,
@@ -141,7 +93,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
 
   const totalPages = Math.max(1, Math.ceil(sortedLogs.length / PAGE_SIZE));
   const isWindowTruncated = allLogs.length === MANIFEST_FETCH_LIMIT;
-  const activeIssues = [statsIssue, manifestIssue].filter((message): message is string => !!message);
+  const activeIssues = [statsIssue, manifestIssue, topPriorityIssue].filter((message): message is string => !!message);
   // Clamp page if the dataset shrinks (e.g. docs deleted) while user is on a later page
   const safePage = Math.min(currentPage, totalPages - 1);
   const pageStart = safePage * PAGE_SIZE;
@@ -201,9 +153,10 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
               key={value}
               type="button"
               onClick={() => setFilterMode(value)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+              aria-pressed={filterMode === value}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset ${
                 filterMode === value
-                  ? 'border-hazard-amber/40 bg-hazard-amber/10 text-hazard-amber'
+                  ? 'border-hazard-amber/70 bg-hazard-amber/20 text-hazard-amber'
                   : 'border-[#444] bg-[#1a1a1a] text-stone-gray hover:text-ash-white hover:border-[#555]'
               }`}
             >
@@ -214,9 +167,10 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           <select
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as ManifestSort)}
-            className="ml-auto rounded-md border border-[#333] bg-transparent px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-widest text-stone-gray focus:border-hazard-amber focus:outline-none"
+            aria-label="Sort incidents"
+            className="ml-auto rounded-full border border-[#444] bg-[#1a1a1a] px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest text-stone-gray focus:border-hazard-amber focus:outline-none"
           >
-            <option value="impact">Highest Impact</option>
+            <option value="impact">P0 Impact (Highest First)</option>
             <option value="newest">Newest First</option>
             <option value="breaches">Most Breaches</option>
             <option value="escalations">Most Escalations</option>
@@ -235,6 +189,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             <li key={log.id}>
               <IncidentLogCard
                 log={log}
+                showP0Badge={topPriorityIds.has(log.id)}
                 onClick={() => setSelectedLog(log)}
               />
             </li>
@@ -292,6 +247,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           log={selectedLog}
           shareLinks={getLogShareLinks(selectedLog)}
           incidentId={selectedLog.id}
+          showP0Badge={topPriorityIds.has(selectedLog.id)}
           onClose={() => setSelectedLog(null)}
         />
       )}
