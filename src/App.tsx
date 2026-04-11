@@ -461,12 +461,12 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
             <DataHealthIndicator issues={activeIssues} />
             <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
             <button onClick={onNavigateManifest} className="nav-btn" aria-label="All incidents">
-              {/* On mobile the word "INCIDENTS" is dropped to free up
-                  horizontal room for the tagline and the Decommission
-                  Index; the aria-label above keeps screen readers on the
-                  full label. */}
+              {/* On mobile the label is dropped entirely — "ALL" alone
+                  reads as nonsense, and the tagline + Decommission Index
+                  already eat the available header width. The arrow icon
+                  carries the affordance and the aria-label keeps screen
+                  readers on the full name. */}
               <span className="hidden sm:inline">ALL INCIDENTS</span>
-              <span className="sm:hidden">ALL</span>
               <ArrowRight size={14} />
             </button>
           </div>
