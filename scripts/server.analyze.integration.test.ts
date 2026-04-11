@@ -197,6 +197,19 @@ describe('POST /api/analyze integration', () => {
     return req.send(body);
   }
 
+  // Shared assertion for the "Gemini upstream is unusable" family of
+  // failures: the handler should short-circuit with 502 "Analysis failed"
+  // and must NOT have enqueued any batch writes. Each caller sets up the
+  // upstream mock differently (throw, empty text, malformed JSON, schema
+  // miss, etc.), then delegates to this helper so the response-shape
+  // invariant is pinned in one place.
+  async function expectAnalysisFailure502(): Promise<void> {
+    const response = await bootAnalyzeRequest();
+    expect(response.status).toBe(502);
+    expect(response.body.error).toContain('Analysis failed');
+    expect(state.batchCalls).toHaveLength(0);
+  }
+
   beforeAll(() => {
     for (const key of ENV_KEYS_MUTATED) {
       ENV_SNAPSHOT[key] = process.env[key];
@@ -478,53 +491,31 @@ describe('POST /api/analyze integration', () => {
 
   it('returns 502 when Gemini throws during analysis', async () => {
     state.generateContent.mockRejectedValue(new Error('gemini network down'));
-    const response = await bootAnalyzeRequest();
-
-    expect(response.status).toBe(502);
-    expect(response.body.error).toContain('Analysis failed');
-    expect(state.batchCalls).toHaveLength(0);
+    await expectAnalysisFailure502();
   });
 
   it('returns 502 when Gemini returns an empty response', async () => {
     state.generateContent.mockResolvedValue({ text: '' });
-    const response = await bootAnalyzeRequest();
-
-    expect(response.status).toBe(502);
-    expect(response.body.error).toContain('Analysis failed');
-    expect(state.batchCalls).toHaveLength(0);
+    await expectAnalysisFailure502();
   });
 
   it('returns 502 when Gemini returns malformed JSON', async () => {
     state.generateContent.mockResolvedValue({ text: 'not json at all' });
-    const response = await bootAnalyzeRequest();
-
-    expect(response.status).toBe(502);
-    expect(response.body.error).toContain('Analysis failed');
-    expect(state.batchCalls).toHaveLength(0);
+    await expectAnalysisFailure502();
   });
 
   it('returns 502 when Gemini response is missing required fields', async () => {
     const partial = JSON.parse(buildGeminiResponseText()) as Record<string, unknown>;
     delete partial.legacy_infra_class;
     state.generateContent.mockResolvedValue({ text: JSON.stringify(partial) });
-
-    const response = await bootAnalyzeRequest();
-
-    expect(response.status).toBe(502);
-    expect(response.body.error).toContain('Analysis failed');
-    expect(state.batchCalls).toHaveLength(0);
+    await expectAnalysisFailure502();
   });
 
   it('returns 502 when Gemini subject_box is not a 4-number array', async () => {
     const wrongBox = JSON.parse(buildGeminiResponseText()) as Record<string, unknown>;
     wrongBox.subject_box = [0, 0, 'nope', 100];
     state.generateContent.mockResolvedValue({ text: JSON.stringify(wrongBox) });
-
-    const response = await bootAnalyzeRequest();
-
-    expect(response.status).toBe(502);
-    expect(response.body.error).toContain('Analysis failed');
-    expect(state.batchCalls).toHaveLength(0);
+    await expectAnalysisFailure502();
   });
 
   it('accepts finite non-integer floats in subject_box and persists them verbatim', async () => {
