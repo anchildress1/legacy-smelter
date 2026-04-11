@@ -92,9 +92,8 @@ async function fetchIncident(docId) {
 let _spaHtmlCache;
 try {
   _spaHtmlCache = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
-} catch (err) {
-  const msg = err instanceof Error ? err.message : String(err);
-  throw new Error(`[server] Cannot read ${DIST}/index.html. Run "npm run build" first. Cause: ${msg}`);
+} catch (cause) {
+  throw new Error(`[server] Cannot read ${DIST}/index.html. Run "npm run build" first.`, { cause });
 }
 function getSpaHtml() {
   return _spaHtmlCache;

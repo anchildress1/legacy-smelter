@@ -77,7 +77,6 @@ vi.mock('@google/genai', () => ({
 // Imported AFTER vi.mock registrations so the module picks up the stubs.
 const {
   MIN_BATCH,
-  LEASE_TTL_MS,
   MAX_SELECTION_ATTEMPTS,
   sanitizeRationale,
   parseIncidentDoc,

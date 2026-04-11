@@ -18,13 +18,13 @@ function getServiceAccountCredential() {
   const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (json) {
     try { return JSON.parse(json); }
-    catch (e) { throw new Error(`FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON: ${e}`); }
+    catch (cause) { throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON', { cause }); }
   }
 
   const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (credPath) {
     try { return JSON.parse(readFileSync(credPath, 'utf-8')); }
-    catch (e) { throw new Error(`Failed to read/parse GOOGLE_APPLICATION_CREDENTIALS at ${credPath}: ${e}`); }
+    catch (cause) { throw new Error(`Failed to read/parse GOOGLE_APPLICATION_CREDENTIALS at ${credPath}`, { cause }); }
   }
 
   return undefined;

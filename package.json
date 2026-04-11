@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "legacy-smelter",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -16,7 +16,8 @@
     "test:rules": "firebase emulators:exec --only firestore --project demo-legacy-smelter --config firebase.test.json \"vitest run --config vitest.rules.config.ts\"",
     "test:proof": "npm run lint && npm run test:run && npm run test:api:emulator && npm run test:rules",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p scripts/tsconfig.json"
+    "lint": "oxlint && npm run typecheck",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p scripts/tsconfig.json"
   },
   "dependencies": {
     "@google/genai": "^1.49.0",
@@ -46,6 +47,7 @@
     "autoprefixer": "^10.4.27",
     "firebase-tools": "^15.14.0",
     "jsdom": "^29.0.2",
+    "oxlint": "^1.59.0",
     "supertest": "^7.2.2",
     "tailwindcss": "^4.2.2",
     "tsx": "^4.21.0",

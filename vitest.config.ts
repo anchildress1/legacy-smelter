@@ -1,6 +1,12 @@
 import path from 'node:path';
 import { defineConfig } from 'vitest/config';
 
+/**
+ * Base Vitest config used by the default unit-test sweep. The integration
+ * configs (`vitest.api-emulator.config.ts`, `vitest.rules.config.ts`) extend
+ * this file via `mergeConfig` so the alias and base options stay in a single
+ * source of truth.
+ */
 export default defineConfig({
   resolve: {
     alias: {
