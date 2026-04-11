@@ -179,19 +179,30 @@ describe('App mobile header layout', () => {
     expect(deployButton).toBeInTheDocument();
   });
 
-  it('collapses the "ALL INCIDENTS" nav label to "ALL" on mobile while preserving the accessible name', () => {
+  it('drops the visible "ALL INCIDENTS" label on mobile and falls back to the icon + aria-label', () => {
     render(<App onNavigateManifest={() => {}} />);
 
     // The accessible name is pinned via aria-label so screen readers
-    // always hear "All incidents" regardless of which visual label is
-    // rendered at the current breakpoint.
+    // always hear "All incidents" regardless of whether the visible
+    // label is shown. On mobile the entire label is hidden — "ALL"
+    // alone reads as nonsense, and the tagline + Decommission Index
+    // already eat the available header width, so the arrow icon
+    // carries the affordance instead.
     const navButton = screen.getByRole('button', { name: /^all incidents$/i });
     expect(navButton).toBeInTheDocument();
 
-    // Both the short and long visual labels are present in the DOM —
-    // Tailwind toggles their visibility via `sm:hidden`/`hidden sm:inline`.
-    // Asserting both exist guarantees neither label was deleted.
-    expect(within(navButton).getByText(/^ALL$/)).toBeInTheDocument();
-    expect(within(navButton).getByText(/^ALL INCIDENTS$/)).toBeInTheDocument();
+    // The full "ALL INCIDENTS" label still lives in the DOM, but its
+    // wrapping span must be `hidden sm:inline` so mobile users see only
+    // the icon. Asserting the class pins this contract — a regression
+    // that drops the `hidden` would re-introduce the cramped header.
+    const label = within(navButton).getByText(/^ALL INCIDENTS$/);
+    expect(label).toBeInTheDocument();
+    expect(label.className).toContain('hidden');
+    expect(label.className).toContain('sm:inline');
+
+    // No standalone "ALL" label — that visual was removed in the
+    // mobile redesign. Asserting its absence prevents an accidental
+    // re-introduction.
+    expect(within(navButton).queryByText(/^ALL$/)).toBeNull();
   });
 });

@@ -42,7 +42,7 @@ function requireGeminiApiKey(): string {
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const JUDGING_PROMPT = readFileSync(resolve(__dirname, '../docs/judging-prompt.md'), 'utf-8');
+const JUDGING_PROMPT = readFileSync(resolve(__dirname, '../docs/archive/judging-prompt.md'), 'utf-8');
 
 interface IncidentDoc {
   uid: string;

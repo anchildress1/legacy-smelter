@@ -546,19 +546,24 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     </span>
                   )}
 
-                  {/* Escalation / breach errors — inline under the action that produced them */}
-                  {escalationError && (
-                    <p role="alert" className="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-hazard-amber">
-                      ESCALATION FAILED. COUNTER WRITE REJECTED.
+                  {/* Escalation / breach errors — inline under the action that produced them.
+                      The raw error.message is rendered verbatim so a future refactor that wraps
+                      the error (e.g. `new Error('Escalation failed')`) cannot silently strip the
+                      real cause from the UI. The escalation alert is gated on `incidentId` to
+                      match the escalate button's gating — the alert without the action that
+                      produces it would be orphaned UI. */}
+                  {escalationError && incidentId && (
+                    <p role="alert" className="mt-1.5 text-[10px] font-mono normal-case tracking-normal text-hazard-amber">
+                      Escalation failed: {escalationError.message}
                     </p>
                   )}
                   {breachError && (
                     <p
                       role="alert"
                       data-testid="breach-error"
-                      className="mt-1 text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
+                      className="mt-1 text-[10px] font-mono normal-case tracking-normal text-hazard-amber"
                     >
-                      BREACH RECORD FAILED. IMPACT SCORE UNAFFECTED.
+                      Breach record failed: {breachError.message}
                     </p>
                   )}
                 </div>

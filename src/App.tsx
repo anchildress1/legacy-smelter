@@ -600,10 +600,17 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
               )}
             </div>
 
-            {/* Inline analyze error — displayed below canvas, themed as institutional fault */}
+            {/* Inline analyze error — displayed below canvas, themed as institutional fault.
+                The `data-health-issue` test id is the historical contract for the analyzer's
+                user-visible fault surface. It used to live inside DataHealthIndicator's list,
+                but the post-redesign layout puts the analyzer-specific message inline below
+                the canvas (closer to the action that triggered it) while DataHealthIndicator
+                still owns the global `statsIssue`/`queueIssue` state. Tests query this id to
+                pin the contract that an analyzer fault always reaches the UI. */}
             {analyzeIssue && (
               <div
                 role="alert"
+                data-testid="data-health-issue"
                 className="font-mono text-[10px] uppercase tracking-widest text-hazard-amber border border-hazard-amber/25 bg-hazard-amber/5 rounded-lg px-4 py-3 leading-relaxed"
               >
                 {analyzeIssue}
