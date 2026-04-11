@@ -27,6 +27,14 @@ interface OverlayProps {
   shareLinks?: { label: string; href: string }[];
   incidentId?: string | null;
   onClose: () => void;
+  // Mirror of the front card's P0 treatment: when the incident is one
+  // of the top-3 entries from `useRecentIncidentLogs`, render the same
+  // static "P0" badge in the overlay header. The overlay doesn't
+  // derive membership itself — callers (home queue, manifest, deep
+  // link fetch) already know the top-3 set and pass this flag so the
+  // badge stays in sync across surfaces without a second live
+  // subscription.
+  showP0Badge?: boolean;
 }
 
 const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> = {
@@ -78,7 +86,7 @@ function assertOverlayInputs(
   }
 }
 
-export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose }) => {
+export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose, showP0Badge = false }) => {
   assertOverlayInputs(analysis, log, incidentId);
   const report = normalizeIncidentReport(analysis, log);
   const dialogRef = useModalDialog(onClose);
@@ -293,6 +301,11 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                       {report.legacyInfraClass}
                     </h3>
                     <div className="flex items-center gap-2 shrink-0">
+                      {showP0Badge && (
+                        <span className="inline-flex items-center rounded border border-hazard-amber/40 bg-hazard-amber/10 px-1.5 py-0.5 text-[9px] font-mono font-black uppercase tracking-[0.15em] text-hazard-amber">
+                          P0
+                        </span>
+                      )}
                       <SeverityBadge severity={report.severity} />
                       {incidentId && (
                         <>

@@ -239,6 +239,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           log={selectedLog}
           shareLinks={getLogShareLinks(selectedLog)}
           incidentId={selectedLog.id}
+          showP0Badge={topPriorityIds.has(selectedLog.id)}
           onClose={() => setSelectedLog(null)}
         />
       )}

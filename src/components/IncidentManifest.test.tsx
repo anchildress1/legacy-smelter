@@ -72,24 +72,43 @@ vi.mock('./IncidentLogCard', () => ({
   IncidentLogCard: ({
     log,
     showP0Badge,
+    onClick,
   }: {
     log: SmeltLog;
     showP0Badge?: boolean;
     onClick: () => void;
   }) => (
-    <div
+    <button
+      type="button"
       data-testid="incident-log-card-stub"
       data-log-id={log.id}
       data-show-p0={showP0Badge ? 'true' : 'false'}
+      onClick={onClick}
+      aria-label={`open ${log.id}`}
     />
   ),
 }));
 
 // The manifest also pulls in the detail overlay, footer,
-// decommission index, and data health indicator. None are relevant
-// to the P0 wiring — stub them to keep the render tree small.
+// decommission index, and data health indicator. Of these, the
+// overlay is relevant to the P0 wiring — the back card must mirror
+// the front card's badge treatment. Stub it to surface `showP0Badge`
+// and `incidentId` as data attributes so overlay propagation can be
+// asserted at the prop level without rendering the real report body.
 vi.mock('./IncidentReportOverlay', () => ({
-  IncidentReportOverlay: () => null,
+  IncidentReportOverlay: ({
+    incidentId,
+    showP0Badge,
+  }: {
+    incidentId?: string | null;
+    showP0Badge?: boolean;
+  }) => (
+    <div
+      data-testid="incident-report-overlay-stub"
+      data-incident-id={incidentId ?? ''}
+      data-show-p0={showP0Badge ? 'true' : 'false'}
+    />
+  ),
 }));
 vi.mock('./DecommissionIndex', () => ({
   DecommissionIndex: () => null,
@@ -357,5 +376,42 @@ describe('IncidentManifest — P0 badge propagation', () => {
     for (const card of cards) {
       expect(card.getAttribute('data-show-p0')).toBe('false');
     }
+  });
+
+  // OVERLAY PROPAGATION: the back-card (detail overlay) must mirror
+  // the front-card's P0 treatment. These tests click a stubbed card
+  // to open the overlay, then assert that the overlay stub received
+  // the same `showP0Badge` value the card had. The overlay itself is
+  // stubbed so we only check the prop wiring — the render contract
+  // is covered in IncidentReportOverlay.test.tsx.
+
+  it('passes showP0Badge=true to the overlay when a top-3 card is clicked', () => {
+    hookState.allLogs = [
+      makeLog('top-a', { impact_score: 100 }),
+      makeLog('other-1', { impact_score: 5 }),
+    ];
+    hookState.recentLogs = [makeLog('top-a')];
+
+    render(<IncidentManifest onNavigateHome={() => {}} />);
+    fireEvent.click(cardsById().get('top-a')!);
+
+    const overlay = screen.getByTestId('incident-report-overlay-stub');
+    expect(overlay.getAttribute('data-incident-id')).toBe('top-a');
+    expect(overlay.getAttribute('data-show-p0')).toBe('true');
+  });
+
+  it('passes showP0Badge=false to the overlay when a non-top-3 card is clicked', () => {
+    hookState.allLogs = [
+      makeLog('top-a', { impact_score: 100 }),
+      makeLog('other-1', { impact_score: 5 }),
+    ];
+    hookState.recentLogs = [makeLog('top-a')];
+
+    render(<IncidentManifest onNavigateHome={() => {}} />);
+    fireEvent.click(cardsById().get('other-1')!);
+
+    const overlay = screen.getByTestId('incident-report-overlay-stub');
+    expect(overlay.getAttribute('data-incident-id')).toBe('other-1');
+    expect(overlay.getAttribute('data-show-p0')).toBe('false');
   });
 });

@@ -618,12 +618,21 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
 
       <SiteFooter />
 
-      {/* Post-mortem overlay */}
+      {/* Post-mortem overlay.
+
+          `showP0Badge` is derived from live top-3 membership, not from
+          which surface opened the overlay — a deep link can land on an
+          incident that was never in the queue, and a home-queue click
+          can open an incident that just aged out between render and
+          click. `recentLogs.some(...)` is the single source of truth
+          for both overlay call sites so the badge stays consistent
+          with the cards visible underneath. */}
       {selectedRecentLog && (
         <IncidentReportOverlay
           log={selectedRecentLog}
           shareLinks={getLogShareLinks(selectedRecentLog)}
           incidentId={selectedRecentLog.id}
+          showP0Badge={recentLogs.some((l) => l.id === selectedRecentLog.id)}
           onClose={() => setSelectedRecentLog(null)}
         />
       )}
@@ -633,6 +642,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
           analysis={analysis}
           shareLinks={reportShareLinks}
           incidentId={analysis.incidentId}
+          showP0Badge={recentLogs.some((l) => l.id === analysis.incidentId)}
           onClose={() => setShowReport(false)}
         />
       )}

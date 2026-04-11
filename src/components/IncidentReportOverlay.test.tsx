@@ -613,3 +613,88 @@ describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
     expect(hasBaseRadius && hasEscalatedRadius).toBe(false);
   });
 });
+
+describe('IncidentReportOverlay — P0 priority badge', () => {
+  // The back-card must mirror the front-card's P0 treatment so the
+  // badge follows the incident wherever it is rendered. The overlay
+  // doesn't subscribe to `useRecentIncidentLogs` itself — callers
+  // pass `showP0Badge` based on live top-3 membership — so these
+  // tests pin the render contract, not the membership logic (that
+  // side is covered in IncidentManifest.test.tsx and App.behavior
+  // test coverage).
+
+  beforeEach(() => {
+    resetEscalationState();
+  });
+
+  // POSITIVE: the "P0" text appears in the header right-cluster
+  // when the caller passes `showP0Badge`.
+
+  it('renders the P0 badge when showP0Badge is true', () => {
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        showP0Badge
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('P0')).toBeInTheDocument();
+  });
+
+  // NEGATIVE: the badge is absent when the caller explicitly passes
+  // `showP0Badge={false}`. A regression that always rendered the
+  // badge would silently mark every incident as P0.
+
+  it('does not render the P0 badge when showP0Badge is false', () => {
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        showP0Badge={false}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('P0')).toBeNull();
+  });
+
+  // DEFAULT: omitting the prop behaves the same as false. This is
+  // the common case for any future caller that doesn't yet know
+  // about the P0 treatment — the overlay must not accidentally flag
+  // the incident just because the prop is unset.
+
+  it('does not render the P0 badge when showP0Badge is omitted', () => {
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('P0')).toBeNull();
+  });
+
+  // REGRESSION GUARD: the old numbered `priorityTier` scheme used
+  // P1/P2/P3 strings that leaked into the rendered UI during the
+  // refactor. Pin the binary contract: only "P0" exists on the
+  // badge, nothing else. A future regression that re-introduces a
+  // tier prop would fail this test loudly.
+
+  it('never renders P1, P2, or P3 text (binary P0 badge only)', () => {
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        showP0Badge
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('P1')).toBeNull();
+    expect(screen.queryByText('P2')).toBeNull();
+    expect(screen.queryByText('P3')).toBeNull();
+  });
+});
