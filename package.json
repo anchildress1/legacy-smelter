@@ -16,8 +16,7 @@
     "test:rules": "firebase emulators:exec --only firestore --project demo-legacy-smelter --config firebase.test.json \"vitest run --config vitest.rules.config.ts\"",
     "test:proof": "npm run lint && npm run test:run && npm run test:api:emulator && npm run test:rules",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p scripts/tsconfig.json",
-    "sanction-incidents": "tsx scripts/sanction-incidents.ts"
+    "lint": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p scripts/tsconfig.json"
   },
   "dependencies": {
     "@google/genai": "^1.49.0",
