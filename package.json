@@ -22,7 +22,6 @@
     "@google/genai": "^1.49.0",
     "@tailwindcss/vite": "^4.2.2",
     "@vitejs/plugin-react": "^6.0.1",
-    "clsx": "^2.1.1",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
     "firebase": "^12.12.0",
@@ -32,8 +31,7 @@
     "lucide-react": "^1.8.0",
     "pixi.js": "^8.17.1",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "tailwind-merge": "^3.5.0"
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
