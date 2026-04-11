@@ -88,13 +88,8 @@ describe('useEscalation', () => {
   it('applies optimistic toggle and reconciles to server truth when response differs', async () => {
     mockHasEscalated.mockReturnValue(false);
     mockSyncEscalationState.mockResolvedValue(false);
-    let resolveToggle!: (value: boolean) => void;
-    mockToggleEscalation.mockImplementation(
-      () =>
-        new Promise<boolean>((resolve) => {
-          resolveToggle = resolve;
-        }),
-    );
+    const toggle = makeDeferredToggle();
+    mockToggleEscalation.mockImplementation(toggle.impl);
 
     const { useEscalation } = await loadHook();
     const { result } = renderHook(() => useEscalation('inc-2'));
@@ -108,7 +103,7 @@ describe('useEscalation', () => {
     });
 
     await act(async () => {
-      resolveToggle(false);
+      toggle.resolve(false);
       await Promise.resolve();
     });
 
@@ -124,13 +119,8 @@ describe('useEscalation', () => {
     // Block the rejection until the test has observed the optimistic flip,
     // so the test cannot pass if the production hook skips the optimistic
     // update entirely and only rolls back to the pre-toggle state.
-    let rejectToggle!: (err: Error) => void;
-    mockToggleEscalation.mockImplementation(
-      () =>
-        new Promise<boolean>((_, reject) => {
-          rejectToggle = reject;
-        }),
-    );
+    const toggle = makeDeferredToggle();
+    mockToggleEscalation.mockImplementation(toggle.impl);
 
     const { useEscalation } = await loadHook();
     const { result } = renderHook(() => useEscalation('inc-3'));
@@ -146,7 +136,7 @@ describe('useEscalation', () => {
     });
 
     await act(async () => {
-      rejectToggle(new Error('write failed'));
+      toggle.reject(new Error('write failed'));
       await Promise.resolve();
     });
 
