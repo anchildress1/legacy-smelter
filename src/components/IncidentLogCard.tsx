@@ -4,6 +4,7 @@ import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
 import { Siren, Quote, ShieldCheck } from 'lucide-react';
 import { useEscalation } from '../hooks/useEscalation';
 import { SeverityBadge } from './SeverityBadge';
+import { P0Badge } from './P0Badge';
 import {
   IMPACT_GLOW_BASE,
   IMPACT_GLOW_ESCALATED,
@@ -91,11 +92,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
               without collapsing its width, so the cluster width is
               constant regardless of sanction state. */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {showP0Badge && (
-              <span className="inline-flex items-center rounded border border-hazard-amber/40 bg-hazard-amber/10 px-1.5 py-0.5 text-[9px] font-mono font-black uppercase tracking-[0.15em] text-hazard-amber">
-                P0
-              </span>
-            )}
+            {showP0Badge && <P0Badge />}
             <span
               className={`inline-flex items-center text-[9px] font-mono font-bold text-zinc-950 bg-hazard-amber/90 px-1 py-0.5 rounded ${log.sanctioned ? '' : 'invisible'}`}
               aria-hidden={!log.sanctioned}
