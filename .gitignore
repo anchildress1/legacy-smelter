@@ -4,6 +4,7 @@ dist/
 coverage/
 .gemini/
 .claude/
+.verdent/
 .playwright-mcp/
 .DS_Store
 *.log
