@@ -493,114 +493,157 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         {/* Hazard stripe — under header, consistent with manifest */}
         <div className="hazard-stripe h-1 w-full shrink-0" />
 
-        {/* ── SCROLLABLE BODY ── */}
+        {/* ── SCROLLABLE BODY ──
+            Four semantic sections with intentionally uneven rhythm.
+            The hierarchy is the spacing: a tight internal cluster for
+            Overview (title, summary, quote, metrics read as one
+            unit), a short coupling gap into Recommended Action (the
+            operational outcome), a firm divider + larger gap into
+            Diagnostics (supporting evidence, lower priority), and a
+            softer divider into Archive (provenance/case metadata).
+            Dividers are NOT uniform — equal-weight rules across every
+            block was the old failure mode that made every section
+            look like the start of a new page. */}
         <div className="flex-1 overflow-y-auto">
-          <div className="px-5 sm:px-8 py-5 sm:py-6 space-y-5">
+          <div className="px-5 sm:px-8 py-5 sm:py-6">
 
-            {/* Title + status + escalate action. Title is the first
-                visual anchor (left, full amber, largest type). The
-                severity badge and the Escalate button live in a
-                right-aligned action cluster, separated from each other
-                by a short vertical divider so they read as two distinct
-                units rather than a single oversized badge. Placing the
-                action at the top header/action zone keeps it adjacent
-                to the status it toggles on, and removes the big
-                mid-modal banner the button used to be. */}
-            <div>
-              <div className="flex justify-between items-start gap-3">
-                <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
-                  {report.legacyInfraClass}
-                </p>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold">
-                    <AlertTriangle size={8} aria-hidden="true" />
-                    {report.severity}
+            {/* ═══ SECTION 1 — INCIDENT OVERVIEW ═══
+                Single cohesive cluster. `space-y-3` gives the four
+                children a tighter internal rhythm than the gaps
+                between sections below, so the title, summary, quote,
+                and metrics read as one unit rather than four stacked
+                panels. */}
+            <section aria-label="Incident overview" className="space-y-3">
+              {/* Title + status + escalate action. Title is the
+                  primary visual anchor (left, full amber, largest
+                  type, promoted to `<h3>` for heading hierarchy). The
+                  severity badge and the Escalate button live in a
+                  right-aligned cluster, separated by a short vertical
+                  divider so they read as two distinct units rather
+                  than a single oversized badge. */}
+              <div>
+                <div className="flex justify-between items-start gap-3">
+                  <h3 className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
+                    {report.legacyInfraClass}
+                  </h3>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold">
+                      <AlertTriangle size={8} aria-hidden="true" />
+                      {report.severity}
+                    </span>
+                    {incidentId && (
+                      <>
+                        {/* Clear separation between status and action.
+                            `h-4` matches the badge height. */}
+                        <div className="w-px h-4 bg-concrete-border" aria-hidden="true" />
+                        {/* Escalate. Compact to fit the header row
+                            without competing with the title, but still
+                            a full labelled button (not icon-only) so
+                            the action is discoverable without hover.
+                            `py-1.5` gives a ~24px target height — the
+                            exact WCAG 2.5.8 AA minimum (the parent
+                            uses `items-center` so the button and the
+                            shorter severity badge visually center-
+                            align). Idle border `#777` is 4:1 against
+                            `#1a1a1a` (WCAG 1.4.11 UI component
+                            contrast). Escalated state deepens the
+                            border and fill. `transition-colors` only
+                            so `prefers-reduced-motion` users get no
+                            layout motion (WCAG 2.3.3). */}
+                        <button
+                          onClick={handleEscalate}
+                          disabled={isTogglingEscalation}
+                          className={`inline-flex items-center gap-1 rounded border px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                            escalated
+                              ? 'border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber'
+                              : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
+                          } ${isTogglingEscalation ? 'opacity-50' : ''}`}
+                          aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+                          aria-pressed={escalated}
+                        >
+                          <Siren size={10} aria-hidden="true" />
+                          {escalated ? 'Armed' : 'Escalate'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {counts.sanction > 0 && (
+                  <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold">
+                    <ShieldCheck size={9} aria-hidden="true" />
+                    Sanctioned
                   </span>
-                  {incidentId && (
-                    <>
-                      {/* Clear separation between status and action.
-                          `h-4` matches the badge height. */}
-                      <div className="w-px h-4 bg-concrete-border" aria-hidden="true" />
-                      {/* Escalate. Compact to fit the header row without
-                          competing with the title, but still a full
-                          labelled button (not icon-only) so the action
-                          is discoverable without hover. `py-1.5` gives
-                          a ~24px target height — the exact WCAG 2.5.8
-                          AA minimum (the parent uses `items-center` so
-                          the button and the shorter severity badge
-                          visually center-align). Idle border `#777` is
-                          4:1 against `#1a1a1a` (WCAG 1.4.11 UI
-                          component contrast). Escalated state deepens
-                          the border and fill. `transition-colors` only
-                          so `prefers-reduced-motion` users get no
-                          layout motion (WCAG 2.3.3). */}
-                      <button
-                        onClick={handleEscalate}
-                        disabled={isTogglingEscalation}
-                        className={`inline-flex items-center gap-1 rounded border px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
-                          escalated
-                            ? 'border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber'
-                            : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
-                        } ${isTogglingEscalation ? 'opacity-50' : ''}`}
-                        aria-label={escalated ? 'Remove escalation' : 'Escalate'}
-                        aria-pressed={escalated}
-                      >
-                        <Siren size={10} aria-hidden="true" />
-                        {escalated ? 'Armed' : 'Escalate'}
-                      </button>
-                    </>
-                  )}
-                </div>
+                )}
               </div>
-              {counts.sanction > 0 && (
-                <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold">
-                  <ShieldCheck size={9} aria-hidden="true" />
-                  Sanctioned
-                </span>
-              )}
-            </div>
 
-            {/* Summary */}
-            <p className="text-ash-white font-mono text-sm leading-relaxed">
-              {report.incidentFeedSummary}
-            </p>
-
-            {/* Quote — the star */}
-            <div className="border-l-2 border-hazard-amber pl-4 py-1">
-              <p className="text-hazard-amber font-mono text-base sm:text-lg italic leading-snug">
-                "{report.shareQuote}"
+              {/* Summary — one-sentence incident identity, sits
+                  directly under the title so the two form the scan-
+                  path entry point. */}
+              <p className="text-ash-white font-mono text-sm leading-relaxed">
+                {report.incidentFeedSummary}
               </p>
-            </div>
 
-            {/* Stats row. Labels now sit at `text-ash-white/60` so the
-                stat name scans easily alongside the number instead of
-                disappearing into the dark border, and the four metrics
-                read as a cohesive row rather than "numbers + faint noise".
-                Values remain full amber so the count is still the focal
-                point. */}
-            <div className="flex items-baseline justify-between py-3 border-y border-[#2a2a2a]">
-              {[
-                { value: computeImpact(liveCountsForImpact), label: 'Impact' },
-                { value: counts.sanction, label: 'Sanctions' },
-                { value: counts.escalation, label: 'Escalations' },
-                { value: counts.breach, label: 'Breaches' },
-              ].map(({ value, label }) => (
-                <div key={label} className="text-center">
-                  <div className="text-hazard-amber font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
-                  <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-ash-white/60">{label}</div>
-                </div>
-              ))}
-            </div>
+              {/* Quote — supporting, not dominant.
+                  Sized down from `text-base sm:text-lg` → `text-sm`
+                  and the fill dropped from full amber → amber/75 so
+                  the quote rides underneath the summary instead of
+                  competing with the title. Italic treatment and left
+                  accent rule preserved — the "pulled quote" signal is
+                  unchanged, just quieter. `<blockquote>` is the
+                  correct semantic wrapper. */}
+              <blockquote className="border-l-2 border-hazard-amber/60 pl-4">
+                <p className="text-hazard-amber/75 font-mono text-sm italic leading-snug">
+                  "{report.shareQuote}"
+                </p>
+              </blockquote>
 
-            {/* Disposition */}
-            <section>
-              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em]">Recommended Action</p>
+              {/* Metrics — still part of the overview identity.
+                  The hard `border-y border-[#2a2a2a]` is gone: the
+                  enclosed box made the numbers read as a detached
+                  "stats panel" instead of the numerical readout of
+                  the incident above. A small `pt-2` gives breathing
+                  room without fencing the row off from the rest of
+                  the cluster. Values stay full amber so the count is
+                  still the focal point; labels sit at ash-white/60 so
+                  the stat name scans easily alongside the number. */}
+              <div className="flex items-baseline justify-between pt-2">
+                {[
+                  { value: computeImpact(liveCountsForImpact), label: 'Impact' },
+                  { value: counts.sanction, label: 'Sanctions' },
+                  { value: counts.escalation, label: 'Escalations' },
+                  { value: counts.breach, label: 'Breaches' },
+                ].map(({ value, label }) => (
+                  <div key={label} className="text-center">
+                    <div className="text-hazard-amber font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
+                    <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-ash-white/60">{label}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* ═══ SECTION 2 — RECOMMENDED ACTION ═══
+                Operational outcome of the overview. Deliberately
+                tight coupling — short `mt-5` gap, NO divider — so it
+                reads "based on the above, do this" rather than the
+                start of a new page section. The label is retained so
+                the action still has identity for scanning. */}
+            <section aria-label="Recommended action" className="mt-5">
+              <h4 className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em]">Recommended Action</h4>
               <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">{report.disposition}</p>
             </section>
 
-            {/* Telemetry */}
-            <section className="border-t border-[#2a2a2a] pt-4">
-              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em] mb-3">Telemetry</p>
+            {/* ═══ SECTION 3 — DIAGNOSTICS ═══
+                Supporting evidence. Intentionally lower priority and
+                more structured (the 2-col grid). Firm top border
+                (`border-concrete-border`, not a faint custom hex) +
+                larger `mt-8 pt-6` gap so the section break is
+                unambiguous — this is where the diagnostic grid
+                starts, and it should feel like a step down from the
+                overview/action band above. Label renamed from
+                "Telemetry" → "Diagnostics" to match the new semantic
+                grouping; the 4 fields inside are unchanged. */}
+            <section aria-label="Diagnostics" className="mt-8 border-t border-concrete-border pt-6">
+              <h4 className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em] mb-3">Diagnostics</h4>
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 font-mono">
                 <div>
                   <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Failure Origin</dt>
@@ -621,29 +664,39 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               </dl>
             </section>
 
-            {/* Archive Note */}
-            <section className="border-t border-[#2a2a2a] pt-4">
-              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em]">Archive Note</p>
-              <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">{report.archiveNote}</p>
+            {/* ═══ SECTION 4 — ARCHIVE ═══
+                Provenance and case metadata — lowest priority,
+                softest divider (`border-concrete-border/50`). Archive
+                note, optional sanction rationale, and case footer all
+                sit inside this block with a consistent internal
+                rhythm (`space-y-4`). Sanction rationale finalization
+                is deferred to a future branch — it only has to match
+                the new sectional rhythm for now. */}
+            <section aria-label="Archive" className="mt-8 border-t border-concrete-border/50 pt-6 space-y-4">
+              <div>
+                <h4 className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em]">Archive Note</h4>
+                <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">{report.archiveNote}</p>
+              </div>
+
+              {counts.sanction > 0 && report.sanctionRationale && (
+                <div className="border-t border-hazard-amber/20 pt-4">
+                  <h4 className="text-hazard-amber font-mono text-[10px] uppercase tracking-[0.15em] flex items-center gap-1.5">
+                    <ShieldCheck size={10} aria-hidden="true" />
+                    Sanction Rationale
+                  </h4>
+                  <p className="mt-1.5 text-hazard-amber/80 font-mono text-sm leading-relaxed italic">{report.sanctionRationale}</p>
+                </div>
+              )}
+
+              {/* Case footer — filed-by / timestamp / chromatic
+                  profile. Soft internal divider keeps it part of the
+                  Archive block without looking like a fifth section. */}
+              <div className="border-t border-concrete-border/40 pt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-xs text-stone-gray">
+                <span>Filed by <span className="text-hazard-amber font-bold">{report.anonHandle}</span></span>
+                {counts.timestamp && <span>{formatTimestamp(counts.timestamp)}</span>}
+                <span>{report.chromaticProfile}</span>
+              </div>
             </section>
-
-            {/* Sanction Rationale */}
-            {counts.sanction > 0 && report.sanctionRationale && (
-              <section className="border-t border-hazard-amber/20 pt-4">
-                <p className="text-hazard-amber font-mono text-[10px] uppercase tracking-[0.15em] flex items-center gap-1.5">
-                  <ShieldCheck size={10} aria-hidden="true" />
-                  Sanction Rationale
-                </p>
-                <p className="mt-1.5 text-hazard-amber/80 font-mono text-sm leading-relaxed italic">{report.sanctionRationale}</p>
-              </section>
-            )}
-
-            {/* Case footer */}
-            <div className="border-t border-[#2a2a2a] pt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-xs text-stone-gray">
-              <span>Filed by <span className="text-hazard-amber font-bold">{report.anonHandle}</span></span>
-              {counts.timestamp && <span>{formatTimestamp(counts.timestamp)}</span>}
-              <span>{report.chromaticProfile}</span>
-            </div>
 
           </div>
         </div>
