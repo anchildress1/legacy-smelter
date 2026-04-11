@@ -1,4 +1,4 @@
-import React from 'react';
+import type { FC, ReactNode } from 'react';
 
 /**
  * Single source of truth for the pill-shaped chips that sit in the incident
@@ -18,13 +18,13 @@ export const HEADER_PILL_BASE =
   'inline-flex items-center gap-1 rounded border px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider';
 
 interface HeaderPillProps {
-  readonly children: React.ReactNode;
-  readonly icon?: React.ReactNode;
+  readonly children: ReactNode;
+  readonly icon?: ReactNode;
   /** Color/weight classes layered on top of `HEADER_PILL_BASE`. */
   readonly className?: string;
 }
 
-export const HeaderPill: React.FC<HeaderPillProps> = ({ children, icon, className = '' }) => (
+export const HeaderPill: FC<HeaderPillProps> = ({ children, icon, className = '' }) => (
   <span className={`${HEADER_PILL_BASE} ${className}`}>
     {icon}
     {children}

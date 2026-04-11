@@ -1,11 +1,11 @@
-import React from 'react';
+import type { FC } from 'react';
 import { formatPixels } from '../lib/utils';
 
 interface DecommissionIndexProps {
   totalPixels: number;
 }
 
-export const DecommissionIndex: React.FC<DecommissionIndexProps> = ({ totalPixels }) => {
+export const DecommissionIndex: FC<DecommissionIndexProps> = ({ totalPixels }) => {
   const formatted = formatPixels(totalPixels);
   return (
     <div className="flex items-center gap-2 sm:gap-3">

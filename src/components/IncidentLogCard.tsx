@@ -1,4 +1,4 @@
-import React from 'react';
+import type { FC, MouseEvent } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
 import { Siren, Quote, ShieldCheck } from 'lucide-react';
@@ -26,7 +26,7 @@ interface IncidentLogCardProps {
   showP0Badge?: boolean;
 }
 
-export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
+export const IncidentLogCard: FC<IncidentLogCardProps> = ({
   log,
   onClick,
   showP0Badge = false,
@@ -39,7 +39,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
 
   const impact = computeImpact(log);
 
-  const handleEscalate = (e: React.MouseEvent) => {
+  const handleEscalate = (e: MouseEvent) => {
     e.stopPropagation();
     void toggle();
   };

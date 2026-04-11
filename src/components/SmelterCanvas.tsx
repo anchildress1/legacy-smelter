@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, forwardRef, useImperativeHandle, type MutableRefObject } from 'react';
 import * as PIXI from 'pixi.js';
 import { getFiveDistinctColors } from '../lib/utils';
 import { advanceAnimationWindow } from '../lib/animationWindow';
@@ -472,13 +472,13 @@ interface StepContext {
   dragon: PIXI.AnimatedSprite;
   puddle: PIXI.AnimatedSprite;
   textures: PixiState['textures'];
-  spriteRef: React.MutableRefObject<PIXI.Sprite | null>;
-  meltFilterRef: React.MutableRefObject<PIXI.Filter | null>;
-  puddleFilterRef: React.MutableRefObject<PIXI.Filter | null>;
-  phaseRef: React.MutableRefObject<AnimPhase>;
-  flyProgressRef: React.MutableRefObject<number>;
-  meltProgressRef: React.MutableRefObject<number>;
-  settleProgressRef: React.MutableRefObject<number>;
+  spriteRef: MutableRefObject<PIXI.Sprite | null>;
+  meltFilterRef: MutableRefObject<PIXI.Filter | null>;
+  puddleFilterRef: MutableRefObject<PIXI.Filter | null>;
+  phaseRef: MutableRefObject<AnimPhase>;
+  flyProgressRef: MutableRefObject<number>;
+  meltProgressRef: MutableRefObject<number>;
+  settleProgressRef: MutableRefObject<number>;
   callbacks: SmelterCanvasProps & { onRenderFailure?: (err: Error) => void };
   setDragonTex: (tex: PIXI.Texture[], loop: boolean) => void;
 }

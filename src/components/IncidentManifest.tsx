@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type FC } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getLogShareLinks } from '../lib/utils';
 import { IncidentLogCard } from './IncidentLogCard';
@@ -23,7 +23,7 @@ interface IncidentManifestProps {
   onNavigateHome: () => void;
 }
 
-export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHome }) => {
+export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) => {
   const { globalStats, statsIssue } = useGlobalStats({
     source: 'IncidentManifest',
   });

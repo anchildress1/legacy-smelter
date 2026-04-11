@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense, type ChangeEvent } from 'react';
 import { Howl } from 'howler';
 import {
   db,
@@ -330,7 +330,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';

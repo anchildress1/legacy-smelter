@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useId } from 'react';
+import { useEffect, useRef, useState, useId, type FC, type ReactNode } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { computeImpact, SmeltLog } from '../types';
 import { formatTimestamp, buildIncidentUrl } from '../lib/utils';
@@ -39,7 +39,7 @@ interface OverlayProps {
   showP0Badge?: boolean;
 }
 
-const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> = {
+const SHARE_PLATFORMS: Record<string, { name: string; icon: ReactNode }> = {
   twitter: {
     name: 'X',
     icon: (
@@ -88,7 +88,7 @@ function assertOverlayInputs(
   }
 }
 
-export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose, showP0Badge = false }) => {
+export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose, showP0Badge = false }) => {
   assertOverlayInputs(analysis, log, incidentId);
   const report = normalizeIncidentReport(analysis, log);
   const dialogRef = useModalDialog(onClose);

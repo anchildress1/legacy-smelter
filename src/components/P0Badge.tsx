@@ -1,4 +1,4 @@
-import React from 'react';
+import type { FC } from 'react';
 import { HeaderPill } from './HeaderPill';
 
 /**
@@ -13,7 +13,7 @@ import { HeaderPill } from './HeaderPill';
  * and `IncidentReportOverlay.test.tsx`. A refactor that changes the tag or
  * drops the text colour must update those tests on purpose.
  */
-export const P0Badge: React.FC = () => (
+export const P0Badge: FC = () => (
   <HeaderPill className="border-hazard-amber/90 bg-hazard-amber/10 font-black text-hazard-amber">
     P0
   </HeaderPill>
