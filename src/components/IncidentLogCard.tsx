@@ -1,8 +1,9 @@
 import React from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
-import { Siren, AlertTriangle, Quote, ChevronRight, ShieldCheck } from 'lucide-react';
+import { Siren, Quote, ChevronRight, ShieldCheck } from 'lucide-react';
 import { useEscalation } from '../hooks/useEscalation';
+import { SeverityBadge } from './SeverityBadge';
 
 interface IncidentLogCardProps {
   log: SmeltLog;
@@ -49,9 +50,16 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
             via `invisible` (not display:none) so the title never shifts
             when sanction status changes. */}
         <div className="flex justify-between items-start gap-4">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: finalColors[0] }} aria-hidden="true" />
-            <p className="text-hazard-amber font-mono text-xs uppercase tracking-widest min-w-0 truncate">
+          <div className="flex items-start gap-2 min-w-0">
+            <span className="w-2 h-2 mt-1.5 rounded-full shrink-0" style={{ backgroundColor: finalColors[0] }} aria-hidden="true" />
+            {/* Title pinned to exactly two lines (`min-h-[2lh]` reserves
+                space for short titles; `line-clamp-2` caps long ones).
+                Full text preserved in the native `title` attribute so
+                truncated titles are still readable on hover. */}
+            <p
+              className="text-hazard-amber font-mono text-xs uppercase tracking-widest min-w-0 line-clamp-2 min-h-[2lh]"
+              title={log.legacy_infra_class}
+            >
               {log.legacy_infra_class}
             </p>
           </div>
@@ -67,10 +75,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
             >
               <ShieldCheck size={8} />
             </span>
-            <span className="font-mono text-[10px] uppercase tracking-wider font-bold bg-hazard-amber/90 text-zinc-950 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
-              <AlertTriangle size={10} aria-hidden="true" />
-              {log.severity}
-            </span>
+            <SeverityBadge severity={log.severity} />
             <ChevronRight
               size={12}
               className="text-stone-gray/50 group-hover:text-stone-gray transition-colors"
@@ -86,11 +91,15 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({ log, onClick }
 
         {/* Quote — tertiary emphasis. Border and text dimmed so it
             doesn't compete with the summary above. Full text preserved
-            in the native `title` attribute for hover access. */}
+            in the native `title` attribute for hover access. Paragraph
+            is pinned to exactly two lines (`min-h-[2lh]` reserves space
+            for short quotes; `line-clamp-2` caps long ones) so every
+            card in the feed has the same vertical footprint regardless
+            of quote length. */}
         <div className="mt-2 flex items-start gap-2 border-l-2 border-hazard-amber/30 pl-2.5">
           <Quote size={12} className="mt-0.5 shrink-0 text-hazard-amber/50" aria-hidden="true" />
           <p
-            className="text-xs font-mono italic leading-snug text-hazard-amber/60 line-clamp-2"
+            className="text-xs font-mono italic leading-snug text-hazard-amber/60 line-clamp-2 min-h-[2lh]"
             title={log.share_quote}
           >
             "{log.share_quote}"

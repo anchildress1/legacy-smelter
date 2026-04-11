@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
-import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Check, Copy, Link2, ShieldCheck, Siren, ChevronDown, ChevronUp } from 'lucide-react';
+import { SeverityBadge } from './SeverityBadge';
 import { recordBreach } from '../services/breachService';
 import { useEscalation } from '../hooks/useEscalation';
 import { db, doc, onSnapshot } from '../firebase';
@@ -512,10 +513,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                       {report.legacyInfraClass}
                     </h3>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold">
-                        <AlertTriangle size={8} aria-hidden="true" />
-                        {report.severity}
-                      </span>
+                      <SeverityBadge severity={report.severity} />
                       {incidentId && (
                         <>
                           <div className="w-px h-4 bg-concrete-border" aria-hidden="true" />
@@ -622,21 +620,21 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <section aria-label="Diagnostics" className="mt-8 border-t border-concrete-border pt-6">
                 <h4 className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em] mb-3">Diagnostics</h4>
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 font-mono">
-                  <div className="sm:col-span-2">
-                    <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Diagnosis</dt>
-                    <dd className="text-ash-white text-sm mt-0.5">{report.diagnosis}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Failure Origin</dt>
-                    <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
-                  </div>
                   <div>
                     <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Primary Contaminant</dt>
                     <dd className="text-ash-white text-sm mt-0.5">{report.primaryContamination}</dd>
                   </div>
-                  <div className="sm:col-span-2">
+                  <div>
                     <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Contributing Factor</dt>
                     <dd className="text-ash-white text-sm mt-0.5">{report.contributingFactor}</dd>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Diagnosis</dt>
+                    <dd className="text-ash-white text-sm mt-0.5">{report.diagnosis}</dd>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Failure Origin</dt>
+                    <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
                   </div>
                 </dl>
               </section>

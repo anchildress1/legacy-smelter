@@ -26,6 +26,7 @@ import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 import { DecommissionIndex } from './components/DecommissionIndex';
 import { SiteFooter } from './components/SiteFooter';
 import { DataHealthIndicator } from './components/DataHealthIndicator';
+import { SeverityBadge } from './components/SeverityBadge';
 import { parseSmeltLog, parseSmeltLogBatch } from './lib/smeltLogSchema';
 
 // Audio
@@ -569,6 +570,18 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                 </div>
               )}
 
+              {/* Idle guidance — anchored to the TOP of the window so the
+                  dragon's feet (which rest near the bottom of the frame
+                  during the idle animation) never cover the text. Visible
+                  only before any processing begins. */}
+              {!isAnalyzing && !isComplete && !isCameraActive && (
+                <div className="absolute top-4 left-0 w-full flex justify-center pointer-events-none z-10">
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-stone-gray/40">
+                    Drop artifact or deploy scanner to begin
+                  </p>
+                </div>
+              )}
+
               {/* Post-smelt controls — replay + view report */}
               {isComplete && !isPlaying && (
                 <div className="absolute inset-0 z-40 bg-concrete/70 backdrop-blur-sm flex items-center justify-center gap-3">
@@ -590,14 +603,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                 </div>
               )}
 
-              {/* Idle guidance — visible before any processing begins */}
-              {!isAnalyzing && !isComplete && !isCameraActive && (
-                <div className="absolute bottom-4 left-0 w-full flex justify-center pointer-events-none z-10">
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-stone-gray/40">
-                    Drop artifact or deploy scanner to begin
-                  </p>
-                </div>
-              )}
             </div>
 
             {/* Inline analyze error — displayed below canvas, themed as institutional fault.
@@ -620,9 +625,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
             {/* Compact result summary — shown after smelt completes */}
             {isComplete && analysis && (
               <div className="font-mono text-[10px] uppercase tracking-widest border border-concrete-border bg-concrete-mid rounded-lg px-4 py-3 flex items-center gap-3 min-w-0">
-                <span className="font-bold bg-hazard-amber/90 text-zinc-950 px-1.5 py-0.5 rounded shrink-0">
-                  {analysis.severity}
-                </span>
+                <SeverityBadge severity={analysis.severity} />
                 <span className="text-stone-gray truncate min-w-0">{analysis.ogHeadline}</span>
               </div>
             )}
