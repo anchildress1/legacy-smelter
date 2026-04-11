@@ -91,7 +91,6 @@ function makeAnalysis(): SmeltAnalysis {
     diagnosis: 'Critical mismatch detected',
     dominantColors: ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff'],
     chromaticProfile: 'Thermal Beige',
-    systemDx: 'Acute Drift Syndrome',
     severity: 'Severe',
     primaryContamination: 'Legacy residue',
     contributingFactor: 'Config rot',

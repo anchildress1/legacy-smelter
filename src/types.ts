@@ -20,7 +20,6 @@ export interface SmeltLog {
   legacy_infra_class: string;
   diagnosis: string;
   chromatic_profile: string;
-  system_dx: string;
   severity: string;
   primary_contamination: string;
   contributing_factor: string;

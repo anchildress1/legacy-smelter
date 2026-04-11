@@ -52,7 +52,6 @@ interface IncidentDoc {
   archive_note: string;
   failure_origin: string;
   chromatic_profile: string;
-  system_dx: string;
   incident_feed_summary: string;
   share_quote: string;
 }
@@ -156,7 +155,6 @@ export function parseIncidentDoc(raw: unknown, incidentId: string): IncidentDoc 
     archive_note: expectIncidentField(data, 'archive_note', incidentId),
     failure_origin: expectIncidentField(data, 'failure_origin', incidentId),
     chromatic_profile: expectIncidentField(data, 'chromatic_profile', incidentId),
-    system_dx: expectIncidentField(data, 'system_dx', incidentId),
     incident_feed_summary: expectIncidentField(data, 'incident_feed_summary', incidentId),
     share_quote: expectIncidentField(data, 'share_quote', incidentId),
   };

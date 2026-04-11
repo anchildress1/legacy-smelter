@@ -136,7 +136,6 @@ function buildGeminiResponseText() {
     diagnosis: 'Critical mismatch detected',
     dominant_hex_colors: ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#00ffff'],
     chromatic_profile: 'Thermal Beige',
-    system_dx: 'Acute Drift Syndrome with brittle memory',
     severity: 'Severe',
     primary_contamination: 'Legacy residue',
     contributing_factor: 'Config rot',

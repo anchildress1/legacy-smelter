@@ -77,7 +77,6 @@ export function parseSmeltLog(docId: string, raw: unknown): SmeltLog {
     legacy_infra_class: expectString(raw, 'legacy_infra_class', docId),
     diagnosis: expectString(raw, 'diagnosis', docId),
     chromatic_profile: expectString(raw, 'chromatic_profile', docId),
-    system_dx: expectString(raw, 'system_dx', docId),
     severity: expectString(raw, 'severity', docId),
     primary_contamination: expectString(raw, 'primary_contamination', docId),
     contributing_factor: expectString(raw, 'contributing_factor', docId),

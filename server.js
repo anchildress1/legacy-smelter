@@ -150,12 +150,11 @@ Short declarative clauses. Sentences under 12 words. Conclusions, not descriptio
 
 ## Field constraints
 
-- legacy_infra_class: 5 words max. What the system thinks the image is. Specific to the actual content. "SELFIE SYSTEM V1.0" not "HUMANOID VISUAL NODE." "DESKTOP FAUNA INCIDENT" not "HUMAN-INTEGRATED WORKSPACE." If someone reads it without seeing the image, they should want to see the image.
-- diagnosis: 12 words max. First sentence of a postmortem — what failed and how badly. Operational, not medical. Vary the structure. Ground it in something specific to this image.
+- legacy_infra_class: 5 words max. What the system thinks the image is. Specific to the actual content. If someone reads it without seeing the image, they should want to see the image. "SELFIE SYSTEM V1.0" not "HUMANOID VISUAL NODE." "DESKTOP FAUNA INCIDENT" not "HUMAN-INTEGRATED WORKSPACE."
+- diagnosis: 12 words max. First sentence of a postmortem — what failed and how badly. Operational. Systemic. Vary the structure. Ground it in something specific to this image.
 - chromatic_profile: 4 words max. Sounds like an internal color spec someone named badly. "Moldy Blossom," "Thermal Beige," "Incident Pink."
 - primary_contamination: 5 words max. Dominant visual or structural fault.
 - contributing_factor: 5 words max. Secondary fault.
-- system_dx: 18 words max. Compound technical syndrome. "[Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]."
 - failure_origin: 20 words max. What decisions produced this artifact. Blame the history. End with a specific, mundane, deadpan detail.
 - disposition: 18 words max. System recommendation — what should happen to this artifact and why. The severity badge is displayed separately; focus on the action.
 - incident_feed_summary: 14 words max. One-line manifest entry. Vary the structure across entries.
@@ -182,7 +181,6 @@ const GEMINI_RESPONSE_SCHEMA = {
       description: 'Exactly 5 vivid, saturated hex colors from the image',
     },
     chromatic_profile: { type: Type.STRING, description: "Diagnostic color palette name. 4 words max. E.g. 'Moldy Blossom', 'Thermal Beige'." },
-    system_dx: { type: Type.STRING, description: 'Compound clinical syndrome name. Structure: [Adjective] [Noun] Syndrome with [Modifier] [Specific Observable].' },
     severity: { type: Type.STRING, description: 'One English word naming the dominant visible condition or failure mode observed in this image.' },
     primary_contamination: { type: Type.STRING, description: 'Dominant visual or structural fault. 5 words max.' },
     contributing_factor: { type: Type.STRING, description: 'Secondary fault. 5 words max.' },
@@ -202,7 +200,7 @@ const GEMINI_RESPONSE_SCHEMA = {
   required: [
     'legacy_infra_class', 'diagnosis',
     'dominant_hex_colors', 'chromatic_profile',
-    'system_dx', 'severity',
+    'severity',
     'primary_contamination', 'contributing_factor',
     'failure_origin', 'disposition',
     'incident_feed_summary', 'archive_note',
@@ -371,7 +369,7 @@ async function analyzeImage(base64Image, mimeType) {
   const result = JSON.parse(responseText);
 
   const requiredStringFields = [
-    'legacy_infra_class', 'diagnosis', 'chromatic_profile', 'system_dx',
+    'legacy_infra_class', 'diagnosis', 'chromatic_profile',
     'severity', 'primary_contamination', 'contributing_factor', 'failure_origin',
     'disposition', 'incident_feed_summary', 'archive_note', 'og_headline',
     'share_quote', 'anon_handle',
@@ -393,7 +391,6 @@ async function analyzeImage(base64Image, mimeType) {
     diagnosis: result.diagnosis,
     dominantColors: getFiveDistinctColors(result.dominant_hex_colors),
     chromaticProfile: result.chromatic_profile,
-    systemDx: result.system_dx,
     severity: normalizeSeverity(result.severity),
     primaryContamination: result.primary_contamination,
     contributingFactor: result.contributing_factor,
@@ -473,7 +470,6 @@ async function persistIncident(analysis, pixelCount, authUid) {
     legacy_infra_class: analysis.legacyInfraClass,
     diagnosis: analysis.diagnosis,
     chromatic_profile: analysis.chromaticProfile,
-    system_dx: analysis.systemDx,
     severity: analysis.severity,
     primary_contamination: analysis.primaryContamination,
     contributing_factor: analysis.contributingFactor,

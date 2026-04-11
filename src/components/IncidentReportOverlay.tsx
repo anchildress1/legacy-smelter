@@ -23,7 +23,6 @@ interface NormalisedReport {
   failureOrigin: string;
   primaryContamination: string;
   contributingFactor: string;
-  systemDx: string;
   disposition: string;
   archiveNote: string;
   shareQuote: string;
@@ -74,7 +73,6 @@ function buildMarkdown(
 
   const telemetry = [
     report.failureOrigin ? `**Failure Origin:** ${report.failureOrigin}` : null,
-    report.systemDx ? `**System Diagnosis:** ${report.systemDx}` : null,
     report.primaryContamination ? `**Primary Contaminant:** ${report.primaryContamination}` : null,
     report.contributingFactor ? `**Contributing Factor:** ${report.contributingFactor}` : null,
   ].filter((s): s is string => s !== null);
@@ -107,7 +105,6 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       failureOrigin: a.failureOrigin,
       primaryContamination: a.primaryContamination,
       contributingFactor: a.contributingFactor,
-      systemDx: a.systemDx,
       disposition: a.disposition,
       archiveNote: a.archiveNote,
       shareQuote: a.shareQuote,
@@ -131,7 +128,6 @@ function normalise(a?: SmeltAnalysis | null, l?: SmeltLog | null): NormalisedRep
       failureOrigin: l.failure_origin,
       primaryContamination: l.primary_contamination,
       contributingFactor: l.contributing_factor,
-      systemDx: l.system_dx,
       disposition: l.disposition,
       archiveNote: l.archive_note,
       shareQuote: l.share_quote,
@@ -621,19 +617,19 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <section aria-label="Diagnostics" className="mt-8 border-t border-concrete-border pt-6">
                 <h4 className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em] mb-3">Diagnostics</h4>
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 font-mono">
+                  <div className="sm:col-span-2">
+                    <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Diagnosis</dt>
+                    <dd className="text-ash-white text-sm mt-0.5">{report.diagnosis}</dd>
+                  </div>
                   <div>
                     <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Failure Origin</dt>
                     <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
                   </div>
                   <div>
-                    <dt className="text-[9px] uppercase tracking-wider text-stone-gray">System Diagnosis</dt>
-                    <dd className="text-ash-white text-sm mt-0.5">{report.systemDx}</dd>
-                  </div>
-                  <div>
                     <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Primary Contaminant</dt>
                     <dd className="text-ash-white text-sm mt-0.5">{report.primaryContamination}</dd>
                   </div>
-                  <div>
+                  <div className="sm:col-span-2">
                     <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Contributing Factor</dt>
                     <dd className="text-ash-white text-sm mt-0.5">{report.contributingFactor}</dd>
                   </div>
