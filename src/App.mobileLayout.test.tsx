@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { ensureMatchMediaStub } from './test/appSharedMocks';
 
 // BRITTLE BY DESIGN — pins specific Tailwind class names against a
 // screenshot-review regression. See below for the rationale.
@@ -13,8 +14,8 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 //
 // This test file exists to pin those two facts at the DOM level. The
 // App component pulls in Firebase, Howler, Pixi, Gemini, and a handful
-// of feature modules — every one of which is replaced by a minimal mock
-// below so the render stays synchronous and hermetic.
+// of feature modules — the shared app test harness replaces those imports
+// with minimal mocks so the render stays synchronous and hermetic.
 //
 // jsdom reports a wide viewport (1024×768) by default, so Tailwind's
 // `sm:` responsive classes would mask a regression that only breaks on
@@ -33,117 +34,15 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 // a failing classname assertion here as a test bug without first
 // confirming the mobile header still renders correctly.
 
-const flushFirestore = () => () => {};
-
-vi.mock('./firebase', () => ({
-  db: { __db: true },
-  collection: vi.fn(() => ({ __collection: true })),
-  onSnapshot: vi.fn(() => flushFirestore()),
-  query: vi.fn(() => ({ __query: true })),
-  orderBy: vi.fn(() => ({ __orderBy: true })),
-  limit: vi.fn(() => ({ __limit: true })),
-  doc: vi.fn(() => ({ __doc: true })),
-  getDoc: vi.fn(async () => ({ exists: () => false, data: () => ({}) })),
-}));
-
-// Partial mock: App.tsx imports `AnalysisError` (a class) and the
-// `AnalysisErrorCategory` type alongside `analyzeLegacyTech`. A flat
-// factory that only returns `analyzeLegacyTech` would leave
-// `AnalysisError` as `undefined` at import time — today the mobile
-// layout test never hits the `error instanceof AnalysisError` branch
-// so nothing crashes, but a future refactor that referenced the class
-// at module scope would break this suite silently. Re-export the real
-// module and override only the analyzer.
-vi.mock('./services/geminiService', async () => {
-  const actual = await vi.importActual<typeof import('./services/geminiService')>(
-    './services/geminiService',
-  );
-  return {
-    ...actual,
-    analyzeLegacyTech: vi.fn(),
-  };
-});
-
-vi.mock('./lib/firestoreErrors', () => ({
-  handleFirestoreError: vi.fn(),
-  OperationType: { GET: 'GET', LIST: 'LIST' },
-}));
-
-vi.mock('./lib/smeltLogSchema', () => ({
-  parseSmeltLog: vi.fn(() => null),
-  parseSmeltLogBatch: vi.fn(() => ({ entries: [], invalidCount: 0 })),
-}));
-
-vi.mock('./lib/utils', () => ({
-  getLogShareLinks: vi.fn(() => []),
-  buildShareLinks: vi.fn(() => []),
-  buildIncidentUrl: vi.fn(() => 'https://example.test/s/1'),
-  formatPixels: vi.fn(() => ({ value: '0', unit: 'MEGAPIXELS' })),
-  formatTimestamp: vi.fn(() => '2026-04-10'),
-  getFiveDistinctColors: vi.fn(() => ['#000', '#111', '#222', '#333', '#444']),
-}));
-
-// Howler constructs an AudioContext at module scope when `new Howl(...)`
-// runs in App.tsx — jsdom has no AudioContext, so the constructor is
-// neutered here. Returning a lightweight shape keeps the module-level
-// variable references valid without touching audio subsystems.
-vi.mock('howler', () => ({
-  Howl: vi.fn(function HowlMock(this: unknown) {
-    return {
-      play: vi.fn(),
-      stop: vi.fn(),
-      volume: vi.fn(),
-    };
-  }),
-}));
-
-// SmelterCanvas is lazy-imported; the lazy resolution never runs in
-// this test because we never start a smelt flow. Still mock the module
-// so the lazy import does not pull Pixi.
-vi.mock('./components/SmelterCanvas', () => ({
-  SmelterCanvas: () => null,
-}));
-
-vi.mock('./components/IncidentReportOverlay', () => ({
-  IncidentReportOverlay: () => null,
-}));
-
-vi.mock('./components/IncidentLogCard', () => ({
-  IncidentLogCard: () => null,
-}));
-
-vi.mock('./components/DecommissionIndex', () => ({
-  DecommissionIndex: () => <div data-testid="decommission-index-stub" />,
-}));
-
-vi.mock('./components/SiteFooter', () => ({
-  SiteFooter: () => null,
-}));
-
-vi.mock('./components/DataHealthIndicator', () => ({
-  DataHealthIndicator: () => <div data-testid="data-health-stub" />,
-}));
-
 import App from './App';
 
 describe('App mobile header layout', () => {
   beforeAll(() => {
     // A handful of the lower-level components reach for `matchMedia`
-    // during their own mount effects even though we've stubbed them.
+    // during their own mount effects even though they're stubbed.
     // Provide a minimal shim so the render never reaches an undefined
     // property access.
-    if (typeof globalThis.matchMedia !== 'function') {
-      globalThis.matchMedia = vi.fn(() => ({
-        matches: false,
-        media: '',
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(() => false),
-      })) as unknown as typeof globalThis.matchMedia;
-    }
+    ensureMatchMediaStub();
   });
 
   it('renders the tagline without a `hidden` class so mobile users see it', () => {

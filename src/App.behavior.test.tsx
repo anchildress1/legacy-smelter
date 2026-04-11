@@ -1,5 +1,11 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  ensureMatchMediaStub,
+  mockAnalyzeLegacyTech,
+  mockGetDoc,
+  mockParseSmeltLog,
+} from './test/appSharedMocks';
 
 // Behaviour tests for App.tsx state transitions. `App.mobileLayout.test.tsx`
 // pins the header classnames against a screenshot regression and does NOT
@@ -11,101 +17,6 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 // The module mocks below are scoped to exactly what App.tsx imports so
 // the render stays synchronous and deterministic. Every feature module
 // that touches Firebase, PIXI, Howler, or Gemini is stubbed.
-
-const flushFirestore = () => () => {};
-
-const mockAnalyzeLegacyTech =
-  vi.fn<(base64: string, mimeType: string) => Promise<unknown>>();
-const mockGetDoc = vi.fn();
-const mockParseSmeltLog = vi.fn();
-
-vi.mock('./firebase', () => ({
-  db: { __db: true },
-  collection: vi.fn(() => ({ __collection: true })),
-  onSnapshot: vi.fn(() => flushFirestore()),
-  query: vi.fn(() => ({ __query: true })),
-  orderBy: vi.fn(() => ({ __orderBy: true })),
-  limit: vi.fn(() => ({ __limit: true })),
-  doc: vi.fn((_db: unknown, _collection: string, id: string) => ({
-    __doc: true,
-    id,
-  })),
-  getDoc: (...args: unknown[]) => mockGetDoc(...args),
-}));
-
-vi.mock('./services/geminiService', async () => {
-  const actual = await vi.importActual<typeof import('./services/geminiService')>(
-    './services/geminiService',
-  );
-  return {
-    ...actual,
-    analyzeLegacyTech: (...args: [string, string]) =>
-      mockAnalyzeLegacyTech(...args),
-  };
-});
-
-vi.mock('./lib/firestoreErrors', () => ({
-  handleFirestoreError: vi.fn(),
-  OperationType: { GET: 'GET', LIST: 'LIST' },
-}));
-
-vi.mock('./lib/smeltLogSchema', () => ({
-  parseSmeltLog: (...args: unknown[]) => mockParseSmeltLog(...args),
-  parseSmeltLogBatch: vi.fn(() => ({ entries: [], invalidCount: 0 })),
-}));
-
-vi.mock('./lib/utils', () => ({
-  getLogShareLinks: vi.fn(() => []),
-  buildShareLinks: vi.fn(() => []),
-  buildIncidentUrl: vi.fn(() => 'https://example.test/s/1'),
-  formatPixels: vi.fn(() => ({ value: '0', unit: 'MEGAPIXELS' })),
-  formatTimestamp: vi.fn(() => '2026-04-10'),
-  getFiveDistinctColors: vi.fn(() => ['#000', '#111', '#222', '#333', '#444']),
-}));
-
-vi.mock('howler', () => ({
-  Howl: vi.fn(function HowlMock(this: unknown) {
-    return {
-      play: vi.fn(),
-      stop: vi.fn(),
-      volume: vi.fn(),
-    };
-  }),
-}));
-
-vi.mock('./components/SmelterCanvas', () => ({
-  SmelterCanvas: () => null,
-}));
-
-vi.mock('./components/IncidentReportOverlay', () => ({
-  IncidentReportOverlay: ({ incidentId }: { incidentId: string }) => (
-    <div data-testid="incident-report-overlay" data-incident-id={incidentId} />
-  ),
-}));
-
-vi.mock('./components/IncidentLogCard', () => ({
-  IncidentLogCard: () => null,
-}));
-
-vi.mock('./components/DecommissionIndex', () => ({
-  DecommissionIndex: () => <div data-testid="decommission-index-stub" />,
-}));
-
-vi.mock('./components/SiteFooter', () => ({
-  SiteFooter: () => null,
-}));
-
-vi.mock('./components/DataHealthIndicator', () => ({
-  DataHealthIndicator: ({ issues }: { issues: string[] }) => (
-    <div data-testid="data-health-stub" data-issue-count={issues.length}>
-      {issues.map((issue) => (
-        <div key={issue} data-testid="data-health-issue">
-          {issue}
-        </div>
-      ))}
-    </div>
-  ),
-}));
 
 import App from './App';
 
@@ -158,18 +69,7 @@ async function triggerFilePicker(file: File) {
 
 describe('App state transitions', () => {
   beforeAll(() => {
-    if (typeof globalThis.matchMedia !== 'function') {
-      globalThis.matchMedia = vi.fn(() => ({
-        matches: false,
-        media: '',
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(() => false),
-      })) as unknown as typeof globalThis.matchMedia;
-    }
+    ensureMatchMediaStub();
   });
 
   beforeEach(() => {

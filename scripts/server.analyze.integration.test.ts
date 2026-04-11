@@ -173,6 +173,30 @@ async function importServer(overrides: Record<string, string | undefined> = {}):
 describe('POST /api/analyze integration', () => {
   let serverModule: ServerModule | null = null;
 
+  async function bootAnalyzeRequest({
+    envOverrides = {},
+    authorization = 'Bearer good-token',
+    contentType = 'application/json',
+    body = { image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' },
+  }: {
+    envOverrides?: Record<string, string | undefined>;
+    authorization?: string | null;
+    contentType?: string;
+    body?: string | Record<string, unknown>;
+  } = {}) {
+    serverModule = await importServer(envOverrides);
+    serverModule.resetAnalyzeRateLimitStateForTests();
+
+    let req = request(serverModule.app).post('/api/analyze');
+    if (authorization !== null) {
+      req = req.set('Authorization', authorization);
+    }
+    if (contentType) {
+      req = req.set('Content-Type', contentType);
+    }
+    return req.send(body);
+  }
+
   beforeAll(() => {
     for (const key of ENV_KEYS_MUTATED) {
       ENV_SNAPSHOT[key] = process.env[key];
@@ -454,14 +478,7 @@ describe('POST /api/analyze integration', () => {
 
   it('returns 502 when Gemini throws during analysis', async () => {
     state.generateContent.mockRejectedValue(new Error('gemini network down'));
-    serverModule = await importServer();
-    serverModule.resetAnalyzeRateLimitStateForTests();
-
-    const response = await request(serverModule.app)
-      .post('/api/analyze')
-      .set('Authorization', 'Bearer good-token')
-      .set('Content-Type', 'application/json')
-      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+    const response = await bootAnalyzeRequest();
 
     expect(response.status).toBe(502);
     expect(response.body.error).toContain('Analysis failed');
@@ -470,14 +487,7 @@ describe('POST /api/analyze integration', () => {
 
   it('returns 502 when Gemini returns an empty response', async () => {
     state.generateContent.mockResolvedValue({ text: '' });
-    serverModule = await importServer();
-    serverModule.resetAnalyzeRateLimitStateForTests();
-
-    const response = await request(serverModule.app)
-      .post('/api/analyze')
-      .set('Authorization', 'Bearer good-token')
-      .set('Content-Type', 'application/json')
-      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+    const response = await bootAnalyzeRequest();
 
     expect(response.status).toBe(502);
     expect(response.body.error).toContain('Analysis failed');
@@ -486,14 +496,7 @@ describe('POST /api/analyze integration', () => {
 
   it('returns 502 when Gemini returns malformed JSON', async () => {
     state.generateContent.mockResolvedValue({ text: 'not json at all' });
-    serverModule = await importServer();
-    serverModule.resetAnalyzeRateLimitStateForTests();
-
-    const response = await request(serverModule.app)
-      .post('/api/analyze')
-      .set('Authorization', 'Bearer good-token')
-      .set('Content-Type', 'application/json')
-      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+    const response = await bootAnalyzeRequest();
 
     expect(response.status).toBe(502);
     expect(response.body.error).toContain('Analysis failed');
@@ -505,14 +508,7 @@ describe('POST /api/analyze integration', () => {
     delete partial.legacy_infra_class;
     state.generateContent.mockResolvedValue({ text: JSON.stringify(partial) });
 
-    serverModule = await importServer();
-    serverModule.resetAnalyzeRateLimitStateForTests();
-
-    const response = await request(serverModule.app)
-      .post('/api/analyze')
-      .set('Authorization', 'Bearer good-token')
-      .set('Content-Type', 'application/json')
-      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+    const response = await bootAnalyzeRequest();
 
     expect(response.status).toBe(502);
     expect(response.body.error).toContain('Analysis failed');
@@ -524,14 +520,7 @@ describe('POST /api/analyze integration', () => {
     wrongBox.subject_box = [0, 0, 'nope', 100];
     state.generateContent.mockResolvedValue({ text: JSON.stringify(wrongBox) });
 
-    serverModule = await importServer();
-    serverModule.resetAnalyzeRateLimitStateForTests();
-
-    const response = await request(serverModule.app)
-      .post('/api/analyze')
-      .set('Authorization', 'Bearer good-token')
-      .set('Content-Type', 'application/json')
-      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+    const response = await bootAnalyzeRequest();
 
     expect(response.status).toBe(502);
     expect(response.body.error).toContain('Analysis failed');
@@ -548,14 +537,7 @@ describe('POST /api/analyze integration', () => {
     floatBox.subject_box = [0.5, 0.25, 999.75, 1000];
     state.generateContent.mockResolvedValue({ text: JSON.stringify(floatBox) });
 
-    serverModule = await importServer();
-    serverModule.resetAnalyzeRateLimitStateForTests();
-
-    const response = await request(serverModule.app)
-      .post('/api/analyze')
-      .set('Authorization', 'Bearer good-token')
-      .set('Content-Type', 'application/json')
-      .send({ image: ONE_BY_ONE_PNG_BASE64, mimeType: 'image/png' });
+    const response = await bootAnalyzeRequest();
 
     expect(response.status).toBe(200);
     expect(state.batchCalls).toHaveLength(2);
