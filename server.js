@@ -217,13 +217,21 @@ function normalizeSeverity(value) {
 }
 
 const apiRateLimitBuckets = new Map();
-const API_RATE_LIMIT_MAX_BUCKETS = 10_000;
+// Configurable so the test suite can exercise the bucket-full 503 path
+// without forging 10k distinct client IPs. Production deploys leave this
+// unset and inherit the 10k default, which is large enough to tolerate
+// real-world client cardinality but small enough to cap memory growth
+// under a high-cardinality flood.
+const API_RATE_LIMIT_MAX_BUCKETS = parsePositiveInt(
+  process.env.API_RATE_LIMIT_MAX_BUCKETS,
+  10_000,
+);
 // NOTE: this interval is intentionally NOT .unref()'d. When server.js is the
 // Node entry point, unrefing this timer causes the process to exit ~100ms
 // after app.listen() despite the HTTP server holding an open socket. The
 // interval is cheap (a Map sweep every 60s) and there's no graceful shutdown
 // path that would benefit from it being unref'd.
-setInterval(() => {
+const rateLimitCleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [key, bucket] of apiRateLimitBuckets.entries()) {
     if (now - bucket.windowStart >= API_RATE_LIMIT_WINDOW_MS) {
@@ -231,6 +239,21 @@ setInterval(() => {
     }
   }
 }, Math.max(API_RATE_LIMIT_WINDOW_MS, 60_000));
+
+export function resetAnalyzeRateLimitStateForTests() {
+  apiRateLimitBuckets.clear();
+}
+
+export function stopRateLimitCleanupIntervalForTests() {
+  clearInterval(rateLimitCleanupInterval);
+}
+
+// Test-only seam: exposes the bucket map so the 503 "bucket full" path
+// can be exercised without forging distinct client IPs. Do NOT call this
+// from production code — the returned Map is the live mutable state.
+export function getRateLimitBucketsForTests() {
+  return apiRateLimitBuckets;
+}
 
 // Verify a Firebase ID token (anonymous or otherwise) on the Authorization
 // header. Rejects if missing/invalid. Attaches the decoded uid to req.authUid.
@@ -385,7 +408,11 @@ async function analyzeImage(base64Image, mimeType) {
   };
 }
 
-const app = express();
+export const app = express();
+
+// Suppress the default `X-Powered-By: Express` header so the framework
+// does not advertise its identity/version to crawlers or attackers.
+app.disable('x-powered-by');
 
 // Trust one upstream proxy hop only when running behind Cloud Run's frontend.
 const isCloudRun = Boolean(process.env.K_SERVICE);
@@ -629,6 +656,9 @@ app.use((_req, res) => {
   res.send(getSpaHtml());
 });
 
-app.listen(PORT, () => {
-  console.log(`[server] Legacy Smelter on port ${PORT}`);
-});
+const isMainModule = process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMainModule) {
+  app.listen(PORT, () => {
+    console.log(`[server] Legacy Smelter on port ${PORT}`);
+  });
+}
