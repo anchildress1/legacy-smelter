@@ -125,7 +125,7 @@ function findImpactNumber(container: HTMLElement): HTMLElement {
   // numeric content on the page (timestamps, counts) can't shadow.
   const row = container.querySelector('[data-testid="incident-stats-row"]');
   if (!(row instanceof HTMLElement)) {
-    throw new Error('stats row not rendered');
+    throw new TypeError('stats row not rendered');
   }
   const nodes = Array.from(row.querySelectorAll('div')).filter((el) =>
     /^\d+$/.test((el.textContent ?? '').trim()),

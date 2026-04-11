@@ -110,7 +110,7 @@ function makeLog(overrides: Partial<SmeltLog> = {}): SmeltLog {
 function findImpactSpan(container: HTMLElement): HTMLElement {
   const match = container.querySelector('[data-testid="incident-card-impact-number"]');
   if (!(match instanceof HTMLElement)) {
-    throw new Error('Impact number not found');
+    throw new TypeError('Impact number not found');
   }
   return match;
 }
