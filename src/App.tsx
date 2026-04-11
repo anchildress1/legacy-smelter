@@ -376,9 +376,15 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     setIsComplete(true);
     // Only auto-open the postmortem the first time. On replay, the user
     // already dismissed it once — don't force it back open.
+    // Respect prefers-reduced-motion and an explicit user opt-out stored
+    // in localStorage (key: 'smelter-postmortem-auto', value: 'false').
     if (!postmortemAutoOpenedRef.current) {
       postmortemAutoOpenedRef.current = true;
-      setShowReport(true);
+      const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const autoOpenDisabled = localStorage.getItem('smelter-postmortem-auto') === 'false';
+      if (!prefersReduced && !autoOpenDisabled) {
+        setShowReport(true);
+      }
     }
   };
 
@@ -423,7 +429,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
         buildIncidentUrl(analysis.incidentId)
       )
     : [];
-  const activeIssues = [statsIssue, queueIssue, analyzeIssue].filter(
+  const activeIssues = [statsIssue, queueIssue].filter(
     (message): message is string => !!message,
   );
 
@@ -583,7 +589,36 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
                   )}
                 </div>
               )}
+
+              {/* Idle guidance — visible before any processing begins */}
+              {!isAnalyzing && !isComplete && !isCameraActive && (
+                <div className="absolute bottom-4 left-0 w-full flex justify-center pointer-events-none z-10">
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-stone-gray/40">
+                    Drop artifact or deploy scanner to begin
+                  </p>
+                </div>
+              )}
             </div>
+
+            {/* Inline analyze error — displayed below canvas, themed as institutional fault */}
+            {analyzeIssue && (
+              <div
+                role="alert"
+                className="font-mono text-[10px] uppercase tracking-widest text-hazard-amber border border-hazard-amber/25 bg-hazard-amber/5 rounded-lg px-4 py-3 leading-relaxed"
+              >
+                {analyzeIssue}
+              </div>
+            )}
+
+            {/* Compact result summary — shown after smelt completes */}
+            {isComplete && analysis && (
+              <div className="font-mono text-[10px] uppercase tracking-widest border border-concrete-border bg-concrete-mid rounded-lg px-4 py-3 flex items-center gap-3 min-w-0">
+                <span className="font-bold bg-hazard-amber/90 text-zinc-950 px-1.5 py-0.5 rounded shrink-0">
+                  {analysis.severity}
+                </span>
+                <span className="text-stone-gray truncate min-w-0">{analysis.ogHeadline}</span>
+              </div>
+            )}
           </div>
 
           {/* Right Column: Incident Queue */}

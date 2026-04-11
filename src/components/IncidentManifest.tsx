@@ -201,9 +201,10 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
               key={value}
               type="button"
               onClick={() => setFilterMode(value)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+              aria-pressed={filterMode === value}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset ${
                 filterMode === value
-                  ? 'border-hazard-amber/40 bg-hazard-amber/10 text-hazard-amber'
+                  ? 'border-hazard-amber/70 bg-hazard-amber/20 text-hazard-amber'
                   : 'border-[#444] bg-[#1a1a1a] text-stone-gray hover:text-ash-white hover:border-[#555]'
               }`}
             >
@@ -214,7 +215,8 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
           <select
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as ManifestSort)}
-            className="ml-auto rounded-md border border-[#333] bg-transparent px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-widest text-stone-gray focus:border-hazard-amber focus:outline-none"
+            aria-label="Sort incidents"
+            className="ml-auto rounded-full border border-[#444] bg-[#1a1a1a] px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest text-stone-gray focus:border-hazard-amber focus:outline-none"
           >
             <option value="impact">Highest Impact</option>
             <option value="newest">Newest First</option>

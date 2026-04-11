@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useId } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { SmeltLog, computeImpact } from '../types';
 import { formatTimestamp, getFiveDistinctColors, buildIncidentUrl } from '../lib/utils';
-import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
+import { X, AlertTriangle, Check, Copy, Link2, ShieldCheck, Siren, ChevronDown, ChevronUp } from 'lucide-react';
 import { recordBreach } from '../services/breachService';
 import { useEscalation } from '../hooks/useEscalation';
 import { db, doc, onSnapshot } from '../firebase';
@@ -205,15 +205,6 @@ interface LiveCounts {
   timestamp: Date | null;
 }
 
-/**
- * Reason the live-count stream stopped advancing. `null` means the
- * stream is healthy and the rendered counters reflect Firestore. Any
- * non-null value means the overlay is showing a stale snapshot: the
- * parent doc was deleted, drifted to a non-numeric counter shape, or
- * the snapshot listener itself errored. Callers surface a compact
- * "stale" pill next to the counters so the user knows to close and
- * reopen the overlay instead of silently reading frozen numbers.
- */
 type LiveCountsStaleReason = 'removed' | 'schema' | 'subscription' | null;
 
 interface LiveCountsResult {
@@ -233,10 +224,6 @@ function useLiveIncidentCounts(
   }));
   const [staleReason, setStaleReason] = useState<LiveCountsStaleReason>(null);
 
-  // Re-seed from the report whenever the incident changes. Keeping the
-  // local seed behind an effect (instead of inside render) prevents a
-  // stale overlay reopen from rendering the previous incident's counts
-  // for a frame.
   useEffect(() => {
     setCounts({
       sanction: seed?.sanctionCount ?? 0,
@@ -245,8 +232,6 @@ function useLiveIncidentCounts(
       timestamp: seed?.timestamp ?? null,
     });
     setStaleReason(null);
-    // Re-run only when the incident itself changes. `seed` is a fresh
-    // object every render so including it would cause a re-seed loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incidentId]);
 
@@ -303,15 +288,6 @@ function staleReasonCopy(reason: LiveCountsStaleReason): string | null {
   }
 }
 
-/**
- * Drives the native <dialog> element's open/close lifecycle. `showModal()`
- * handles focus trapping, the ::backdrop, body scroll inhibition, and the
- * `cancel` (Escape) event for us — every piece of manual machinery this
- * component used to carry. The caller wires the returned ref to the
- * <dialog> and binds `onCancel` to `preventDefault() + onClose()` so the
- * browser's default Escape handling doesn't skip the parent's state
- * cleanup.
- */
 function useModalDialog(onClose: () => void): React.RefObject<HTMLDialogElement | null> {
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -322,8 +298,6 @@ function useModalDialog(onClose: () => void): React.RefObject<HTMLDialogElement 
       if (dialog.open) dialog.close();
     };
   }, []);
-  // Escape closes the dialog via the `cancel` event; forward that to the
-  // parent's onClose so React state stays in sync with the DOM state.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -344,6 +318,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
   const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
   const [breachError, setBreachError] = useState<Error | null>(null);
+  const [archiveExpanded, setArchiveExpanded] = useState(false);
   const { counts, staleReason } = useLiveIncidentCounts(incidentId, report);
   const staleMessage = staleReasonCopy(staleReason);
   const liveCountsForImpact = {
@@ -359,13 +334,9 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   } = useEscalation(incidentId ?? null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Breach epoch — bumped on every incident switch so a `recordBreach`
-  // promise that settles after the user has moved to a different incident
-  // cannot write its error (or success) into the new incident's state.
   const breachEpochRef = useRef(0);
   const headingId = useId();
 
-  // Derive incident URL from incidentId — used for the copy-link button
   const incidentUrl = incidentId ? buildIncidentUrl(incidentId) : null;
 
   useEffect(() => {
@@ -375,24 +346,11 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     };
   }, []);
 
-  // Reset transient per-incident state when `incidentId` changes. The overlay
-  // instance can be reused across incidents (App.tsx renders it conditionally
-  // but does not key it on `incidentId`), so without this reset a breach
-  // error from incident A would leak into incident B until the user
-  // triggered a new breach attempt. Also bumps `breachEpochRef` so an
-  // in-flight `recordBreach` resolution from the previous incident is
-  // ignored rather than racing into the new incident's state.
   useEffect(() => {
     breachEpochRef.current += 1;
     setBreachError(null);
   }, [incidentId]);
 
-  // Backdrop click-to-close: clicks on the <dialog> element itself
-  // (not a descendant) mean the user clicked the translucent backdrop.
-  // Registered as an imperative listener instead of a JSX `onClick` so
-  // the a11y linter (S6847) doesn't flag <dialog> as a non-interactive
-  // element with a mouse handler — keyboard dismiss is handled via the
-  // native `cancel` event in useModalDialog above.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -405,39 +363,20 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
 
   if (!report) return null;
 
-  // Breaches feed the Impact score (2× weight) and drive the P0 feed sort —
-  // this is product state, not analytics. A failed breach record is shown
-  // to the user via `breachError` (mirroring the escalation error surface
-  // in `useEscalation`), so both counter writes that feed `impact_score`
-  // have a consistent failure UX. Skipped states (cooldown, already-in-
-  // flight) are NOT shown — they are intentional no-ops and the user
-  // should not be nagged about them.
   const recordBreachAsync = () => {
     if (!incidentId) return;
     setBreachError(null);
     const requestEpoch = breachEpochRef.current;
     recordBreach(incidentId)
       .then((result) => {
-        // Ignore completions for a previous incident — the overlay has moved
-        // on and the error/success belongs to a now-invisible state machine.
         if (breachEpochRef.current !== requestEpoch) return;
         if (result.ok || result.skipped) return;
         console.error('[IncidentReportOverlay] Breach record failed:', result.error);
-        // `BreachResult.error` is the underlying error's `.message` (a
-        // string) per breachService contract. Wrap it in an Error so the
-        // alert surface matches the shape of `escalationError` and the
-        // render path only has to handle one type.
         setBreachError(new Error(result.error ?? 'Breach record failed'));
       })
       .catch((err) => {
         if (breachEpochRef.current !== requestEpoch) {
-          // Late rejection from the previous incident. Log at warn level so
-          // a real Firestore failure is still observable, but do NOT touch
-          // UI state — the user has moved on.
-          console.warn(
-            '[IncidentReportOverlay] Ignoring stale breach failure for previous incident:',
-            err,
-          );
+          console.warn('[IncidentReportOverlay] Ignoring stale breach failure for previous incident:', err);
           return;
         }
         console.error('[IncidentReportOverlay] Breach record threw unexpectedly:', err);
@@ -458,10 +397,6 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   };
 
   const handleEscalate = () => {
-    // `toggleEscalate` swallows its own errors into `escalationError` for
-    // UI display — callers just fire-and-forget the promise. The unused
-    // `.catch` guard here is a safety net in case the hook's contract
-    // regresses to re-throwing.
     toggleEscalate().catch((err: unknown) => {
       console.error('[IncidentReportOverlay] toggleEscalate unexpectedly threw:', err);
     });
@@ -486,13 +421,21 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
     <dialog
       ref={dialogRef}
       aria-labelledby={headingId}
-      className="bg-transparent p-0 m-0 max-w-none max-h-none w-screen h-[100dvh] backdrop:bg-black/80 backdrop:backdrop-blur-sm open:flex items-end sm:items-center justify-center sm:p-4"
+      className="bg-transparent p-0 m-0 max-w-none max-h-none w-screen h-[100dvh] backdrop:bg-black/70 backdrop:backdrop-blur-[2px] open:flex items-end sm:items-center justify-center sm:p-4"
     >
       <div
         className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
       >
-        {/* Color strip — always left */}
-        <div className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden" aria-hidden="true">
+        {/* Left chromatic strip. Inline filter avoids Tailwind v4
+            CSS-variable composition issues with overflow-hidden + rounded
+            contexts. Stronger cut (0.6/0.85) than the card strip because
+            the modal is larger on screen and needs a deeper reduction
+            to stay subordinate to the title hierarchy. */}
+        <div
+          className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden"
+          style={{ filter: 'saturate(0.6) brightness(0.85)' }}
+          aria-hidden="true"
+        >
           {report.dominantColors.map((color) => (
             <div key={color} className="flex-1" style={{ backgroundColor: color }} />
           ))}
@@ -501,227 +444,249 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         {/* Main content column */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 
-        {/* ── HEADER BAR ── */}
-        <div className="shrink-0 flex items-center justify-between gap-2 px-5 sm:px-8 py-2.5">
-          <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
-            Postmortem
-          </h2>
-          <div className="flex items-center gap-1 shrink-0">
-            {platforms.map(({ label, href }) => {
-              const cfg = SHARE_PLATFORMS[label];
-              return (
-                <a
-                  key={label}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={recordBreachAsync}
-                  className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
-                  aria-label={`Post to ${cfg.name}`}
-                  title={cfg.name}
-                >
-                  {cfg.icon}
-                </a>
-              );
-            })}
-            {incidentUrl && (
-              <button
-                onClick={handleCopyLink}
-                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
-                aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
-                title={copyLinkState === 'copied' ? 'Copied!' : 'Copy link'}
-              >
-                {copyLinkState === 'copied' ? <Check size={12} /> : <Link2 size={12} />}
-              </button>
-            )}
-            <button
-              onClick={handleCopyText}
-              className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
-              aria-label={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
-              title={copyTextState === 'copied' ? 'Copied!' : 'Copy brief'}
-            >
-              {copyTextState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
-            </button>
-            <div className="w-px h-4 bg-[#333] mx-0.5" aria-hidden="true" />
-            <button
-              onClick={onClose}
-              className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
-              aria-label="Close report"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        </div>
-
-        {/* Hazard stripe — under header, consistent with manifest */}
-        <div className="hazard-stripe h-1 w-full shrink-0" />
-
-        {/* ── SCROLLABLE BODY ── */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="px-5 sm:px-8 py-5 sm:py-6 space-y-5">
-
-            {/* Title + severity */}
-            <div>
-              <div className="flex justify-between items-start gap-3">
-                <p className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
-                  {report.legacyInfraClass}
-                </p>
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold shrink-0">
-                  <AlertTriangle size={8} aria-hidden="true" />
-                  {report.severity}
-                </span>
-              </div>
-              {counts.sanction > 0 && (
-                <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber px-1.5 py-0.5 rounded uppercase font-bold">
-                  <ShieldCheck size={9} aria-hidden="true" />
-                  Sanctioned
-                </span>
-              )}
-            </div>
-
-            {/* Summary */}
-            <p className="text-ash-white font-mono text-sm leading-relaxed">
-              {report.incidentFeedSummary}
-            </p>
-
-            {/* Quote — the star */}
-            <div className="border-l-2 border-hazard-amber pl-4 py-1">
-              <p className="text-hazard-amber font-mono text-base sm:text-lg italic leading-snug">
-                "{report.shareQuote}"
-              </p>
-            </div>
-
-            {/* Stats row */}
-            <div
-              className="flex items-baseline justify-between py-3 border-y border-[#2a2a2a]"
-              data-testid="incident-stats-row"
-              data-live-stale={staleReason ?? 'fresh'}
-            >
-              {[
-                { value: computeImpact(liveCountsForImpact), label: 'Impact' },
-                { value: counts.sanction, label: 'Sanctions' },
-                { value: counts.escalation, label: 'Escalations' },
-                { value: counts.breach, label: 'Breaches' },
-              ].map(({ value, label }) => (
-                <div key={label} className="text-center">
-                  <div className="text-hazard-amber font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
-                  <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-stone-gray">{label}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Live-count staleness indicator. Mirrors the DataHealthIndicator
-                pattern from App.tsx so a user reading frozen counter values
-                gets a compact warning pill, not a silent stale view. Rendered
-                as a native `<output>` element (implicit `role="status"`) for
-                consistent accessibility across assistive technologies — some
-                screen readers fail to announce explicit `role="status"` on a
-                non-`<output>` element. */}
-            {staleMessage && (
-              <output
-                data-testid="incident-stale-indicator"
-                className="block text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
-              >
-                {staleMessage}
-              </output>
-            )}
-
-            {/* Escalate */}
-            {incidentId && (
-              <div>
+          {/* ── HEADER BAR ── */}
+          <div className="shrink-0 flex items-center justify-between gap-2 pl-5 sm:pl-8 pr-2 py-2.5">
+            <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
+              Postmortem
+            </h2>
+            <div className="flex items-center gap-1 shrink-0">
+              {platforms.map(({ label, href }) => {
+                const cfg = SHARE_PLATFORMS[label];
+                return (
+                  <a
+                    key={label}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={recordBreachAsync}
+                    className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                    aria-label={`Post to ${cfg.name}`}
+                    title={cfg.name}
+                  >
+                    {cfg.icon}
+                  </a>
+                );
+              })}
+              {incidentUrl && (
                 <button
-                  onClick={handleEscalate}
-                  disabled={isTogglingEscalation}
-                  className={`w-full flex items-center justify-center gap-2 rounded-md border py-2 font-mono text-[11px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
-                    escalated
-                      ? 'border-hazard-amber/30 bg-hazard-amber/10 text-hazard-amber'
-                      : 'border-[#333] text-stone-gray hover:text-ash-white hover:border-[#444]'
-                  } ${isTogglingEscalation ? 'opacity-50' : ''}`}
-                  aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+                  onClick={handleCopyLink}
+                  className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                  aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
+                  title={copyLinkState === 'copied' ? 'Copied!' : 'Copy link'}
                 >
-                  <Siren size={16} aria-hidden="true" />
-                  {escalated ? 'Escalation Armed' : 'Escalate Incident'}
+                  {copyLinkState === 'copied' ? <Check size={12} /> : <Link2 size={12} />}
                 </button>
-                {escalationError && (
-                  <p
-                    role="alert"
-                    className="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
-                  >
-                    Escalation failed: {escalationError.message}
-                  </p>
-                )}
-                {/* Breach errors mirror the escalation error surface above.
-                    Both writes feed `impact_score` and drive the P0 feed
-                    sort — the user needs a consistent signal when either
-                    one fails, instead of escalation surfacing failures
-                    and breach silently eating them. */}
-                {breachError && (
-                  <p
-                    role="alert"
-                    data-testid="breach-error"
-                    className="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
-                  >
-                    Breach record failed: {breachError.message}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Disposition */}
-            <section>
-              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em]">Recommended Action</p>
-              <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">{report.disposition}</p>
-            </section>
-
-            {/* Telemetry */}
-            <section className="border-t border-[#2a2a2a] pt-4">
-              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em] mb-3">Telemetry</p>
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 font-mono">
-                <div>
-                  <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Failure Origin</dt>
-                  <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
-                </div>
-                <div>
-                  <dt className="text-[9px] uppercase tracking-wider text-stone-gray">System Diagnosis</dt>
-                  <dd className="text-ash-white text-sm mt-0.5">{report.systemDx}</dd>
-                </div>
-                <div>
-                  <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Primary Contaminant</dt>
-                  <dd className="text-ash-white text-sm mt-0.5">{report.primaryContamination}</dd>
-                </div>
-                <div>
-                  <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Contributing Factor</dt>
-                  <dd className="text-ash-white text-sm mt-0.5">{report.contributingFactor}</dd>
-                </div>
-              </dl>
-            </section>
-
-            {/* Archive Note */}
-            <section className="border-t border-[#2a2a2a] pt-4">
-              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em]">Archive Note</p>
-              <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">{report.archiveNote}</p>
-            </section>
-
-            {/* Sanction Rationale */}
-            {counts.sanction > 0 && report.sanctionRationale && (
-              <section className="border-t border-hazard-amber/20 pt-4">
-                <p className="text-hazard-amber font-mono text-[10px] uppercase tracking-[0.15em] flex items-center gap-1.5">
-                  <ShieldCheck size={10} aria-hidden="true" />
-                  Sanction Rationale
-                </p>
-                <p className="mt-1.5 text-hazard-amber/80 font-mono text-sm leading-relaxed italic">{report.sanctionRationale}</p>
-              </section>
-            )}
-
-            {/* Case footer */}
-            <div className="border-t border-[#2a2a2a] pt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-xs text-stone-gray">
-              <span>Filed by <span className="text-hazard-amber font-bold">{report.anonHandle}</span></span>
-              {counts.timestamp && <span>{formatTimestamp(counts.timestamp)}</span>}
-              <span>{report.chromaticProfile}</span>
+              )}
+              <button
+                onClick={handleCopyText}
+                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                aria-label={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
+                title={copyTextState === 'copied' ? 'Copied!' : 'Copy brief'}
+              >
+                {copyTextState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
+              </button>
+              <div className="w-px h-4 bg-concrete-border mx-0.5" aria-hidden="true" />
+              <button
+                onClick={onClose}
+                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                aria-label="Close report"
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
             </div>
-
           </div>
-        </div>
+
+          {/* Hazard stripe */}
+          <div className="hazard-stripe h-1 w-full shrink-0" />
+
+          {/* ── SCROLLABLE BODY ── */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-5 sm:px-8 py-5 sm:py-6">
+
+              {/* ═══ SECTION 1 — INCIDENT OVERVIEW ═══
+                  Title + status cluster at the top, then summary,
+                  quote (quieter), metrics. Tight internal spacing
+                  makes these four read as one unit. */}
+              <section aria-label="Incident overview" className="space-y-3">
+
+                {/* Title row: title (left) + severity + escalate (right) */}
+                <div>
+                  <div className="flex justify-between items-start gap-3">
+                    <h3 className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
+                      {report.legacyInfraClass}
+                    </h3>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold">
+                        <AlertTriangle size={8} aria-hidden="true" />
+                        {report.severity}
+                      </span>
+                      {incidentId && (
+                        <>
+                          <div className="w-px h-4 bg-concrete-border" aria-hidden="true" />
+                          <button
+                            onClick={handleEscalate}
+                            disabled={isTogglingEscalation}
+                            className={`inline-flex items-center gap-1 rounded border px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                              escalated
+                                ? 'border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber'
+                                : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
+                            } ${isTogglingEscalation ? 'opacity-50' : ''}`}
+                            aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+                            aria-pressed={escalated}
+                          >
+                            <Siren size={10} aria-hidden="true" />
+                            {escalated ? 'Armed' : 'Escalate'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sanction badge — beneath title row */}
+                  {counts.sanction > 0 && (
+                    <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold">
+                      <ShieldCheck size={9} aria-hidden="true" />
+                      Sanctioned
+                    </span>
+                  )}
+
+                  {/* Escalation / breach errors — inline under the action that produced them */}
+                  {escalationError && (
+                    <p role="alert" className="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-hazard-amber">
+                      ESCALATION FAILED. COUNTER WRITE REJECTED.
+                    </p>
+                  )}
+                  {breachError && (
+                    <p
+                      role="alert"
+                      data-testid="breach-error"
+                      className="mt-1 text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
+                    >
+                      BREACH RECORD FAILED. IMPACT SCORE UNAFFECTED.
+                    </p>
+                  )}
+                </div>
+
+                {/* Summary */}
+                <p className="text-ash-white font-mono text-sm leading-relaxed">
+                  {report.incidentFeedSummary}
+                </p>
+
+                {/* Quote — tertiary, reduced contrast so it doesn't
+                    compete with the summary above it. */}
+                <blockquote className="border-l-2 border-hazard-amber/60 pl-4">
+                  <p className="text-hazard-amber/75 font-mono text-sm italic leading-snug">
+                    "{report.shareQuote}"
+                  </p>
+                </blockquote>
+
+                {/* Metrics — no box, just breathing room.
+                    Stale indicator rendered inline below the row. */}
+                <div
+                  className="flex items-baseline justify-between pt-2"
+                  data-testid="incident-stats-row"
+                  data-live-stale={staleReason ?? 'fresh'}
+                >
+                  {[
+                    { value: computeImpact(liveCountsForImpact), label: 'Impact' },
+                    { value: counts.sanction, label: 'Sanctions' },
+                    { value: counts.escalation, label: 'Escalations' },
+                    { value: counts.breach, label: 'Breaches' },
+                  ].map(({ value, label }) => (
+                    <div key={label} className="text-center">
+                      <div className="text-hazard-amber font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
+                      <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-ash-white/60">{label}</div>
+                    </div>
+                  ))}
+                </div>
+                {staleMessage && (
+                  <output
+                    data-testid="incident-stale-indicator"
+                    className="block text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
+                  >
+                    {staleMessage}
+                  </output>
+                )}
+              </section>
+
+              {/* ═══ SECTION 2 — RECOMMENDED ACTION ═══
+                  Tight coupling to overview — no divider, short gap. */}
+              <section aria-label="Recommended action" className="mt-5">
+                <h4 className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em]">Recommended Action</h4>
+                <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">{report.disposition}</p>
+              </section>
+
+              {/* ═══ SECTION 3 — DIAGNOSTICS ═══
+                  Firm divider + larger gap signals a priority step-down. */}
+              <section aria-label="Diagnostics" className="mt-8 border-t border-concrete-border pt-6">
+                <h4 className="text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em] mb-3">Diagnostics</h4>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 font-mono">
+                  <div>
+                    <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Failure Origin</dt>
+                    <dd className="text-ash-white text-sm mt-0.5">{report.failureOrigin}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[9px] uppercase tracking-wider text-stone-gray">System Diagnosis</dt>
+                    <dd className="text-ash-white text-sm mt-0.5">{report.systemDx}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Primary Contaminant</dt>
+                    <dd className="text-ash-white text-sm mt-0.5">{report.primaryContamination}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[9px] uppercase tracking-wider text-stone-gray">Contributing Factor</dt>
+                    <dd className="text-ash-white text-sm mt-0.5">{report.contributingFactor}</dd>
+                  </div>
+                </dl>
+              </section>
+
+              {/* ═══ SECTION 4 — ARCHIVE ═══
+                  Lowest priority. Archive note collapsed by default —
+                  long postmortems are evidence, not primary reading. */}
+              <section aria-label="Archive" className="mt-8 border-t border-concrete-border/50 pt-6 space-y-4">
+
+                {/* Archive note — collapsible */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setArchiveExpanded(v => !v)}
+                    className="flex items-center gap-2 text-stone-gray font-mono text-[10px] uppercase tracking-[0.15em] hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber rounded"
+                    aria-expanded={archiveExpanded}
+                  >
+                    <h4 className="pointer-events-none">Archive Note</h4>
+                    {archiveExpanded
+                      ? <ChevronUp size={11} aria-hidden="true" />
+                      : <ChevronDown size={11} aria-hidden="true" />
+                    }
+                  </button>
+                  {archiveExpanded && (
+                    <p className="mt-1.5 text-ash-white font-mono text-sm leading-relaxed">
+                      {report.archiveNote}
+                    </p>
+                  )}
+                </div>
+
+                {/* Sanction rationale */}
+                {counts.sanction > 0 && report.sanctionRationale && (
+                  <div className="border-t border-hazard-amber/20 pt-4">
+                    <h4 className="text-hazard-amber font-mono text-[10px] uppercase tracking-[0.15em] flex items-center gap-1.5">
+                      <ShieldCheck size={10} aria-hidden="true" />
+                      Sanction Rationale
+                    </h4>
+                    <p className="mt-1.5 text-hazard-amber/80 font-mono text-sm leading-relaxed italic">{report.sanctionRationale}</p>
+                  </div>
+                )}
+
+                {/* Case footer */}
+                <div className="border-t border-concrete-border/40 pt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-xs text-stone-gray">
+                  <span>Filed by <span className="text-hazard-amber font-bold">{report.anonHandle}</span></span>
+                  {counts.timestamp && <span>{formatTimestamp(counts.timestamp)}</span>}
+                  <span>{report.chromaticProfile}</span>
+                </div>
+              </section>
+
+            </div>
+          </div>
         </div>
       </div>
     </dialog>
