@@ -584,15 +584,19 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
             <div>
               <div className="mb-3">
                 <h2 className="text-hazard-amber font-mono text-xs lg:text-sm uppercase tracking-wide lg:tracking-widest font-bold">
-                  P0 INCIDENTS
+                  P0 INCIDENT QUEUE
                 </h2>
+                <p className="mt-1 text-stone-gray font-mono text-[9px] uppercase tracking-[0.18em]">
+                  Ranked By Impact Score
+                </p>
                 <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" />
               </div>
               <ul className="space-y-4">
-                {recentLogs.map((log) => (
+                {recentLogs.map((log, index) => (
                   <li key={log.id}>
                     <IncidentLogCard
                       log={log}
+                      priorityTier={`P${index}`}
                       onClick={() => setSelectedRecentLog(log)}
                     />
                   </li>

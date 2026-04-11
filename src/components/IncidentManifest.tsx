@@ -148,7 +148,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             aria-label="Sort incidents"
             className="ml-auto rounded-full border border-[#444] bg-[#1a1a1a] px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest text-stone-gray focus:border-hazard-amber focus:outline-none"
           >
-            <option value="impact">Highest Impact</option>
+            <option value="impact">P0 Impact (Highest First)</option>
             <option value="newest">Newest First</option>
             <option value="breaches">Most Breaches</option>
             <option value="escalations">Most Escalations</option>
@@ -163,10 +163,11 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
             </li>
           )}
 
-          {!isLoading && pageLogs.map((log) => (
+          {!isLoading && pageLogs.map((log, index) => (
             <li key={log.id}>
               <IncidentLogCard
                 log={log}
+                priorityTier={sortMode === 'impact' ? `P${pageStart + index}` : null}
                 onClick={() => setSelectedLog(log)}
               />
             </li>

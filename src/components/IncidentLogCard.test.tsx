@@ -346,6 +346,27 @@ describe('IncidentLogCard — interaction contract', () => {
     // confirm the row rendered at all.
     expect(within(primaryButton).getByText(/Impact/i)).toBeInTheDocument();
   });
+
+  it('renders the list-side impact cluster with divider and three counters', () => {
+    const { container } = render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
+    const statsRow = screen.getByTestId('incident-card-stats-row');
+    expect(statsRow).toBeInTheDocument();
+    expect(screen.getByTestId('incident-card-impact-number').textContent).toBe('0');
+    expect(within(statsRow).getByText('Sanctions')).toBeInTheDocument();
+    expect(within(statsRow).getByText('Escalations')).toBeInTheDocument();
+    expect(within(statsRow).getByText('Breaches')).toBeInTheDocument();
+    // Vertical divider between Impact cluster and counters.
+    expect(container.querySelector('[data-testid="incident-card-stats-row"] .w-px')).not.toBeNull();
+  });
+
+  it('uses the same escalation state language as detail view (Escalate/Armed)', () => {
+    const { rerender } = render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
+    expect(screen.getByTestId('incident-card-escalate-state').textContent).toBe('Escalate');
+
+    escalationState.escalated = true;
+    rerender(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
+    expect(screen.getByTestId('incident-card-escalate-state').textContent).toBe('Armed');
+  });
 });
 
 describe('IncidentLogCard — Impact glow + escalate halo', () => {
@@ -360,13 +381,11 @@ describe('IncidentLogCard — Impact glow + escalate halo', () => {
   // compare against the imported constant.
 
   function findImpactSpan(container: HTMLElement): HTMLElement {
-    // The metadata row's Impact span is the only element whose text
-    // starts with "Impact " followed by a number. Scope the query to
-    // <span> so it can't collide with the escalate button's aria-label.
-    const spans = Array.from(container.querySelectorAll('span'));
-    const match = spans.find((el) => /^Impact \d+$/.test(el.textContent ?? ''));
-    if (!match) throw new Error('Impact metadata span not found');
-    return match;
+    const match = container.querySelector(
+      '[data-testid="incident-card-impact-number"]',
+    );
+    if (!match) throw new Error('Impact number not found');
+    return match as HTMLElement;
   }
 
   function findEscalateColumn(): HTMLElement {
