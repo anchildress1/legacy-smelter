@@ -2,6 +2,52 @@ import { ensureAnonymousAuth } from "../firebase";
 import { getAuth } from "firebase/auth";
 import { isObject, isNonEmptyString, isFiniteNumber, isNumberTuple4 } from "../lib/typeGuards";
 
+/**
+ * Category of an analysis failure, inferred from the HTTP status code
+ * and used by the UI to decide which recovery message to show. The
+ * categories are disjoint — each `AnalysisError` has exactly one — and
+ * map to user-visible copy in `App.tsx` instead of surfacing raw server
+ * error strings (which can include internal error IDs and are not
+ * phrased for end users).
+ */
+export type AnalysisErrorCategory =
+  | 'auth'
+  | 'rate_limited'
+  | 'server_busy'
+  | 'payload'
+  | 'analysis'
+  | 'unknown';
+
+/**
+ * Custom error class for failures returned by `POST /api/analyze`. The
+ * UI catches this specifically so it can render a category-appropriate
+ * recovery message (e.g. "try again shortly" for 429 vs "image too
+ * large" for 413) instead of silently bouncing the user back to idle
+ * after a `console.error`. Non-HTTP failures (network disconnect,
+ * DNS) do NOT throw this class — they throw a plain `Error` and the
+ * caller should treat them as `category: 'unknown'`.
+ */
+export class AnalysisError extends Error {
+  readonly status: number;
+  readonly category: AnalysisErrorCategory;
+
+  constructor(status: number, message: string, category: AnalysisErrorCategory) {
+    super(message);
+    this.name = 'AnalysisError';
+    this.status = status;
+    this.category = category;
+  }
+}
+
+function categoryForStatus(status: number): AnalysisErrorCategory {
+  if (status === 401) return 'auth';
+  if (status === 429) return 'rate_limited';
+  if (status === 503) return 'server_busy';
+  if (status === 400 || status === 413 || status === 415) return 'payload';
+  if (status === 502) return 'analysis';
+  return 'unknown';
+}
+
 export interface SmeltAnalysis {
   legacyInfraClass: string;
   diagnosis: string;
@@ -98,7 +144,7 @@ export async function analyzeLegacyTech(base64Image: string, mimeType: string): 
     } catch {
       // Response body wasn't JSON — keep the status-based message.
     }
-    throw new Error(errorMsg);
+    throw new AnalysisError(response.status, errorMsg, categoryForStatus(response.status));
   }
 
   return parseSmeltAnalysis(await response.json());

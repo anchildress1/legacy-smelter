@@ -205,16 +205,33 @@ interface LiveCounts {
   timestamp: Date | null;
 }
 
+/**
+ * Reason the live-count stream stopped advancing. `null` means the
+ * stream is healthy and the rendered counters reflect Firestore. Any
+ * non-null value means the overlay is showing a stale snapshot: the
+ * parent doc was deleted, drifted to a non-numeric counter shape, or
+ * the snapshot listener itself errored. Callers surface a compact
+ * "stale" pill next to the counters so the user knows to close and
+ * reopen the overlay instead of silently reading frozen numbers.
+ */
+type LiveCountsStaleReason = 'removed' | 'schema' | 'subscription' | null;
+
+interface LiveCountsResult {
+  readonly counts: LiveCounts;
+  readonly staleReason: LiveCountsStaleReason;
+}
+
 function useLiveIncidentCounts(
   incidentId: string | null | undefined,
   seed: NormalisedReport | null,
-): [LiveCounts, React.Dispatch<React.SetStateAction<LiveCounts>>] {
+): LiveCountsResult {
   const [counts, setCounts] = useState<LiveCounts>(() => ({
     sanction: seed?.sanctionCount ?? 0,
     breach: seed?.breachCount ?? 0,
     escalation: seed?.escalationCount ?? 0,
     timestamp: seed?.timestamp ?? null,
   }));
+  const [staleReason, setStaleReason] = useState<LiveCountsStaleReason>(null);
 
   // Re-seed from the report whenever the incident changes. Keeping the
   // local seed behind an effect (instead of inside render) prevents a
@@ -227,6 +244,7 @@ function useLiveIncidentCounts(
       escalation: seed?.escalationCount ?? 0,
       timestamp: seed?.timestamp ?? null,
     });
+    setStaleReason(null);
     // Re-run only when the incident itself changes. `seed` is a fresh
     // object every render so including it would cause a re-seed loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -237,28 +255,52 @@ function useLiveIncidentCounts(
     return onSnapshot(doc(db, 'incident_logs', incidentId), (snap) => {
       if (!snap.exists()) {
         console.error(`[IncidentReportOverlay] incident_logs/${incidentId} removed from archive while overlay open.`);
+        setStaleReason('removed');
         return;
       }
       const data = snap.data();
       const sc = data.sanction_count;
       const bc = data.breach_count;
       const ec = data.escalation_count;
-      if (typeof sc !== 'number' || typeof bc !== 'number' || typeof ec !== 'number') {
+      if (
+        !Number.isFinite(sc) ||
+        !Number.isFinite(bc) ||
+        !Number.isFinite(ec) ||
+        sc < 0 ||
+        bc < 0 ||
+        ec < 0
+      ) {
         console.error(
-          `[IncidentReportOverlay] incident_logs/${incidentId} has non-numeric counter fields`,
+          `[IncidentReportOverlay] incident_logs/${incidentId} has invalid counter fields`,
           { sanction_count: sc, breach_count: bc, escalation_count: ec }
         );
+        setStaleReason('schema');
         return;
       }
       const ts = data.timestamp;
       const nextTimestamp = ts && typeof ts.toDate === 'function' ? ts.toDate() as Date : null;
       setCounts({ sanction: sc, breach: bc, escalation: ec, timestamp: nextTimestamp });
+      setStaleReason(null);
     }, (error) => {
       console.error('[IncidentReportOverlay] Live count subscription failed:', error);
+      setStaleReason('subscription');
     });
   }, [incidentId]);
 
-  return [counts, setCounts];
+  return { counts, staleReason };
+}
+
+function staleReasonCopy(reason: LiveCountsStaleReason): string | null {
+  switch (reason) {
+    case 'removed':
+      return 'LIVE COUNTS STALE. INCIDENT REMOVED FROM ARCHIVE.';
+    case 'schema':
+      return 'LIVE COUNTS STALE. ARCHIVE SCHEMA DRIFT.';
+    case 'subscription':
+      return 'LIVE COUNTS STALE. SUBSCRIPTION ERRORED.';
+    default:
+      return null;
+  }
 }
 
 /**
@@ -301,7 +343,9 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const dialogRef = useModalDialog(onClose);
   const [copyTextState, setCopyTextState] = useState<'idle' | 'copied'>('idle');
   const [copyLinkState, setCopyLinkState] = useState<'idle' | 'copied'>('idle');
-  const [counts] = useLiveIncidentCounts(incidentId, report);
+  const [breachError, setBreachError] = useState<Error | null>(null);
+  const { counts, staleReason } = useLiveIncidentCounts(incidentId, report);
+  const staleMessage = staleReasonCopy(staleReason);
   const liveCountsForImpact = {
     sanction_count: counts.sanction,
     escalation_count: counts.escalation,
@@ -310,10 +354,15 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   const {
     escalated,
     isToggling: isTogglingEscalation,
+    toggleError: escalationError,
     toggle: toggleEscalate,
   } = useEscalation(incidentId ?? null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Breach epoch — bumped on every incident switch so a `recordBreach`
+  // promise that settles after the user has moved to a different incident
+  // cannot write its error (or success) into the new incident's state.
+  const breachEpochRef = useRef(0);
   const headingId = useId();
 
   // Derive incident URL from incidentId — used for the copy-link button
@@ -325,6 +374,18 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       if (copyLinkTimeoutRef.current !== null) clearTimeout(copyLinkTimeoutRef.current);
     };
   }, []);
+
+  // Reset transient per-incident state when `incidentId` changes. The overlay
+  // instance can be reused across incidents (App.tsx renders it conditionally
+  // but does not key it on `incidentId`), so without this reset a breach
+  // error from incident A would leak into incident B until the user
+  // triggered a new breach attempt. Also bumps `breachEpochRef` so an
+  // in-flight `recordBreach` resolution from the previous incident is
+  // ignored rather than racing into the new incident's state.
+  useEffect(() => {
+    breachEpochRef.current += 1;
+    setBreachError(null);
+  }, [incidentId]);
 
   // Backdrop click-to-close: clicks on the <dialog> element itself
   // (not a descendant) mean the user clicked the translucent backdrop.
@@ -345,18 +406,42 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   if (!report) return null;
 
   // Breaches feed the Impact score (2× weight) and drive the P0 feed sort —
-  // this is product state, not analytics. All failures (Firestore errors,
-  // unexpected throws, skipped states) are logged to the console only —
-  // there is no user-facing error surface.
+  // this is product state, not analytics. A failed breach record is shown
+  // to the user via `breachError` (mirroring the escalation error surface
+  // in `useEscalation`), so both counter writes that feed `impact_score`
+  // have a consistent failure UX. Skipped states (cooldown, already-in-
+  // flight) are NOT shown — they are intentional no-ops and the user
+  // should not be nagged about them.
   const recordBreachAsync = () => {
     if (!incidentId) return;
+    setBreachError(null);
+    const requestEpoch = breachEpochRef.current;
     recordBreach(incidentId)
       .then((result) => {
+        // Ignore completions for a previous incident — the overlay has moved
+        // on and the error/success belongs to a now-invisible state machine.
+        if (breachEpochRef.current !== requestEpoch) return;
         if (result.ok || result.skipped) return;
         console.error('[IncidentReportOverlay] Breach record failed:', result.error);
+        // `BreachResult.error` is the underlying error's `.message` (a
+        // string) per breachService contract. Wrap it in an Error so the
+        // alert surface matches the shape of `escalationError` and the
+        // render path only has to handle one type.
+        setBreachError(new Error(result.error ?? 'Breach record failed'));
       })
       .catch((err) => {
+        if (breachEpochRef.current !== requestEpoch) {
+          // Late rejection from the previous incident. Log at warn level so
+          // a real Firestore failure is still observable, but do NOT touch
+          // UI state — the user has moved on.
+          console.warn(
+            '[IncidentReportOverlay] Ignoring stale breach failure for previous incident:',
+            err,
+          );
+          return;
+        }
         console.error('[IncidentReportOverlay] Breach record threw unexpectedly:', err);
+        setBreachError(err instanceof Error ? err : new Error(String(err)));
       });
   };
 
@@ -373,8 +458,12 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
   };
 
   const handleEscalate = () => {
+    // `toggleEscalate` swallows its own errors into `escalationError` for
+    // UI display — callers just fire-and-forget the promise. The unused
+    // `.catch` guard here is a safety net in case the hook's contract
+    // regresses to re-throwing.
     toggleEscalate().catch((err: unknown) => {
-      console.error('[IncidentReportOverlay] toggleEscalate failed:', err);
+      console.error('[IncidentReportOverlay] toggleEscalate unexpectedly threw:', err);
     });
   };
 
@@ -503,7 +592,11 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
             </div>
 
             {/* Stats row */}
-            <div className="flex items-baseline justify-between py-3 border-y border-[#2a2a2a]">
+            <div
+              className="flex items-baseline justify-between py-3 border-y border-[#2a2a2a]"
+              data-testid="incident-stats-row"
+              data-live-stale={staleReason ?? 'fresh'}
+            >
               {[
                 { value: computeImpact(liveCountsForImpact), label: 'Impact' },
                 { value: counts.sanction, label: 'Sanctions' },
@@ -517,21 +610,61 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               ))}
             </div>
 
+            {/* Live-count staleness indicator. Mirrors the DataHealthIndicator
+                pattern from App.tsx so a user reading frozen counter values
+                gets a compact warning pill, not a silent stale view. Rendered
+                as a native `<output>` element (implicit `role="status"`) for
+                consistent accessibility across assistive technologies — some
+                screen readers fail to announce explicit `role="status"` on a
+                non-`<output>` element. */}
+            {staleMessage && (
+              <output
+                data-testid="incident-stale-indicator"
+                className="block text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
+              >
+                {staleMessage}
+              </output>
+            )}
+
             {/* Escalate */}
             {incidentId && (
-              <button
-                onClick={handleEscalate}
-                disabled={isTogglingEscalation}
-                className={`w-full flex items-center justify-center gap-2 rounded-md border py-2 font-mono text-[11px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
-                  escalated
-                    ? 'border-hazard-amber/30 bg-hazard-amber/10 text-hazard-amber'
-                    : 'border-[#333] text-stone-gray hover:text-ash-white hover:border-[#444]'
-                } ${isTogglingEscalation ? 'opacity-50' : ''}`}
-                aria-label={escalated ? 'Remove escalation' : 'Escalate'}
-              >
-                <Siren size={16} aria-hidden="true" />
-                {escalated ? 'Escalation Armed' : 'Escalate Incident'}
-              </button>
+              <div>
+                <button
+                  onClick={handleEscalate}
+                  disabled={isTogglingEscalation}
+                  className={`w-full flex items-center justify-center gap-2 rounded-md border py-2 font-mono text-[11px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                    escalated
+                      ? 'border-hazard-amber/30 bg-hazard-amber/10 text-hazard-amber'
+                      : 'border-[#333] text-stone-gray hover:text-ash-white hover:border-[#444]'
+                  } ${isTogglingEscalation ? 'opacity-50' : ''}`}
+                  aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+                >
+                  <Siren size={16} aria-hidden="true" />
+                  {escalated ? 'Escalation Armed' : 'Escalate Incident'}
+                </button>
+                {escalationError && (
+                  <p
+                    role="alert"
+                    className="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
+                  >
+                    Escalation failed: {escalationError.message}
+                  </p>
+                )}
+                {/* Breach errors mirror the escalation error surface above.
+                    Both writes feed `impact_score` and drive the P0 feed
+                    sort — the user needs a consistent signal when either
+                    one fails, instead of escalation surfacing failures
+                    and breach silently eating them. */}
+                {breachError && (
+                  <p
+                    role="alert"
+                    data-testid="breach-error"
+                    className="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-hazard-amber"
+                  >
+                    Breach record failed: {breachError.message}
+                  </p>
+                )}
+              </div>
             )}
 
             {/* Disposition */}

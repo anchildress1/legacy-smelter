@@ -10,7 +10,12 @@ import {
   doc,
   getDoc,
 } from './firebase';
-import { analyzeLegacyTech, SmeltAnalysis } from './services/geminiService';
+import {
+  analyzeLegacyTech,
+  AnalysisError,
+  type AnalysisErrorCategory,
+  type SmeltAnalysis,
+} from './services/geminiService';
 import { GlobalStats as GlobalStatsType, SmeltLog } from './types';
 import type { SmelterCanvasHandle } from './components/SmelterCanvas';
 import { IncidentReportOverlay } from './components/IncidentReportOverlay';
@@ -30,6 +35,30 @@ const purrSound = new Howl({ src: ['/assets/audio/sfx-purr.wav'], loop: false, v
 const CANVAS_READY_TIMEOUT_MS = 8_000;
 const QUEUE_SCHEMA_ISSUE_PREFIX = 'INCIDENT DATA SCHEMA VIOLATION.';
 const STATS_SCHEMA_ISSUE = 'GLOBAL STATS DATA SCHEMA VIOLATION. DECOMMISSION INDEX FROZEN.';
+
+// User-visible copy for the analyze-path error categories. Kept alongside
+// the category definitions so a category added to `AnalysisError` that
+// forgets a message here would be surfaced as the catch-all "unknown"
+// branch rather than a silent `undefined`. Each message is phrased as
+// an institutional incident-report line because the rest of the UI uses
+// the same voice — a plain "Something went wrong" would clash.
+const ANALYZE_ISSUE_COPY: Record<AnalysisErrorCategory, string> = {
+  auth:
+    'ANALYSIS FAILED. AUTHENTICATION LAPSE. REFRESH AND RETRY.',
+  rate_limited:
+    'ANALYSIS FAILED. RATE LIMIT ENGAGED. WAIT BEFORE RETRYING.',
+  server_busy:
+    'ANALYSIS FAILED. FURNACE AT CAPACITY. RETRY SHORTLY.',
+  payload:
+    'ANALYSIS FAILED. ARTIFACT REJECTED BY INTAKE. TRY A DIFFERENT IMAGE.',
+  analysis:
+    'ANALYSIS FAILED. INCIDENT ENGINE UNAVAILABLE. RETRY SHORTLY.',
+  unknown:
+    'ANALYSIS FAILED. UNKNOWN FAULT. RETRY SHORTLY.',
+};
+
+const ANALYZE_ISSUE_FILE_READ =
+  'ANALYSIS FAILED. ARTIFACT COULD NOT BE READ. TRY ANOTHER FILE.';
 const SmelterCanvas = lazy(async () => {
   const module = await import('./components/SmelterCanvas');
   return { default: module.SmelterCanvas };
@@ -53,6 +82,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [statsIssue, setStatsIssue] = useState<string | null>(null);
   const [queueIssue, setQueueIssue] = useState<string | null>(null);
+  const [analyzeIssue, setAnalyzeIssue] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -267,6 +297,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     if (import.meta.env.DEV) console.log("Processing image...", mimeType);
     resetToIdle();
     setSelectedRecentLog(null);
+    setAnalyzeIssue(null);
     setIsAnalyzing(true);
     flyInSound.stop();
     fireSound.stop();
@@ -279,6 +310,14 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     } catch (error) {
       if (requestId !== activeRequestIdRef.current) return;
       console.error("Gemini analysis failed", error);
+      // Surface the failure through the shared DataHealthIndicator
+      // channel so the user sees a category-appropriate message
+      // instead of a silent bounce back to idle. `AnalysisError`
+      // carries an HTTP-status-derived category; anything else is
+      // treated as unknown (network error, parser failure, etc.).
+      const category =
+        error instanceof AnalysisError ? error.category : 'unknown';
+      setAnalyzeIssue(ANALYZE_ISSUE_COPY[category]);
       setIsAnalyzing(false);
       return;
     }
@@ -309,6 +348,9 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+    // Clear any stale analyze-issue so an old failure message does not
+    // cling to the screen once the user picks a fresh file.
+    setAnalyzeIssue(null);
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -317,6 +359,10 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     };
     reader.onerror = () => {
       console.error('[App] FileReader failed:', reader.error);
+      // Surface the failure so the user gets a recovery path. Without
+      // this, the file picker closes with no visible signal and the
+      // user has no idea why "Process Artifact" did nothing.
+      setAnalyzeIssue(ANALYZE_ISSUE_FILE_READ);
     };
     reader.readAsDataURL(file);
   };
@@ -377,19 +423,30 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
         buildIncidentUrl(analysis.incidentId)
       )
     : [];
-  const activeIssues = [statsIssue, queueIssue].filter((message): message is string => !!message);
+  const activeIssues = [statsIssue, queueIssue, analyzeIssue].filter(
+    (message): message is string => !!message,
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-x-3 sm:gap-x-4 px-4 py-4 sm:px-6">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="text-base sm:text-2xl font-black font-mono tracking-tighter uppercase whitespace-nowrap">
               LEGACY <span className="text-hazard-amber">SMELTER</span>
             </h1>
-            <div className="hidden sm:flex items-center gap-1.5 mt-0.5">
+            {/* Tagline is visible at every breakpoint — the mobile
+                screenshot previously hid it via `hidden sm:flex`, which
+                dropped the product's voice from the mobile header. The
+                `min-w-0` + `truncate` on the paragraph guards against
+                overflow on ≤320px viewports where the right-side nav
+                pinches the title column. */}
+            <div
+              data-testid="site-tagline"
+              className="flex items-center gap-1.5 mt-0.5 min-w-0"
+            >
               <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse shrink-0" />
-              <p className="text-stone-gray font-mono text-[10px] uppercase tracking-widest">
+              <p className="text-stone-gray font-mono text-[9px] sm:text-[10px] uppercase tracking-wide sm:tracking-widest truncate min-w-0">
                 If a bug exists, apply Hotfix.
               </p>
             </div>
@@ -397,8 +454,13 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
             <DataHealthIndicator issues={activeIssues} />
             <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
-            <button onClick={onNavigateManifest} className="nav-btn">
-              ALL INCIDENTS
+            <button onClick={onNavigateManifest} className="nav-btn" aria-label="All incidents">
+              {/* On mobile the word "INCIDENTS" is dropped to free up
+                  horizontal room for the tagline and the Decommission
+                  Index; the aria-label above keeps screen readers on the
+                  full label. */}
+              <span className="hidden sm:inline">ALL INCIDENTS</span>
+              <span className="sm:hidden">ALL</span>
               <ArrowRight size={14} />
             </button>
           </div>
@@ -410,21 +472,31 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
 
           {/* Left Column: Smelter Area */}
           <div className="lg:col-span-7 space-y-4">
-            {/* Controls */}
-            <div className="flex flex-col gap-3 sm:flex-row">
+            {/* Controls — Process/Deploy buttons sit side-by-side at
+                every breakpoint. They previously stacked (`flex-col`)
+                on mobile, which ate vertical rhythm and pushed the
+                smelter canvas below the fold. Mobile variant uses
+                tighter padding, a smaller text size, and a trimmed gap
+                so both buttons fit comfortably inside a 375px-wide
+                content column without truncating either label. */}
+            <div data-testid="smelter-controls" className="flex flex-row gap-2 sm:gap-3">
               <button
                 onClick={handleProcessArtifactClick}
-                className="modern-button flex-1 flex items-center justify-center gap-3 px-5 py-3"
+                className="modern-button flex-1 flex items-center justify-center gap-2 sm:gap-3 px-3 sm:px-5 py-2.5 sm:py-3"
               >
-                <Upload size={18} />
-                <span className="text-sm font-black uppercase tracking-[0.16em]">Process Artifact</span>
+                <Upload size={18} className="shrink-0" />
+                <span className="text-[11px] sm:text-sm font-black uppercase tracking-wider sm:tracking-[0.16em]">
+                  Process Artifact
+                </span>
               </button>
               <button
                 onClick={handleDeployScannerClick}
-                className="modern-button flex-1 flex items-center justify-center gap-3 bg-concrete-mid px-5 py-3 text-ash-white border border-concrete-border hover:brightness-110"
+                className="modern-button flex-1 flex items-center justify-center gap-2 sm:gap-3 bg-concrete-mid px-3 sm:px-5 py-2.5 sm:py-3 text-ash-white border border-concrete-border hover:brightness-110"
               >
-                <Camera size={18} />
-                <span className="text-sm font-black uppercase tracking-[0.16em]">Deploy Scanner</span>
+                <Camera size={18} className="shrink-0" />
+                <span className="text-[11px] sm:text-sm font-black uppercase tracking-wider sm:tracking-[0.16em]">
+                  Deploy Scanner
+                </span>
               </button>
             </div>
 
