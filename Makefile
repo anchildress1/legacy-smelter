@@ -1,7 +1,16 @@
-.PHONY: dev server functions build docker-build deploy ai-checks
+.PHONY: dev local server functions build docker-build deploy ai-checks
+
+# Start everything locally in one terminal: emulators → server → Vite.
+# Requires `concurrently` (dev dependency). All three processes share
+# stdout with color-coded prefixes; Ctrl-C kills them all.
+local:
+	npx concurrently --kill-others --names emu,srv,vite --prefix-colors magenta,cyan,yellow \
+		"cd functions && npm run serve" \
+		"sleep 3 && node server.js" \
+		"sleep 4 && npm run dev"
 
 # Start the Vite dev server (port 3000). Proxies /api/* to localhost:8080.
-# Run `make server` in a separate terminal first.
+# Run `make server` in a separate terminal first, or use `make local`.
 dev:
 	npm run dev
 

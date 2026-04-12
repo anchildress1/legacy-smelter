@@ -96,9 +96,11 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
             {showP0Badge && <P0Badge />}
             {log.sanctioned && (
               <span
-                className="inline-flex items-center text-[9px] font-mono font-bold text-zinc-950 bg-hazard-amber/90 px-1 py-0.5 rounded"
+                className="inline-flex items-center justify-center rounded bg-molten-orange px-1.5 py-1"
+                aria-label="Sanctioned"
+                title="Sanctioned"
               >
-                <ShieldCheck size={8} aria-hidden="true" />
+                <ShieldCheck size={10} className="text-zinc-950" aria-hidden="true" />
               </span>
             )}
             <SeverityBadge severity={log.severity} />
@@ -167,7 +169,7 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
 
         <div className="mt-2 flex items-center gap-x-3 gap-y-1 flex-wrap font-mono text-[10px] uppercase tracking-wider">
           {log.sanctioned && (
-            <span className="font-bold text-hazard-amber">Sanctioned</span>
+            <span className="font-bold text-molten-orange">Sanctioned</span>
           )}
           <span className="text-dead-gray text-xs ml-auto">
             {formatTimestamp(log.timestamp.toDate())}

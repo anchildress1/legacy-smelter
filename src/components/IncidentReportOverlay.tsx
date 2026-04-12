@@ -336,8 +336,8 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
 
                   {/* Sanction badge — beneath title row */}
                   {counts.sanction > 0 && (
-                    <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold">
-                      <ShieldCheck size={9} aria-hidden="true" />
+                    <span className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-mono text-zinc-950 bg-molten-orange px-2 py-1 rounded uppercase font-bold">
+                      <ShieldCheck size={10} aria-hidden="true" />
                       Sanctioned
                     </span>
                   )}
@@ -483,12 +483,12 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
 
                 {/* Sanction rationale */}
                 {counts.sanction > 0 && report.sanctionRationale && (
-                  <div className="border-t border-hazard-amber/20 pt-4">
-                    <h4 className="text-hazard-amber font-mono text-[10px] uppercase tracking-[0.15em] flex items-center gap-1.5">
+                  <div className="border-t border-molten-orange/20 pt-4">
+                    <h4 className="text-molten-orange font-mono text-[10px] uppercase tracking-[0.15em] flex items-center gap-1.5">
                       <ShieldCheck size={10} aria-hidden="true" />
                       Sanction Rationale
                     </h4>
-                    <p className="mt-1.5 text-hazard-amber/80 font-mono text-sm leading-relaxed italic">{report.sanctionRationale}</p>
+                    <p className="mt-1.5 text-molten-orange/80 font-mono text-sm leading-relaxed italic">{report.sanctionRationale}</p>
                   </div>
                 )}
 
