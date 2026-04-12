@@ -18,6 +18,7 @@ export default defineConfig({
       'src/**/*.test.{ts,tsx}',
       'scripts/**/*.test.ts',
       'functions/*.test.js',
+      'shared/*.test.js',
     ],
     exclude: [
       '**/node_modules/**',
