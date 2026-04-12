@@ -45,6 +45,14 @@
 }
 
 @layer components {
+  /* Skip-to-content link — sr-only by default, slides into view on
+     focus so keyboard users can jump past the header. Positioned above
+     everything (z-200) to guarantee visibility regardless of sticky
+     headers or overlay layers. */
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[200] focus:px-4 focus:py-2.5 focus:bg-hazard-amber focus:text-zinc-950 focus:font-mono focus:text-sm focus:font-bold focus:rounded-md focus:shadow-lg focus:outline-none;
+  }
+
   /* Focus-ring utilities — single source of truth for the hazard-amber
      focus indicator that every interactive surface shares. `focus-ring`
      is the default 2px ring; `focus-ring-inset` pins it to the inner

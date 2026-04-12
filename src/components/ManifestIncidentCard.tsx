@@ -59,6 +59,7 @@ export const ManifestIncidentCard: FC<ManifestIncidentCardProps> = ({
       {/* Primary action: open incident detail */}
       <button
         onClick={onClick}
+        aria-label={`View incident: ${log.legacy_infra_class}`}
         className="px-4 py-4 flex-1 min-w-0 cursor-pointer text-left focus-ring-inset"
       >
         {/* Row 1: title + badges */}

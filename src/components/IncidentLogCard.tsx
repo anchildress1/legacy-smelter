@@ -50,6 +50,7 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
       {/* Primary action: open incident detail */}
       <button
         onClick={onClick}
+        aria-label={`View incident: ${log.legacy_infra_class}`}
         className="p-4 flex-1 min-w-0 cursor-pointer text-left focus-ring-inset"
       >
         <div className="flex justify-between items-start gap-4">
@@ -124,7 +125,7 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
             { value: log.escalation_count, label: 'Escalations', Icon: TrendingUp },
             { value: log.breach_count, label: 'Breaches', Icon: OctagonAlert },
           ].map(({ value, label, Icon }) => (
-            <span key={label} className="flex items-center gap-1" role="group" aria-label={`${value} ${label}`}>
+            <span key={label} className="flex items-center gap-1" aria-label={`${value} ${label}`}>
               <Icon size={14} className="sm:hidden text-ash-white/80" aria-hidden="true" />
               <span className="text-ash-white font-mono text-sm font-black leading-none">{value}</span>
               <span className="hidden sm:inline text-[9px] font-mono uppercase text-ash-white/60">{label}</span>

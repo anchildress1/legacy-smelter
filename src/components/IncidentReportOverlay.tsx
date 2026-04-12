@@ -209,7 +209,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
       className="bg-transparent p-0 m-0 max-w-none max-h-none w-screen h-[100dvh] backdrop:bg-black/70 backdrop:backdrop-blur-[2px] open:flex items-end sm:items-center justify-center sm:p-4"
     >
       <div
-        className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
+        className="bg-concrete w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
       >
         {/* Left chromatic strip. Inline filter — Tailwind v4 silently
             swallows class-based filter utilities when composed with
@@ -236,7 +236,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
             <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
               Postmortem
             </h2>
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-1 shrink-0">
               {platforms.map(({ label, href }) => {
                 const cfg = SHARE_PLATFORMS[label];
                 return (
@@ -246,7 +246,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={recordBreachAsync}
-                    className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
+                    className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                     aria-label={`Post to ${cfg.name}`}
                     title={cfg.name}
                   >
@@ -257,7 +257,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
               {incidentUrl && (
                 <button
                   onClick={handleCopyLink}
-                  className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
+                  className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                   aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
                   title={copyLinkState === 'copied' ? 'Copied!' : 'Copy link'}
                 >
@@ -266,16 +266,16 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
               )}
               <button
                 onClick={handleCopyText}
-                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
+                className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                 aria-label={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
                 title={copyTextState === 'copied' ? 'Copied!' : 'Copy brief'}
               >
                 {copyTextState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
               </button>
-              <div className="w-px h-4 bg-concrete-border mx-0.5" aria-hidden="true" />
+              <div className="w-px h-5 sm:h-4 bg-concrete-border mx-0.5" aria-hidden="true" />
               <button
                 onClick={onClose}
-                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
+                className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                 aria-label="Close report"
               >
                 <X size={14} aria-hidden="true" />
@@ -284,7 +284,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
           </div>
 
           {/* Hazard stripe */}
-          <div className="hazard-stripe h-1 w-full shrink-0" />
+          <div className="hazard-stripe h-1 w-full shrink-0" aria-hidden="true" />
 
           {/* ── SCROLLABLE BODY ── */}
           <div className="flex-1 overflow-y-auto">
@@ -318,7 +318,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                           className={`${HEADER_PILL_BASE} transition-all focus-ring ${
                             escalated
                               ? `border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber ${IMPACT_GLOW_FILTER_ESCALATED}`
-                              : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
+                              : 'border-stone-gray text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
                           } ${isTogglingEscalation ? 'opacity-50' : ''}`}
                           aria-label={escalated ? 'Remove escalation' : 'Escalate'}
                           aria-pressed={escalated}

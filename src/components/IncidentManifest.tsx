@@ -115,13 +115,16 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       {/* Header */}
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
         <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-4 sm:px-6">
-          <button onClick={onNavigateHome} className="nav-btn">
-            <ArrowLeft size={14} />
-            RETURN TO SMELTER
-          </button>
+          <nav aria-label="Site">
+            <button onClick={onNavigateHome} className="nav-btn">
+              <ArrowLeft size={14} />
+              RETURN TO SMELTER
+            </button>
+          </nav>
           <div className="flex items-center gap-2 sm:gap-4">
             <DataHealthIndicator issues={activeIssues} />
             <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
@@ -129,7 +132,7 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
         </div>
       </header>
 
-      <main className="flex-1 p-4 sm:p-6 max-w-5xl mx-auto w-full">
+      <main id="main-content" className="flex-1 p-4 sm:p-6 max-w-5xl mx-auto w-full">
         {/* Page title */}
         <div className="mb-5">
           <h1 className="text-hazard-amber font-mono text-lg sm:text-2xl uppercase tracking-widest font-black">
@@ -140,36 +143,38 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
               Showing newest {MANIFEST_FETCH_LIMIT} incidents.
             </p>
           )}
-          <div className="hazard-stripe h-1 w-full mt-3 rounded-sm" />
+          <div className="hazard-stripe h-1 w-full mt-3 rounded-sm" aria-hidden="true" />
         </div>
 
         {/* Filter + sort — flat, no container */}
         <div className="mb-5 flex flex-wrap items-center gap-2">
-          {([
-            ['all', 'All'],
-            ['escalated', 'Escalated'],
-            ['sanctioned', 'Sanctioned'],
-          ] as [ManifestFilter, string][]).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setFilterMode(value)}
-              aria-pressed={filterMode === value}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors focus-ring-inset ${
-                filterMode === value
-                  ? 'border-hazard-amber/70 bg-hazard-amber/20 text-hazard-amber'
-                  : 'border-[#666] bg-[#1a1a1a] text-stone-gray hover:text-ash-white hover:border-[#777]'
-              }`}
-            >
-              {label}
-              <span className="text-[9px] opacity-80">{manifestCounts[value]}</span>
-            </button>
-          ))}
+          <div role="group" aria-label="Filter incidents" className="contents">
+            {([
+              ['all', 'All'],
+              ['escalated', 'Escalated'],
+              ['sanctioned', 'Sanctioned'],
+            ] as [ManifestFilter, string][]).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFilterMode(value)}
+                aria-pressed={filterMode === value}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors focus-ring-inset ${
+                  filterMode === value
+                    ? 'border-hazard-amber/70 bg-hazard-amber/20 text-hazard-amber'
+                    : 'border-concrete-border bg-concrete text-stone-gray hover:text-ash-white hover:border-stone-gray'
+                }`}
+              >
+                {label}
+                <span className="text-[9px] opacity-80">{manifestCounts[value]}</span>
+              </button>
+            ))}
+          </div>
           <select
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as ManifestSort)}
             aria-label="Sort incidents"
-            className="ml-auto rounded-full border border-[#666] bg-[#1a1a1a] px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest text-stone-gray focus:border-hazard-amber focus:outline-none"
+            className="ml-auto rounded-full border border-concrete-border bg-concrete px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest text-stone-gray focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
           >
             <option value="impact">Highest Impact</option>
             <option value="newest">Newest First</option>
@@ -178,11 +183,17 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
           </select>
         </div>
 
+        {/* Live region — announces filter/sort result count to screen readers */}
+        <div className="sr-only" aria-live="polite" aria-atomic="true">
+          {!isLoading && `${sortedLogs.length} ${sortedLogs.length === 1 ? 'incident' : 'incidents'}, filtered by ${filterMode}, sorted by ${sortMode}`}
+        </div>
+
         {/* Log entries */}
         <ul className="space-y-4 min-h-[200px]">
           {isLoading && (
-            <li className="flex items-center justify-center py-12 list-none">
-              <div className="w-6 h-6 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin" />
+            <li className="flex items-center justify-center py-12 list-none" role="status">
+              <div className="w-6 h-6 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+              <span className="sr-only">Loading incidents</span>
             </li>
           )}
 
@@ -231,9 +242,9 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
             </button>
           )}
 
-          <div className="min-w-[90px] h-8 px-3 flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-wider text-stone-gray">
+          <div className="min-w-[90px] h-8 px-3 flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-wider text-stone-gray" aria-current={totalPages > 1 ? 'page' : undefined}>
             {isLoading && <Loader2 size={12} className="animate-spin text-hazard-amber" aria-hidden="true" />}
-            {totalPages > 1 && <span>{safePage + 1} / {totalPages}</span>}
+            {totalPages > 1 && <span>Page {safePage + 1} of {totalPages}</span>}
             {!isLoading && <span className={totalPages > 1 ? 'opacity-50' : ''}>{sortedLogs.length} {sortedLogs.length === 1 ? 'incident' : 'incidents'}</span>}
           </div>
 
