@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useId, type FC, type ReactNode } from 'rea
 import { SmeltAnalysis } from '../services/geminiService';
 import { computeImpact, SmeltLog } from '../types';
 import { formatTimestamp, buildIncidentUrl } from '../lib/utils';
-import { X, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
+import { X, Check, Copy, Link2, ShieldCheck, Siren, TrendingUp, OctagonAlert } from 'lucide-react';
 import { SanctionBadge } from './SanctionBadge';
 import { SeverityBadge } from './SeverityBadge';
 import { P0Badge } from './P0Badge';
@@ -403,13 +403,14 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                   <div className="w-px self-stretch bg-concrete-border" aria-hidden="true" />
                   <div className="flex flex-1 items-center justify-around">
                     {[
-                      { value: counts.sanction, label: 'Sanctions' },
-                      { value: counts.escalation, label: 'Escalations' },
-                      { value: counts.breach, label: 'Breaches' },
-                    ].map(({ value, label }) => (
+                      { value: counts.sanction, label: 'Sanctions', Icon: ShieldCheck },
+                      { value: counts.escalation, label: 'Escalations', Icon: TrendingUp },
+                      { value: counts.breach, label: 'Breaches', Icon: OctagonAlert },
+                    ].map(({ value, label, Icon }) => (
                       <div key={label} className="text-center">
                         <div className="text-ash-white font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
-                        <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-ash-white/60">{label}</div>
+                        <Icon size={12} className="sm:hidden mx-auto mt-1 text-ash-white/60" aria-hidden="true" />
+                        <div className="hidden sm:block mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-ash-white/60">{label}</div>
                       </div>
                     ))}
                   </div>
