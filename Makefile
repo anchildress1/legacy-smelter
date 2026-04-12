@@ -1,4 +1,4 @@
-.PHONY: dev local server functions build docker-build deploy ai-checks
+.PHONY: dev local server functions build docker-build deploy ai-checks reset-sanctions trigger-sanction
 
 # Start everything locally in one terminal: emulators → server → Vite.
 # Requires `concurrently` (dev dependency). All three processes share
@@ -43,6 +43,22 @@ docker-build:
 # See deploy.sh --help for all options.
 deploy:
 	./deploy.sh $(if $(ENV_FILE),--env-file $(ENV_FILE))
+
+# Reset sanction state on all incident_logs so judging re-runs without
+# new uploads. Use PROJECT to target a specific Firebase project.
+# Examples:
+#   make reset-sanctions PROJECT=anchildress1-unstable
+#   FIRESTORE_EMULATOR_HOST=127.0.0.1:9180 make reset-sanctions
+reset-sanctions:
+	npx tsx scripts/reset-sanctions.ts $(if $(PROJECT),--project $(PROJECT))
+
+# Manually invoke runSanctionBatch without a Firestore trigger.
+# Pair with `make reset-sanctions` for prompt iteration.
+# Examples:
+#   make trigger-sanction
+#   FIRESTORE_EMULATOR_HOST=127.0.0.1:9180 make trigger-sanction
+trigger-sanction:
+	npx tsx scripts/trigger-sanction.ts
 
 ai-checks:
 	npm run lint || echo "Lint skipped or passed"

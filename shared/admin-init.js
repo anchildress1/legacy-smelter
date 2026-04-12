@@ -30,7 +30,7 @@ function getServiceAccountCredential() {
   return undefined;
 }
 
-function ensureApp() {
+export function ensureApp() {
   const projectId = process.env.FIREBASE_PROJECT_ID;
   if (!projectId) throw new Error('Missing FIREBASE_PROJECT_ID');
 
