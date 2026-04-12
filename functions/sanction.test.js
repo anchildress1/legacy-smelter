@@ -98,15 +98,17 @@ const {
 function makeCandidate(id) {
   return {
     incident_id: id,
-    uid: `uid-${id}`,
     legacy_infra_class: 'Class',
-    diagnosis: 'Diagnosis',
-    severity: 'high',
-    archive_note: 'Archive',
-    failure_origin: 'Origin',
-    chromatic_profile: 'Profile',
     incident_feed_summary: 'Summary',
     share_quote: 'Quote',
+    diagnosis: 'Diagnosis',
+    severity: 'high',
+    disposition: 'Disposition',
+    primary_contamination: 'Contamination',
+    contributing_factor: 'Factor',
+    failure_origin: 'Origin',
+    archive_note: 'Archive',
+    chromatic_profile: 'Profile',
   };
 }
 
@@ -114,13 +116,16 @@ function makeIncidentData(overrides = {}) {
   return {
     uid: 'uid-x',
     legacy_infra_class: 'Class',
-    diagnosis: 'Diagnosis',
-    severity: 'high',
-    archive_note: 'Archive',
-    failure_origin: 'Origin',
-    chromatic_profile: 'Profile',
     incident_feed_summary: 'Summary',
     share_quote: 'Quote',
+    diagnosis: 'Diagnosis',
+    severity: 'high',
+    disposition: 'Disposition',
+    primary_contamination: 'Contamination',
+    contributing_factor: 'Factor',
+    failure_origin: 'Origin',
+    archive_note: 'Archive',
+    chromatic_profile: 'Profile',
     breach_count: 1,
     escalation_count: 2,
     sanction_count: 0,
@@ -268,32 +273,39 @@ describe('parseIncidentDoc', () => {
       {
         uid: 'u1',
         legacy_infra_class: 'class',
-        diagnosis: 'diag',
-        severity: 'med',
-        archive_note: 'archive',
-        failure_origin: 'origin',
-        chromatic_profile: 'profile',
         incident_feed_summary: 'summary',
         share_quote: 'quote',
+        diagnosis: 'diag',
+        severity: 'med',
+        disposition: 'dispose',
+        primary_contamination: 'contam',
+        contributing_factor: 'factor',
+        failure_origin: 'origin',
+        archive_note: 'archive',
+        chromatic_profile: 'profile',
       },
       'inc-1',
     );
     expect(parsed).toEqual({
-      uid: 'u1',
       legacy_infra_class: 'class',
-      diagnosis: 'diag',
-      severity: 'med',
-      archive_note: 'archive',
-      failure_origin: 'origin',
-      chromatic_profile: 'profile',
       incident_feed_summary: 'summary',
       share_quote: 'quote',
+      diagnosis: 'diag',
+      severity: 'med',
+      disposition: 'dispose',
+      primary_contamination: 'contam',
+      contributing_factor: 'factor',
+      failure_origin: 'origin',
+      archive_note: 'archive',
+      chromatic_profile: 'profile',
     });
+    // uid is intentionally excluded — not relevant for judging
+    expect(parsed).not.toHaveProperty('uid');
   });
 
   it('throws on missing required string field', () => {
-    expect(() => parseIncidentDoc({ uid: 'u1' }, 'inc-2')).toThrow(
-      '[sanction] incident_logs/inc-2 has invalid "legacy_infra_class"',
+    expect(() => parseIncidentDoc({ legacy_infra_class: 'x' }, 'inc-2')).toThrow(
+      '[sanction] incident_logs/inc-2 has invalid "incident_feed_summary"',
     );
   });
 

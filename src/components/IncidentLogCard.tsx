@@ -1,10 +1,11 @@
 import type { FC, MouseEvent } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
-import { Siren, Quote, ShieldCheck } from 'lucide-react';
+import { Siren, Quote } from 'lucide-react';
 import { useEscalation } from '../hooks/useEscalation';
 import { SeverityBadge } from './SeverityBadge';
 import { P0Badge } from './P0Badge';
+import { SanctionBadge } from './SanctionBadge';
 import {
   IMPACT_GLOW_BASE,
   IMPACT_GLOW_ESCALATED,
@@ -86,23 +87,9 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
             </p>
           </div>
 
-          {/* Right cluster: [P0?] [sanction?] [severity]. Optional
-              badges render only when active — the previous invisible
-              placeholder pattern left visible air between P0 and the
-              severity badge. Cards may shift a few pixels when a
-              sanction is applied; that is preferable to carrying
-              dead space on every unsanctioned card. */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {log.sanctioned && <SanctionBadge />}
             {showP0Badge && <P0Badge />}
-            {log.sanctioned && (
-              <span
-                className="inline-flex items-center justify-center rounded bg-molten-orange px-1.5 py-1"
-                aria-label="Sanctioned"
-                title="Sanctioned"
-              >
-                <ShieldCheck size={10} className="text-zinc-950" aria-hidden="true" />
-              </span>
-            )}
             <SeverityBadge severity={log.severity} />
           </div>
         </div>
@@ -167,11 +154,8 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
           </div>
         </div>
 
-        <div className="mt-2 flex items-center gap-x-3 gap-y-1 flex-wrap font-mono text-[10px] uppercase tracking-wider">
-          {log.sanctioned && (
-            <span className="font-bold text-molten-orange">Sanctioned</span>
-          )}
-          <span className="text-dead-gray text-xs ml-auto">
+        <div className="mt-2 flex items-center justify-end">
+          <span className="text-dead-gray font-mono text-xs">
             {formatTimestamp(log.timestamp.toDate())}
           </span>
         </div>
@@ -188,7 +172,7 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
         className={`shrink-0 w-16 flex flex-col items-center justify-center gap-1 border-l transition-all focus-ring-inset ${
           escalated
             ? `bg-hazard-amber/15 text-hazard-amber border-l-hazard-amber/30 ${IMPACT_GLOW_FILTER_ESCALATED}`
-            : 'border-l-concrete-border text-stone-gray/60 hover:text-hazard-amber hover:bg-hazard-amber/10 hover:border-l-hazard-amber/40'
+            : 'border-l-concrete-border text-stone-gray hover:text-hazard-amber hover:bg-hazard-amber/10 hover:border-l-hazard-amber/40'
         } ${isToggling ? 'opacity-50' : ''}`}
         aria-label={escalated ? `Remove escalation for ${log.legacy_infra_class}` : `Escalate ${log.legacy_infra_class}`}
         aria-pressed={escalated}

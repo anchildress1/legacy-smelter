@@ -20,7 +20,6 @@ import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { DecommissionIndex } from './components/DecommissionIndex';
 import { SiteFooter } from './components/SiteFooter';
 import { DataHealthIndicator } from './components/DataHealthIndicator';
-import { SeverityBadge } from './components/SeverityBadge';
 import { shouldAutoOpenPostmortem } from './lib/postmortemAutoOpen';
 import { parseSmeltLog } from './lib/smeltLogSchema';
 import {
@@ -603,13 +602,6 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
               </div>
             )}
 
-            {/* Compact result summary — shown after smelt completes */}
-            {isComplete && analysis && (
-              <div className="font-mono text-[10px] uppercase tracking-widest border border-concrete-border bg-concrete-mid rounded-lg px-4 py-3 flex items-center gap-3 min-w-0">
-                <SeverityBadge severity={analysis.severity} />
-                <span className="text-stone-gray truncate min-w-0">{analysis.ogHeadline}</span>
-              </div>
-            )}
           </div>
 
           {/* Right Column: Incident Queue */}

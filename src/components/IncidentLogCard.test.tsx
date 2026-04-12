@@ -332,7 +332,7 @@ describe('IncidentLogCard — interaction contract', () => {
     render(
       <IncidentLogCard log={makeLog({ sanctioned: true })} onClick={() => {}} />,
     );
-    // The "Sanctioned" label appears in the metadata row when sanctioned.
+    // Full SanctionBadge pill in the header cluster.
     expect(screen.getByText('Sanctioned')).toBeInTheDocument();
   });
 

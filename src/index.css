@@ -24,7 +24,7 @@
   /* Text hierarchy — warm tones */
   --color-ash-white: #e8e4dc;       /* primary text */
   --color-stone-gray: #b0aaa4;      /* secondary text */
-  --color-dead-gray: #5c5955;       /* timestamps, de-emphasized */
+  --color-dead-gray: #99928b;       /* timestamps, de-emphasized (WCAG AA 4.53:1 on concrete-light) */
 }
 
 @layer base {

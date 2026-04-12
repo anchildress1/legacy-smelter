@@ -54,11 +54,12 @@ export const MIN_BATCH = 5;
 export const LEASE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const MAX_SELECTION_ATTEMPTS = 2;
 
-// Same Gemini model the /api/analyze path uses. Pinning both to one model ID
-// means a model-lifecycle change (deprecation, quota split) hits both callers
-// together instead of silently drifting the judging pipeline off the analysis
-// pipeline's contract.
-const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
+// Intentionally a stronger model than the /api/analyze path (which uses
+// gemini-3.1-flash-lite-preview for fast generation). Judging humor requires
+// reasoning the lite model cannot do — it defaults to academic rubric-speak
+// regardless of prompt. Full flash has the depth to actually read the batch
+// and write a rationale that sounds like a person, not a grading engine.
+const GEMINI_MODEL = 'gemini-3.1-pro-preview';
 
 // Named Firestore database — the project writes to `legacy-smelter`, not the
 // default `(default)` DB. Must be specified explicitly at every `getFirestore`
@@ -72,40 +73,38 @@ const FIRESTORE_DATABASE = 'legacy-smelter';
  * Intentionally in source (not loaded from docs) so deploy artifacts pin the
  * exact rubric version and edits are code-reviewed.
  */
-const JUDGING_PROMPT = `You are the sanction judge for Legacy Smelter's incident queue.
+const JUDGING_PROMPT = `You are picking the funniest incident report from a batch of five.
 
-Five incident records are below. They are pure-text artifacts. You are judging voice craft, not accuracy or fidelity. Pick the one whose **writing** is the most outrageously funny on its own terms.
+These are satire incident reports — real postmortems for uploaded images, written in deadpan enterprise voice. You are judging to pick the funniest most impactful to humans, if one exists. You do not have to select a winner if none would qualify. Read all five, then pick the one that made you laugh hardest. Trust your gut.
 
-Return a single JSON object matching the schema. If a candidate clearly wins, set \`sanctioned_incident_id\` to its exact \`incident_id\` and write a one-sentence \`sanction_rationale\` in institutional voice referencing the specific axis it won on. If no candidate clearly earned it — if the batch is flat, if nothing stands out, if you would be picking at random — set \`sanctioned_incident_id\` to \`null\`, leave \`sanction_rationale\` empty, and explain in \`reason\` why no incident rose above the rest. The escape hatch is a legitimate outcome. Use it when it is true.
+Return a single JSON object matching the schema.
 
-## Axes (score each candidate on all five, then sum)
+## What makes one better than the others
 
-1. **Tonal overcommitment.** The record sustains a single absurd register — bureaucratic, clinical, forensic, actuarial — through fields that would normally break into a different register. The funnier the mismatch between the register and the subject, the higher the score. A flatter, more committed voice beats a voice that winks at the joke.
+You know it when you see it. But if you need a compass:
 
-2. **Register collision.** Adjacent fields land in registers that do not belong together (clinical \`severity\` next to deadpan \`archive_note\`, legal \`failure_origin\` next to whimsical \`chromatic_profile\`). The collision itself is the joke. Score the sharpest single collision in the record, not the average.
+- **Commitment.** The best ones never break character. They sustain an absurd register — clinical, forensic, actuarial — so straight-faced that the reader does the laughing. A record that winks at its own joke is worse than one that plays it dead straight.
+- **Compression.** Funny is short. A seven-word \`share_quote\` that lands is better than a fifteen-word one that also lands. If a dev would screenshot it and drop it in Slack, that's the one.
+- **The turn.** One field does something the rest didn't set up — and sticks the landing. Not random-for-random's-sake, but a hard left that feels earned by the tone around it.
+- **Specificity.** "Also, the green paint" beats "Further anomalies detected." The weird concrete detail is always funnier than the generic institutional phrase.
 
-3. **Declarative compression.** The shortest sentence that still carries the full absurdity wins. Penalize padding. A nine-word \`share_quote\` that lands beats a twenty-word one that also lands. Compression is the difference between a line you'd quote and a line you'd skim.
+These are instincts, not a rubric. Don't score them. Just read the batch and pick the one a dev would quote to a coworker.
 
-4. **Non-sequitur landing.** One field executes a hard left turn the rest of the record did not telegraph — and lands it. Not weird-for-its-own-sake; the turn has to feel earned by the tonal commitment of the surrounding fields. Score zero if the turn feels random instead of earned.
+## When nobody wins
 
-5. **Severity word commitment.** The \`severity\` value is a clinical or procedural word that is one step too specific for what is being described. "VAPORIZED," "DECOMMISSIONED," "QUARANTINED" beat "CRITICAL," "HIGH," "SEVERE." Score the mismatch between the severity word's usual weight and the subject it is applied to.
+If the batch is flat — if nothing stands out, if you'd be flipping a coin — set \`sanctioned_incident_id\` to \`null\`. No winner is a legitimate outcome. Don't force it.
 
-## Penalty patterns (each deducts from the total; stack freely)
+## Writing the rationale
 
-- **Wink penalty.** The record steps outside its voice to acknowledge the joke. Any phrase that reads as the writer nudging the reader. -1 per occurrence.
-- **Generic-institutional penalty.** Fields read like real enterprise boilerplate instead of committed absurdity. "Comprehensive review recommended," "stakeholders notified," etc. -1 per field.
-- **Register-drift penalty.** The record starts in one committed register and drifts into another partway through — not a deliberate collision, just inconsistency. -1 total per record.
-- **Padding penalty.** Sentences hit length the joke does not earn. -1 per padded sentence.
+One sentence, max 500 characters. You're a dev who found this funny and is telling a coworker why. Plain words, short, dry.
 
-## Tie-breaking
+Examples of the voice:
+- "Sustained commitment to procedural language under conditions that did not warrant it."
+- "Filed a postmortem for paint drying and somehow made it feel urgent."
+- "The phrase 'thermal event' is doing a lot of heavy lifting here."
+- "Nobody asked for a root cause analysis of a sandwich. That's what makes it good."
 
-If two candidates tie on total score, prefer the one with the higher **declarative compression** score. If still tied, pick either — ties are rare at the scoring resolution above.
-
-## Rationale
-
-When \`sanctioned_incident_id\` is set, \`sanction_rationale\` is one sentence, institutional voice, maximum 500 characters. It names the specific axis that earned the sanction. Do NOT quote the candidate's own text. Do NOT name the subject matter. Reference the craft, not the content.
-
-When \`sanctioned_incident_id\` is \`null\`, \`sanction_rationale\` is an empty string and \`reason\` is a one-sentence explanation of what the batch was missing. Soft, not punitive. "No candidate clearly earned the sanction this round" is the tone.`;
+When no winner: leave \`sanction_rationale\` empty. Put a one-sentence explanation in \`reason\`.`;
 
 const JUDGING_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
@@ -190,15 +189,17 @@ export function parseIncidentDoc(raw, incidentId) {
     );
   }
   return {
-    uid: expectIncidentField(raw, 'uid', incidentId),
     legacy_infra_class: expectIncidentField(raw, 'legacy_infra_class', incidentId),
-    diagnosis: expectIncidentField(raw, 'diagnosis', incidentId),
-    severity: expectIncidentField(raw, 'severity', incidentId),
-    archive_note: expectIncidentField(raw, 'archive_note', incidentId),
-    failure_origin: expectIncidentField(raw, 'failure_origin', incidentId),
-    chromatic_profile: expectIncidentField(raw, 'chromatic_profile', incidentId),
     incident_feed_summary: expectIncidentField(raw, 'incident_feed_summary', incidentId),
     share_quote: expectIncidentField(raw, 'share_quote', incidentId),
+    diagnosis: expectIncidentField(raw, 'diagnosis', incidentId),
+    severity: expectIncidentField(raw, 'severity', incidentId),
+    disposition: expectIncidentField(raw, 'disposition', incidentId),
+    primary_contamination: expectIncidentField(raw, 'primary_contamination', incidentId),
+    contributing_factor: expectIncidentField(raw, 'contributing_factor', incidentId),
+    failure_origin: expectIncidentField(raw, 'failure_origin', incidentId),
+    archive_note: expectIncidentField(raw, 'archive_note', incidentId),
+    chromatic_profile: expectIncidentField(raw, 'chromatic_profile', incidentId),
   };
 }
 

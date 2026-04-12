@@ -157,18 +157,18 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
               className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors focus-ring-inset ${
                 filterMode === value
                   ? 'border-hazard-amber/70 bg-hazard-amber/20 text-hazard-amber'
-                  : 'border-[#444] bg-[#1a1a1a] text-stone-gray hover:text-ash-white hover:border-[#555]'
+                  : 'border-[#666] bg-[#1a1a1a] text-stone-gray hover:text-ash-white hover:border-[#777]'
               }`}
             >
               {label}
-              <span className="text-[9px] opacity-60">{manifestCounts[value]}</span>
+              <span className="text-[9px] opacity-80">{manifestCounts[value]}</span>
             </button>
           ))}
           <select
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as ManifestSort)}
             aria-label="Sort incidents"
-            className="ml-auto rounded-full border border-[#444] bg-[#1a1a1a] px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest text-stone-gray focus:border-hazard-amber focus:outline-none"
+            className="ml-auto rounded-full border border-[#666] bg-[#1a1a1a] px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest text-stone-gray focus:border-hazard-amber focus:outline-none"
           >
             <option value="impact">P0 Impact (Highest First)</option>
             <option value="newest">Newest First</option>

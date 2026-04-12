@@ -3,6 +3,7 @@ import { SmeltAnalysis } from '../services/geminiService';
 import { computeImpact, SmeltLog } from '../types';
 import { formatTimestamp, buildIncidentUrl } from '../lib/utils';
 import { X, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
+import { SanctionBadge } from './SanctionBadge';
 import { SeverityBadge } from './SeverityBadge';
 import { P0Badge } from './P0Badge';
 import { HEADER_PILL_BASE } from './HeaderPill';
@@ -230,13 +231,8 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 
           {/* ── HEADER BAR ──
-              `justify-end` clusters the label and icons tight on the
-              right instead of pushing them to opposite edges of a wide
-              modal (`justify-between` + a short label left ~400px of
-              empty air between them). `gap-3` separates the label
-              group from the icon group; icons keep their own inner
-              `gap-1`. */}
-          <div className="shrink-0 flex items-center justify-end gap-3 pr-2 py-2.5">
+              Label pinned left, action icons pinned right. */}
+          <div className="shrink-0 flex items-center justify-between gap-3 pl-4 pr-2 py-2.5">
             <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
               Postmortem
             </h2>
@@ -310,6 +306,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                       {report.legacyInfraClass}
                     </h3>
                     <div className="flex items-center gap-2 shrink-0">
+                      {counts.sanction > 0 && <SanctionBadge />}
                       {showP0Badge && <P0Badge />}
                       <SeverityBadge severity={report.severity} />
                       {incidentId && (
@@ -333,14 +330,6 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                       )}
                     </div>
                   </div>
-
-                  {/* Sanction badge — beneath title row */}
-                  {counts.sanction > 0 && (
-                    <span className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-mono text-zinc-950 bg-molten-orange px-2 py-1 rounded uppercase font-bold">
-                      <ShieldCheck size={10} aria-hidden="true" />
-                      Sanctioned
-                    </span>
-                  )}
 
                   {/* Escalation / breach errors — inline under the action that produced them.
                       The raw error.message is rendered verbatim so a future refactor that wraps
@@ -488,7 +477,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                       <ShieldCheck size={10} aria-hidden="true" />
                       Sanction Rationale
                     </h4>
-                    <p className="mt-1.5 text-molten-orange/80 font-mono text-sm leading-relaxed italic">{report.sanctionRationale}</p>
+                    <p className="mt-1.5 text-molten-orange font-mono text-sm leading-relaxed italic">{report.sanctionRationale}</p>
                   </div>
                 )}
 

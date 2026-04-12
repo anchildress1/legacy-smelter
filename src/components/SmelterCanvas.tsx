@@ -184,6 +184,11 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
     const readyResolveRef = useRef<() => void>(undefined);
     const readyRejectRef = useRef<(err: unknown) => void>(undefined);
     const readyPromiseRef = useRef<Promise<void>>(new Promise(() => {}));
+    const reducedMotionRef = useRef(
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    );
 
     useEffect(() => {
       cbRef.current = { onComplete, onFlyInStart, onFireStart, onRenderFailure };
@@ -217,7 +222,12 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         await readyPromiseRef.current;
         const state = ps.current!;
 
-        // Destroy old filters before creating new ones (GPU memory)
+        // Detach old filters from sprites before destroying them — the
+        // ticker is still running during the image load await below, and
+        // rendering a sprite with a destroyed filter crashes FilterSystem
+        // ("Cannot set properties of null").
+        if (spriteRef.current) spriteRef.current.filters = [];
+        state.puddle.filters = [];
         if (puddleFilterRef.current) { puddleFilterRef.current.destroy(); puddleFilterRef.current = null; }
         if (meltFilterRef.current) { meltFilterRef.current.destroy(); meltFilterRef.current = null; }
 
@@ -292,10 +302,29 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         // Image behind puddle and dragon
         state.app.stage.addChildAt(sprite, 0);
 
+        if (reducedMotionRef.current) {
+          // Skip the full fly-in → melt → settle sequence. Fire all
+          // callbacks synchronously so the parent state machine lands
+          // on "complete" without any animation frames.
+          sprite.visible = false;
+          cbRef.current.onFlyInStart?.();
+          cbRef.current.onFireStart?.();
+          phaseRef.current = 'complete';
+          cbRef.current.onComplete();
+          return;
+        }
+
         beginSequence();
       },
 
       replay: () => {
+        if (reducedMotionRef.current) {
+          cbRef.current.onFlyInStart?.();
+          cbRef.current.onFireStart?.();
+          phaseRef.current = 'complete';
+          cbRef.current.onComplete();
+          return;
+        }
         // Reset melt filter uniforms
         if (meltFilterRef.current) {
           try {
@@ -369,8 +398,12 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         dragon.animationSpeed = ANIM_SPEED;
         dragon.anchor.set(0.5);
         dragon.visible = false;
-        dragon.loop = true;
-        dragon.play();
+        dragon.loop = !reducedMotionRef.current;
+        if (reducedMotionRef.current) {
+          dragon.gotoAndStop(0);
+        } else {
+          dragon.play();
+        }
 
         // Z-order: puddle(1) → dragon(2). Image sprite inserted at index 0 in loadAndSmelt, placing it behind both.
         app.stage.addChild(puddle);
