@@ -162,7 +162,7 @@ Short declarative clauses. Sentences under 12 words. Conclusions, not descriptio
 
 ## Field constraints
 
-- legacy_infra_class: 5 words max. What the system thinks the image is. Specific to the actual content. If someone reads it without seeing the image, they should want to see the image. "SELFIE SYSTEM V1.0" not "HUMANOID VISUAL NODE." "DESKTOP FAUNA INCIDENT" not "HUMAN-INTEGRATED WORKSPACE."
+- legacy_infra_class: 5 words max. What the system thinks the image is. Specific to the actual content. Avoids generic terms. If someone reads it without seeing the image, they should want to see the image. "SELFIE SYSTEM V1.0" not "HUMANOID VISUAL NODE." "DESKTOP FAUNA INCIDENT" not "HUMAN-INTEGRATED WORKSPACE."
 - diagnosis: 12 words max. First sentence of a postmortem — what failed and how badly. Operational. Systemic. Vary the structure. Ground it in something specific to this image.
 - chromatic_profile: 4 words max. Sounds like an internal color spec someone named badly. "Moldy Blossom," "Thermal Beige," "Incident Pink."
 - primary_contamination: 5 words max. Dominant visual or structural fault.
@@ -173,7 +173,7 @@ Short declarative clauses. Sentences under 12 words. Conclusions, not descriptio
 - archive_note: 60 words max. Evidence record. Short clauses. Start technical, then commit beyond the point of reason. Find one specific absurd detail in the image and assess it with full institutional confidence. End with a deadpan trailing observation.
 - og_headline: 10 words max. Reads like an internal notification that escaped containment.
 - share_quote: 14 words max. An incident summary someone screenshotted.
-- severity: Look at the image. Identify the single most visible physical condition, material state, or failure mode. Name it with one specific English word earned from what you observe in this image.
+- severity: Look at the image. Identify the single most visible or predominate physical condition, material state, or failure mode. Name it with one specific English word earned from what you observe in this image. Avoid abstract or generic terms.
 - anon_handle: Format: [Compound]_[Number]. Reads like an internal system account. "ThermalOperator_41," "DeprecatedNode_7," "IncidentClerk_404."
 - dominant_hex_colors: Exactly 5 vivid, saturated hex colors from the image.
 - subject_box: Bounding box [ymin, xmin, ymax, xmax] in 1000x1000 scale covering the primary artifact.
@@ -185,7 +185,7 @@ Be confident. Be concise. Sound outrageous. Sound institutional. Be visually gro
 const GEMINI_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    legacy_infra_class: { type: Type.STRING, description: 'System classification of the image subject. Specific to the actual content — name it as the system would catalog it. Dramatically announce failure. 5 words max.' },
+    legacy_infra_class: { type: Type.STRING, description: 'System classification of the image subject. Specific to the actual content — name it as the system would catalog it. Dramatically announce failure. Avoid generic terms. 5 words max.' },
     diagnosis: { type: Type.STRING, description: 'First sentence of a postmortem — what failed and how badly. Outrageous. Deadpan. Operational. Specific. Varied structure. 12 words max.' },
     dominant_hex_colors: {
       type: Type.ARRAY,
@@ -193,13 +193,13 @@ const GEMINI_RESPONSE_SCHEMA = {
       description: 'Exactly 5 vivid, saturated hex colors from the image',
     },
     chromatic_profile: { type: Type.STRING, description: "Satirical color palette name. 4 words max. E.g. 'Moldy Blossom', 'Thermal Beige'." },
-    severity: { type: Type.STRING, description: 'One English word naming the dominant visible condition or failure mode observed in this image.' },
+    severity: { type: Type.STRING, description: 'One English word naming the dominant or predominate visible condition or failure mode observed in this image. Avoid generic terms.' },
     primary_contamination: { type: Type.STRING, description: 'Dominant visual or structural fault. 5 words max.' },
     contributing_factor: { type: Type.STRING, description: 'Secondary fault. 5 words max.' },
     failure_origin: { type: Type.STRING, description: 'What decisions produced this artifact. End with a deadpan detail. 20 words max.' },
     disposition: { type: Type.STRING, description: 'System recommendation. What should happen now and why. 18 words max.' },
     incident_feed_summary: { type: Type.STRING, description: 'One-line manifest entry. Varied structure. 14 words max.' },
-    archive_note: { type: Type.STRING, description: 'Evidence record. Short clauses. Start dramatic, escalate past reason. Find one specific absurd detail and make it a focal point afterthought. End deadpan. 60 words max.' },
+    archive_note: { type: Type.STRING, description: 'Evidence record. Short clauses. Start dramatic, escalate beyond reason. Find at least one specific absurd detail and make it a focal point afterthought. End deadpan. 60 words max.' },
     og_headline: { type: Type.STRING, description: 'Internal notification that escaped containment. Evokes urgency. 10 words max.' },
     share_quote: { type: Type.STRING, description: 'Incident summary someone screenshotted but wasn\'t supposed to. Unhinged. 14 words max.' },
     anon_handle: { type: Type.STRING, description: "Generated submitter alias. Relates to image. E.g. 'ShoulderShrug_41', 'AlreadyObsolete_2'." },
