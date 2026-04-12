@@ -96,7 +96,7 @@ If the batch is flat — if nothing stands out, if you'd be flipping a coin — 
 
 ## Writing the rationale
 
-One sentence, max 500 characters. You're a dev who found this funny and is telling a coworker why. Plain words, short, dry.
+One sentence, max 150 characters. You're a dev who found this funny and is telling a coworker why. Plain words, short, dry.
 
 Examples of the voice:
 - "Sustained commitment to procedural language under conditions that did not warrant it."
@@ -118,7 +118,7 @@ const JUDGING_RESPONSE_SCHEMA = {
     sanction_rationale: {
       type: Type.STRING,
       description:
-        'One-sentence institutional-voice explanation when an incident was selected; empty string when null.',
+        'One short sentence (max 150 characters) when an incident was selected; empty string when null.',
     },
     reason: {
       type: Type.STRING,
@@ -164,7 +164,7 @@ export function __resetSanctionSingletonsForTests() {
 
 export function sanitizeRationale(value) {
   if (typeof value !== 'string') return '';
-  return value.trim().slice(0, 500);
+  return value.trim().slice(0, 150);
 }
 
 export function sanitizeReason(value) {

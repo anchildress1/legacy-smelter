@@ -245,10 +245,10 @@ function makeMockDb({
 // ── Helper: pure utilities ──────────────────────────────────────────────────
 
 describe('sanitizeRationale', () => {
-  it('trims, caps at 500 chars, and rejects non-strings', () => {
+  it('trims, caps at 150 chars, and rejects non-strings', () => {
     expect(sanitizeRationale('  hi  ')).toBe('hi');
-    expect(sanitizeRationale('x'.repeat(600))).toHaveLength(500);
-    expect(sanitizeRationale('y'.repeat(500))).toHaveLength(500);
+    expect(sanitizeRationale('x'.repeat(300))).toHaveLength(150);
+    expect(sanitizeRationale('y'.repeat(150))).toHaveLength(150);
     expect(sanitizeRationale('   ')).toBe('');
     expect(sanitizeRationale(42)).toBe('');
     expect(sanitizeRationale(null)).toBe('');
