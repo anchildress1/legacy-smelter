@@ -19,18 +19,18 @@ import {
 //   3. Impact glow + escalate halo — the card must pull its glow
 //      classes from `lib/impactGlow` for both tiers (base and
 //      escalated) and apply the filter-only halo to the Escalate
-//      column when armed.
+//      column when triggered.
 //   4. P0 priority badge — the static "P0" pill in the header
 //      right-cluster is rendered only when `showP0Badge` is true.
 //
 // `useEscalation` is mocked to a mutable state object so individual
-// tests can flip `escalated` to exercise the armed visual tier
+// tests can flip `escalated` to exercise the triggered visual tier
 // without re-mocking per case. The hook's own behavior (toggle,
 // sync, error handling) is covered by src/hooks/useEscalation.test.tsx
 // and src/components/IncidentReportOverlay.test.tsx.
 
 // Mutable mock state so individual tests can flip `escalated` to
-// exercise the "armed" visual tier (Impact glow + escalate column
+// exercise the "triggered" visual tier (Impact glow + escalate column
 // halo) without tearing down and re-mocking the hook per case.
 // `beforeEach` reseeds this to the at-rest defaults so tests stay
 // independent regardless of declaration order.
@@ -379,13 +379,13 @@ describe('IncidentLogCard — interaction contract', () => {
     expect(container.querySelector('[data-testid="incident-card-stats-row"] .w-px')).not.toBeNull();
   });
 
-  it('uses the same escalation state language as detail view (Escalate/Armed)', () => {
+  it('uses the same escalation state language as detail view (Escalate/Triggered)', () => {
     const { rerender } = render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
     expect(screen.getByTestId('incident-card-escalate-state').textContent).toBe('Escalate');
 
     escalationState.escalated = true;
     rerender(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
-    expect(screen.getByTestId('incident-card-escalate-state').textContent).toBe('Armed');
+    expect(screen.getByTestId('incident-card-escalate-state').textContent).toBe('Triggered');
   });
 });
 
@@ -416,9 +416,9 @@ describe('IncidentLogCard — Impact glow + escalate halo', () => {
   });
 
   it('does not apply the escalated glow filter to the escalate column when not escalated', () => {
-    // The filter class is the marker for the "armed" halo. At rest
+    // The filter class is the marker for the "triggered" halo. At rest
     // the column uses plain hover/transition classes; leaking the
-    // filter would make every card look permanently armed.
+    // filter would make every card look permanently triggered.
     render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
     const col = findEscalateColumn();
     expect(col.className).not.toContain(IMPACT_GLOW_FILTER_ESCALATED);
@@ -443,7 +443,7 @@ describe('IncidentLogCard — Impact glow + escalate halo', () => {
     render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
     const col = findEscalateColumn();
     expect(col.className).toContain(IMPACT_GLOW_FILTER_ESCALATED);
-    // And the armed-state background/text classes stay intact — the
+    // And the triggered-state background/text classes stay intact — the
     // glow is additive, not a replacement for the color treatment.
     expect(col.className).toContain('bg-hazard-amber/15');
     expect(col.className).toContain('text-hazard-amber');

@@ -44,7 +44,7 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
     void toggle();
   };
 
-  const escalationStateLabel = escalated ? 'Armed' : 'Escalate';
+  const escalationStateLabel = escalated ? 'Triggered' : 'Escalate';
 
   return (
     <div className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors group">

@@ -327,7 +327,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                             aria-pressed={escalated}
                           >
                             <Siren size={10} aria-hidden="true" />
-                            {escalated ? 'Armed' : 'Escalate'}
+                            {escalated ? 'Triggered' : 'Escalate'}
                           </button>
                         </>
                       )}
@@ -394,7 +394,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                     amber palette and signal that it is the lead metric.
                     When `escalated` is true, the glow intensifies and
                     the number's contrast steps up a notch — a quiet
-                    visual echo of the ARMED escalate button above. */}
+                    visual echo of the TRIGGERED escalate button above. */}
                 <div
                   className="flex items-stretch py-4 border-t border-b border-concrete-border"
                   data-testid="incident-stats-row"

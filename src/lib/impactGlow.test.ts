@@ -7,7 +7,7 @@ import {
 } from './impactGlow';
 
 // These constants are the single source of truth for the warm amber
-// "armed" glow used on the Impact number (front card + back overlay)
+// "triggered" glow used on the Impact number (front card + back overlay)
 // and the escalate button in both surfaces. Pinning the class strings
 // here is load-bearing: the glow has to look identical across every
 // surface that consumes it, so drift between any of these values and
@@ -35,7 +35,7 @@ describe('impactGlow — filter-only constants', () => {
   // NEGATIVE: the filter-only constants MUST NOT include a text
   // color class. They are applied on button elements that already
   // manage their own text color (e.g. `text-hazard-amber` on the
-  // armed pill, `text-stone-gray/60` on the card's escalate
+  // triggered pill, `text-stone-gray/60` on the card's escalate
   // column). If a text-color class leaked into the filter-only
   // constants, those buttons would fight the glow's color on
   // hover/focus transitions and produce visible flashes.
@@ -51,7 +51,7 @@ describe('impactGlow — filter-only constants', () => {
   // NEGATIVE: the two tiers must be distinct. A regression that
   // collapsed them (e.g. by pointing BASE at ESCALATED's filter)
   // would silently remove the visual difference between "at rest"
-  // and "armed" — the whole point of the glow.
+  // and "triggered" — the whole point of the glow.
 
   it('base and escalated filter tiers are distinct values', () => {
     expect(IMPACT_GLOW_FILTER_BASE).not.toBe(IMPACT_GLOW_FILTER_ESCALATED);
@@ -92,7 +92,7 @@ describe('impactGlow — combined text+filter constants', () => {
   // NEGATIVE: the base combined constant uses the 95% alpha text
   // variant (`text-hazard-amber/95`) and the escalated uses the
   // solid variant (`text-hazard-amber`). Cross-leaking would
-  // invert the contrast step that signals "armed" and flatten the
+  // invert the contrast step that signals "triggered" and flatten the
   // transition into nothing.
 
   it('IMPACT_GLOW_BASE uses the 95% alpha text-hazard-amber variant', () => {
