@@ -46,6 +46,10 @@ Failure mode: committing a rules edit without deploying produces 403 `permission
 - Both scripts are idempotent. `backfill-voting-fields.ts` patches `breach_count` / `escalation_count` / `sanction_count` / `sanctioned` / `sanction_rationale` / `impact_score`. `backfill-evaluated.ts` patches `evaluated` / `sanction_lease_at` for pre-rebuild docs so they become eligible for the judging pipeline.
 - Each appends to a migration marker under `system_migrations/<marker>/runs` on every run and never overwrites `first_run_at`. Audit trail is preserved across re-runs.
 
+## code style
+
+- Prefer top-level `await` over `.then()`/`.catch()` promise chains in all new code. Applies to scripts, Cloud Functions entry points, and any module-level async work. Existing promise chains should be converted when touched.
+
 ## memory
 
 User-level memory at `~/.claude/projects/-Users-anchildress1-git-personal-legacy-smelter/memory/` persists across sessions. Referenced in `MEMORY.md` index:
