@@ -15,6 +15,7 @@
  */
 
 import express from 'express';
+import compression from 'compression';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -139,7 +140,6 @@ function injectIncidentOg(html, incident, canonicalUrl) {
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
-
 
 const GEMINI_PROMPT = `You are the commanding incident analysis engine for Legacy Smelter. You analyze uploaded images and classify them as condemned technical artifacts requiring immediate thermal decommission.
 
@@ -393,6 +393,9 @@ async function analyzeImage(base64Image, mimeType) {
     config: {
       responseMimeType: 'application/json',
       responseSchema: GEMINI_RESPONSE_SCHEMA,
+      thinkingConfig: {
+        thinkingLevel: "low",
+      }
     },
   });
 
@@ -449,6 +452,12 @@ app.disable('x-powered-by');
 // Trust one upstream proxy hop only when running behind Cloud Run's frontend.
 const isCloudRun = Boolean(process.env.K_SERVICE);
 app.set('trust proxy', isCloudRun ? 1 : false);
+
+// Gzip/deflate all responses. Runs before static serving so hashed JS/CSS
+// assets, API JSON, and OG-injected HTML all benefit. Typical reduction is
+// 60-70% on text payloads. The `threshold` default (1 KB) avoids
+// compressing tiny responses where the overhead exceeds the savings.
+app.use(compression());
 
 // API routes accept JSON only.
 app.use('/api', (req, res, next) => {
