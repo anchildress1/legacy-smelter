@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, useId, type FC, type ReactNode } from 'rea
 import { SmeltAnalysis } from '../services/geminiService';
 import { computeImpact, SmeltLog } from '../types';
 import { formatTimestamp, buildIncidentUrl } from '../lib/utils';
-import { X, Check, Copy, Link2, ShieldCheck, Siren, TrendingUp, OctagonAlert } from 'lucide-react';
+import { X, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
+import { StatItem } from './StatItem';
 import { SanctionBadge } from './SanctionBadge';
 import { SeverityBadge } from './SeverityBadge';
 import { P0Badge } from './P0Badge';
@@ -236,50 +237,54 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
             <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
               Postmortem
             </h2>
-            <div className="flex items-center gap-1.5 sm:gap-1 shrink-0">
-              {platforms.map(({ label, href }) => {
-                const cfg = SHARE_PLATFORMS[label];
-                return (
-                  <a
-                    key={label}
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={recordBreachAsync}
-                    className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
-                    aria-label={`Post to ${cfg.name}`}
-                    title={cfg.name}
+            <div className="flex items-center min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-1 overflow-hidden min-w-0">
+                {platforms.map(({ label, href }) => {
+                  const cfg = SHARE_PLATFORMS[label];
+                  return (
+                    <a
+                      key={label}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={recordBreachAsync}
+                      className="w-8 h-8 sm:w-6 sm:h-6 shrink-0 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
+                      aria-label={`Post to ${cfg.name}`}
+                      title={cfg.name}
+                    >
+                      {cfg.icon}
+                    </a>
+                  );
+                })}
+                {incidentUrl && (
+                  <button
+                    onClick={handleCopyLink}
+                    className="w-8 h-8 sm:w-6 sm:h-6 shrink-0 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
+                    aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
+                    title={copyLinkState === 'copied' ? 'Copied!' : 'Copy link'}
                   >
-                    {cfg.icon}
-                  </a>
-                );
-              })}
-              {incidentUrl && (
+                    {copyLinkState === 'copied' ? <Check size={12} /> : <Link2 size={12} />}
+                  </button>
+                )}
                 <button
-                  onClick={handleCopyLink}
-                  className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
-                  aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
-                  title={copyLinkState === 'copied' ? 'Copied!' : 'Copy link'}
+                  onClick={handleCopyText}
+                  className="w-8 h-8 sm:w-6 sm:h-6 shrink-0 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
+                  aria-label={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
+                  title={copyTextState === 'copied' ? 'Copied!' : 'Copy brief'}
                 >
-                  {copyLinkState === 'copied' ? <Check size={12} /> : <Link2 size={12} />}
+                  {copyTextState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
                 </button>
-              )}
-              <button
-                onClick={handleCopyText}
-                className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
-                aria-label={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
-                title={copyTextState === 'copied' ? 'Copied!' : 'Copy brief'}
-              >
-                {copyTextState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
-              </button>
-              <div className="w-px h-5 sm:h-4 bg-concrete-border mx-0.5" aria-hidden="true" />
-              <button
-                onClick={onClose}
-                className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
-                aria-label="Close report"
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
+              </div>
+              <div className="flex items-center gap-1.5 sm:gap-1 shrink-0 ml-1">
+                <div className="w-px h-5 sm:h-4 bg-concrete-border" aria-hidden="true" />
+                <button
+                  onClick={onClose}
+                  className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
+                  aria-label="Close report"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -403,15 +408,11 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                   <div className="w-px self-stretch bg-concrete-border" aria-hidden="true" />
                   <div className="flex flex-1 items-center justify-around">
                     {[
-                      { value: counts.sanction, label: 'Sanctions', Icon: ShieldCheck },
-                      { value: counts.escalation, label: 'Escalations', Icon: TrendingUp },
-                      { value: counts.breach, label: 'Breaches', Icon: OctagonAlert },
-                    ].map(({ value, label, Icon }) => (
-                      <div key={label} className="text-center">
-                        <div className="text-ash-white font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
-                        <Icon size={12} className="sm:hidden mx-auto mt-1 text-ash-white/60" aria-hidden="true" />
-                        <div className="hidden sm:block mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-ash-white/60">{label}</div>
-                      </div>
+                      { value: counts.sanction, label: 'Sanctions' },
+                      { value: counts.escalation, label: 'Escalations' },
+                      { value: counts.breach, label: 'Breaches' },
+                    ].map(({ value, label }) => (
+                      <StatItem key={label} value={value} label={label} variant="stacked" />
                     ))}
                   </div>
                 </div>

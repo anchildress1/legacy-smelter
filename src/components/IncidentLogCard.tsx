@@ -1,7 +1,8 @@
 import type { FC, MouseEvent } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors } from '../lib/utils';
-import { Siren, Quote, AlertTriangle, ShieldCheck, TrendingUp, OctagonAlert } from 'lucide-react';
+import { Siren, Quote, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { StatItem } from './StatItem';
 import { useEscalation } from '../hooks/useEscalation';
 import {
   IMPACT_GLOW_BASE,
@@ -121,15 +122,11 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
           </span>
           <span className="w-px h-3 bg-concrete-border" aria-hidden="true" />
           {[
-            { value: log.sanction_count, label: 'Sanctions', Icon: ShieldCheck },
-            { value: log.escalation_count, label: 'Escalations', Icon: TrendingUp },
-            { value: log.breach_count, label: 'Breaches', Icon: OctagonAlert },
-          ].map(({ value, label, Icon }) => (
-            <span key={label} className="flex items-center gap-1" aria-label={`${value} ${label}`}>
-              <Icon size={14} className="sm:hidden text-ash-white/80" aria-hidden="true" />
-              <span className="text-ash-white font-mono text-sm font-black leading-none">{value}</span>
-              <span className="hidden sm:inline text-[9px] font-mono uppercase text-ash-white/60">{label}</span>
-            </span>
+            { value: log.sanction_count, label: 'Sanctions' },
+            { value: log.escalation_count, label: 'Escalations' },
+            { value: log.breach_count, label: 'Breaches' },
+          ].map(({ value, label }) => (
+            <StatItem key={label} value={value} label={label} />
           ))}
         </div>
       </button>

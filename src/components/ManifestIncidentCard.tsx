@@ -2,6 +2,7 @@ import type { FC, MouseEvent } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
 import { Siren, Quote } from 'lucide-react';
+import { StatItem } from './StatItem';
 import { useEscalation } from '../hooks/useEscalation';
 import { SeverityBadge } from './SeverityBadge';
 import { P0Badge } from './P0Badge';
@@ -117,10 +118,7 @@ export const ManifestIncidentCard: FC<ManifestIncidentCardProps> = ({
               { value: log.escalation_count, label: 'Escalations' },
               { value: log.breach_count, label: 'Breaches' },
             ].map(({ value, label }) => (
-              <span key={label} className="flex items-baseline gap-1">
-                <span className="text-ash-white font-mono text-sm font-black leading-none">{value}</span>
-                <span className="text-[9px] font-mono uppercase text-ash-white/60">{label}</span>
-              </span>
+              <StatItem key={label} value={value} label={label} />
             ))}
           </div>
           <span className="text-dead-gray font-mono text-xs shrink-0">
