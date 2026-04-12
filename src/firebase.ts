@@ -1,6 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
-import { getAuth, connectAuthEmulator, signInAnonymously } from 'firebase/auth';
+import {
+  getAuth,
+  connectAuthEmulator,
+  inMemoryPersistence,
+  setPersistence,
+  signInAnonymously,
+  signOut,
+} from 'firebase/auth';
 
 const requiredVars = [
   'VITE_FIREBASE_API_KEY',
@@ -42,6 +49,18 @@ if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
   const host = import.meta.env.VITE_FIREBASE_EMULATOR_HOST ?? '127.0.0.1';
   connectFirestoreEmulator(db, host, 9180);
   connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
+  // Switch to in-memory persistence and purge any cached user from an
+  // earlier production session. Without this, the Firebase Auth SDK
+  // restores the cached prod ID token from IndexedDB on page load and
+  // refreshes it against the emulator — which then logs "Received a
+  // signed JWT. Auth Emulator does not validate JWTs and IS NOT SECURE"
+  // for every refresh. In-memory persistence guarantees each emulator
+  // session starts with no user and mints fresh, unsigned tokens.
+  setPersistence(auth, inMemoryPersistence)
+    .then(() => signOut(auth))
+    .catch((err) => {
+      console.warn('[firebase] Failed to reset auth persistence for emulator:', err);
+    });
   // Loud log so it is obvious in the browser console which backend the
   // app is talking to — a silent fallback is how "why is nothing in the
   // emulator log" happens in the first place.
