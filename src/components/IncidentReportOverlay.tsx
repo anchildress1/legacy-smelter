@@ -493,7 +493,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                 <div className="border-t border-concrete-border/40 pt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-xs text-stone-gray">
                   <span>Filed by <span className="text-hazard-amber font-bold">{report.anonHandle}</span></span>
                   {counts.timestamp && <span>{formatTimestamp(counts.timestamp)}</span>}
-                  <span>Palette: {report.chromaticProfile}</span>
+                  <span>Chromatic profile: {report.chromaticProfile}</span>
                 </div>
               </section>
 

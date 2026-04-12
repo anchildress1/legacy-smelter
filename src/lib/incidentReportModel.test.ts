@@ -94,9 +94,9 @@ describe('buildIncidentReportMarkdown', () => {
       0, 0, 0,
       new Date('2026-04-10T00:00:00Z'),
     );
-    expect(withTs).toMatch(/Filed by handle · .+ · Palette: Profile/);
+    expect(withTs).toMatch(/Filed by handle · .+ · Chromatic profile: Profile/);
     const noTs = buildIncidentReportMarkdown(makeModel(), 0, 0, 0, null);
-    expect(noTs).toContain('Filed by handle · Palette: Profile');
+    expect(noTs).toContain('Filed by handle · Chromatic profile: Profile');
   });
 
   it('renders the Diagnostics section only when at least one field is non-empty', () => {

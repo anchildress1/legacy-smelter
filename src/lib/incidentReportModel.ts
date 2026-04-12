@@ -96,7 +96,7 @@ export function buildIncidentReportMarkdown(
   // ── Footer ──
   const footerParts = [`Filed by ${report.anonHandle}`];
   if (liveTimestamp) footerParts.push(formatTimestamp(liveTimestamp));
-  footerParts.push(`Palette: ${report.chromaticProfile}`);
+  footerParts.push(`Chromatic profile: ${report.chromaticProfile}`);
   lines.push('', '---', '', `*${footerParts.join(' · ')}*`);
 
   return lines.join('\n');
