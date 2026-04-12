@@ -37,6 +37,17 @@ function ensureApp() {
   if (getApps().length === 0) {
     const credential = getServiceAccountCredential();
     initializeApp(credential ? { credential: cert(credential), projectId } : { projectId });
+    // The firebase-admin SDK auto-routes to the emulator when this env
+    // var is set, but that routing is silent — in local dev it is easy
+    // to believe the server is writing to the emulator when it is
+    // actually writing to production. Log the destination loud and
+    // clear at init so a mis-set env var surfaces on the first boot.
+    const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
+    if (emulatorHost) {
+      console.info(`[admin-init] Firestore → EMULATOR at ${emulatorHost} (project=${projectId})`);
+    } else {
+      console.info(`[admin-init] Firestore → PRODUCTION (project=${projectId})`);
+    }
   }
   return projectId;
 }

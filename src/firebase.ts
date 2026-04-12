@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getAuth, connectAuthEmulator, signInAnonymously } from 'firebase/auth';
 
 const requiredVars = [
   'VITE_FIREBASE_API_KEY',
@@ -30,6 +30,24 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID);
 const auth = getAuth(app);
+
+// Local emulator wiring. Opt-in via `VITE_USE_FIREBASE_EMULATOR=true` in
+// `.env.local` so developer setups can freely toggle between the local
+// emulator (fires the local `functions` trigger, keeps prod untouched)
+// and production (reproduces the real trigger latency). Ports must match
+// the `emulators` block in `firebase.json` — firestore:9180, auth:9099.
+// The connect calls must run before any read/write, hence the top-of-file
+// placement right after `getFirestore`/`getAuth`.
+if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
+  const host = import.meta.env.VITE_FIREBASE_EMULATOR_HOST ?? '127.0.0.1';
+  connectFirestoreEmulator(db, host, 9180);
+  connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
+  // Loud log so it is obvious in the browser console which backend the
+  // app is talking to — a silent fallback is how "why is nothing in the
+  // emulator log" happens in the first place.
+  console.info(`[firebase] Connected to local emulators at ${host} (firestore:9180, auth:9099)`);
+}
+
 let anonymousAuthPromise: Promise<void> | null = null;
 
 export async function ensureAnonymousAuth(): Promise<void> {

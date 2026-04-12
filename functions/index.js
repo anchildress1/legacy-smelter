@@ -16,11 +16,24 @@
  *     surface that shows every Cloud Function this project deploys.
  */
 
+import { initializeApp, getApps } from 'firebase-admin/app';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { runSanctionBatch } from './sanction.js';
+
+// Eagerly register the default firebase-admin app at module load.
+// Runs once per Cloud Function instance cold start so every handler
+// path finds a registered default app before calling `getFirestore()`.
+// The previous lazy init inside `sanction.js#getDb()` was failing on
+// some cold starts with "The default Firebase app does not exist" —
+// the `getApps().length === 0` guard there races with the runtime's
+// own firebase-admin touchpoints, so the init must happen here at
+// the top level of the entry module before any trigger fires.
+if (getApps().length === 0) {
+  initializeApp();
+}
 
 // Secret is defined at the top of the module so `firebase deploy` can see the
 // binding in the manifest and wire GSM access at deploy time. The value is
