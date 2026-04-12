@@ -15,6 +15,11 @@
  *   FIRESTORE_EMULATOR_HOST=127.0.0.1:9180 make trigger-sanction
  */
 import 'dotenv/config';
+// The @google/genai SDK warns and defers to GOOGLE_API_KEY when both
+// GOOGLE_API_KEY and GEMINI_API_KEY are present in the environment.
+// This project uses GEMINI_API_KEY exclusively; scrub the duplicate so
+// the SDK does not log a spurious warning or shadow the intended key.
+delete process.env.GOOGLE_API_KEY;
 import { ensureApp } from '../shared/admin-init.js';
 import { runSanctionBatch } from '../functions/sanction.js';
 
