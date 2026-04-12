@@ -37,6 +37,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=server-deps /app/node_modules ./node_modules
 COPY package.json server.js ./
+COPY shared ./shared
 COPY --from=builder /app/dist ./dist
 EXPOSE 8080
 CMD ["node", "server.js"]
