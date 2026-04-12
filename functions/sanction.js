@@ -260,7 +260,7 @@ export function normalizeSelection(raw, candidates) {
   }
 
   if (typeof selectedRaw !== 'string') {
-    throw new Error(
+    throw new TypeError(
       `[sanction] Model must return "sanctioned_incident_id" as a non-empty string or null. ` +
         `Candidates: ${candidates.map((c) => c.incident_id).join(', ')}. ` +
         `Raw response: ${JSON.stringify(raw).slice(0, 300)}`,
