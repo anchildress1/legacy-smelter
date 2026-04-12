@@ -428,8 +428,8 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
-      <a href="#main-content" className="skip-link">Skip to main content</a>
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
+        <a href="#main-content" className="skip-link">Skip to main content</a>
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-x-3 sm:gap-x-4 px-4 py-4 sm:px-6">
           <div className="min-w-0 flex-1">
             <h1 className="text-base sm:text-2xl font-black font-mono tracking-tighter uppercase whitespace-nowrap">

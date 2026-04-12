@@ -11,8 +11,7 @@ import {
 // targets a distinct concern:
 //
 //   1. Title + quote tooltip surface — the card caps both at two
-//      lines (`line-clamp-2 min-h-[2lh]`) for a uniform vertical
-//      footprint, so the full text must be preserved in the native
+//      lines (`line-clamp-2`) so the full text must be preserved in the native
 //      `title` attribute. Tests assert presence on short AND long
 //      content and check special-character pass-through.
 //   2. Interaction contract — click and keyboard affordances.
@@ -140,15 +139,10 @@ describe('IncidentLogCard — title tooltip', () => {
     expect(titleEl.getAttribute('title')).toBe('Artifact Node');
   });
 
-  it('applies line-clamp-2 and min-h-[2lh] to the title', () => {
-    // The clamp classes are the contract with Tailwind. A refactor that
-    // drops either one would return the card to free-flow (title would
-    // spill beyond two lines) or collapse short cards to one line
-    // (breaking the uniform grid rhythm in the feed).
+  it('applies line-clamp-2 to the title', () => {
     render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
     const titleEl = screen.getByText('Artifact Node');
     expect(titleEl.className).toContain('line-clamp-2');
-    expect(titleEl.className).toContain('min-h-[2lh]');
   });
 
   it('preserves the full title in the title attribute when the text is longer than two lines', () => {
@@ -184,11 +178,10 @@ describe('IncidentLogCard — quote tooltip', () => {
     expect(quoteEl.getAttribute('title')).toBe('Containment failed. Smelting initiated.');
   });
 
-  it('applies line-clamp-2 and min-h-[2lh] to the quote', () => {
+  it('applies line-clamp-2 to the quote', () => {
     render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
     const quoteEl = screen.getByText('"Containment failed. Smelting initiated."');
     expect(quoteEl.className).toContain('line-clamp-2');
-    expect(quoteEl.className).toContain('min-h-[2lh]');
   });
 
   it('preserves the full quote in the title attribute when the text is longer than two lines', () => {

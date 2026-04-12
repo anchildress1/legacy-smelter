@@ -57,7 +57,7 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
           <div className="flex items-start gap-2 min-w-0">
             <span className="w-2 h-2 mt-1.5 rounded-full shrink-0" style={{ backgroundColor: finalColors[0] }} aria-hidden="true" />
             <p
-              className="text-hazard-amber font-mono text-sm uppercase tracking-wide font-black min-w-0 line-clamp-2 min-h-[2lh] leading-snug"
+              className="text-hazard-amber font-mono text-sm uppercase tracking-wide font-black min-w-0 line-clamp-2 leading-snug"
               title={log.legacy_infra_class}
             >
               {log.legacy_infra_class}
@@ -97,7 +97,7 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
         <div className="mt-2 flex items-start gap-2 border-l-2 border-hazard-amber/60 pl-2.5">
           <Quote size={12} className="mt-0.5 shrink-0 text-hazard-amber/70" aria-hidden="true" />
           <p
-            className="text-xs font-mono italic leading-snug text-hazard-amber/85 line-clamp-2 min-h-[2lh]"
+            className="text-xs font-mono italic leading-snug text-hazard-amber/85 line-clamp-2"
             title={log.share_quote}
           >
             "{log.share_quote}"

@@ -115,9 +115,9 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
 
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
-      <a href="#main-content" className="skip-link">Skip to main content</a>
       {/* Header */}
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
+        <a href="#main-content" className="skip-link">Skip to main content</a>
         <div className="max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-4 sm:px-6">
           <nav aria-label="Site">
             <button onClick={onNavigateHome} className="nav-btn">
