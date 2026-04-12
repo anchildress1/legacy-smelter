@@ -197,7 +197,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --image "$IMAGE" \
   --port 8080 \
   --service-account "$SERVICE_SA" \
-  --set-secrets=GEMINI_API_KEY=gemini-api-key:latest \
+  --set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest \
   --set-env-vars="\
 VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY},\
 VITE_FIREBASE_PROJECT_ID=${VITE_FIREBASE_PROJECT_ID},\
