@@ -1,5 +1,15 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SmeltLog } from './types';
+import {
+  ensureMatchMediaStub,
+  mockAnalyzeLegacyTech,
+  mockGetDoc,
+  mockParseSmeltLog,
+  recentIncidentLogsMockState,
+  resetRecentIncidentLogsMockState,
+} from './test/appSharedMocks';
+import { makeFixtureLog as makeLog } from './test/smeltLogFixtures';
 
 // Behaviour tests for App.tsx state transitions. `App.mobileLayout.test.tsx`
 // pins the header classnames against a screenshot regression and does NOT
@@ -12,105 +22,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 // the render stays synchronous and deterministic. Every feature module
 // that touches Firebase, PIXI, Howler, or Gemini is stubbed.
 
-const flushFirestore = () => () => {};
-
-const mockAnalyzeLegacyTech =
-  vi.fn<(base64: string, mimeType: string) => Promise<unknown>>();
-const mockGetDoc = vi.fn();
-const mockParseSmeltLog = vi.fn();
-
-vi.mock('./firebase', () => ({
-  db: { __db: true },
-  collection: vi.fn(() => ({ __collection: true })),
-  onSnapshot: vi.fn(() => flushFirestore()),
-  query: vi.fn(() => ({ __query: true })),
-  orderBy: vi.fn(() => ({ __orderBy: true })),
-  limit: vi.fn(() => ({ __limit: true })),
-  doc: vi.fn((_db: unknown, _collection: string, id: string) => ({
-    __doc: true,
-    id,
-  })),
-  getDoc: (...args: unknown[]) => mockGetDoc(...args),
-}));
-
-vi.mock('./services/geminiService', async () => {
-  const actual = await vi.importActual<typeof import('./services/geminiService')>(
-    './services/geminiService',
-  );
-  return {
-    ...actual,
-    analyzeLegacyTech: (...args: [string, string]) =>
-      mockAnalyzeLegacyTech(...args),
-  };
-});
-
-vi.mock('./lib/firestoreErrors', () => ({
-  handleFirestoreError: vi.fn(),
-  OperationType: { GET: 'GET', LIST: 'LIST' },
-}));
-
-vi.mock('./lib/smeltLogSchema', () => ({
-  parseSmeltLog: (...args: unknown[]) => mockParseSmeltLog(...args),
-  parseSmeltLogBatch: vi.fn(() => ({ entries: [], invalidCount: 0 })),
-}));
-
-vi.mock('./lib/utils', () => ({
-  getLogShareLinks: vi.fn(() => []),
-  buildShareLinks: vi.fn(() => []),
-  buildIncidentUrl: vi.fn(() => 'https://example.test/s/1'),
-  formatPixels: vi.fn(() => ({ value: '0', unit: 'MEGAPIXELS' })),
-  formatTimestamp: vi.fn(() => '2026-04-10'),
-  getFiveDistinctColors: vi.fn(() => ['#000', '#111', '#222', '#333', '#444']),
-}));
-
-vi.mock('howler', () => ({
-  Howl: vi.fn(function HowlMock(this: unknown) {
-    return {
-      play: vi.fn(),
-      stop: vi.fn(),
-      volume: vi.fn(),
-    };
-  }),
-}));
-
-vi.mock('./components/SmelterCanvas', () => ({
-  SmelterCanvas: () => null,
-}));
-
-vi.mock('./components/IncidentReportOverlay', () => ({
-  IncidentReportOverlay: ({ incidentId }: { incidentId: string }) => (
-    <div data-testid="incident-report-overlay" data-incident-id={incidentId} />
-  ),
-}));
-
-vi.mock('./components/IncidentLogCard', () => ({
-  IncidentLogCard: () => null,
-}));
-
-vi.mock('./components/DecommissionIndex', () => ({
-  DecommissionIndex: () => <div data-testid="decommission-index-stub" />,
-}));
-
-vi.mock('./components/SiteFooter', () => ({
-  SiteFooter: () => null,
-}));
-
-vi.mock('./components/DataHealthIndicator', () => ({
-  DataHealthIndicator: ({ issues }: { issues: string[] }) => (
-    <div data-testid="data-health-stub" data-issue-count={issues.length}>
-      {issues.map((issue) => (
-        <div key={issue} data-testid="data-health-issue">
-          {issue}
-        </div>
-      ))}
-    </div>
-  ),
-}));
-
 import App from './App';
 
-// Scoped helpers (hoisted to module scope so Sonar S7721 is happy and each
-// describe-block does not re-create them on every render).
 function stubFileReaderSuccess(payload: string): void {
   class MockFileReader {
     public onload: ((event: { target: { result: string } }) => void) | null = null;
@@ -156,20 +69,29 @@ async function triggerFilePicker(file: File) {
   });
 }
 
+async function expectAnalyzeIssueMessage(
+  analysisError: unknown,
+  expectedIssueText: string,
+): Promise<void> {
+  stubFileReaderSuccess('payload');
+  mockAnalyzeLegacyTech.mockRejectedValue(analysisError);
+  const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  render(<App onNavigateManifest={() => {}} />);
+  await triggerFilePicker(new File(['fake'], 'artifact.png', { type: 'image/png' }));
+
+  await waitFor(() => {
+    const issues = screen.getAllByTestId('data-health-issue');
+    expect(issues.some((el) => el.textContent?.includes(expectedIssueText))).toBe(true);
+  });
+
+  consoleErrorSpy.mockRestore();
+  vi.unstubAllGlobals();
+}
+
 describe('App state transitions', () => {
   beforeAll(() => {
-    if (typeof globalThis.matchMedia !== 'function') {
-      globalThis.matchMedia = vi.fn(() => ({
-        matches: false,
-        media: '',
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(() => false),
-      })) as unknown as typeof globalThis.matchMedia;
-    }
+    ensureMatchMediaStub();
   });
 
   beforeEach(() => {
@@ -177,6 +99,7 @@ describe('App state transitions', () => {
     mockGetDoc.mockReset();
     mockParseSmeltLog.mockReset();
     mockAnalyzeLegacyTech.mockReset();
+    resetRecentIncidentLogsMockState();
   });
 
   describe('deep link incident fetching', () => {
@@ -283,39 +206,17 @@ describe('App state transitions', () => {
 
     it('shows the server-busy message when analyzer throws a 503 AnalysisError', async () => {
       const { AnalysisError } = await import('./services/geminiService');
-      stubFileReaderSuccess('payload');
-      mockAnalyzeLegacyTech.mockRejectedValue(
+      await expectAnalyzeIssueMessage(
         new AnalysisError(503, 'Server busy.', 'server_busy'),
+        'FURNACE AT CAPACITY',
       );
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      render(<App onNavigateManifest={() => {}} />);
-      await triggerFilePicker(new File(['fake'], 'artifact.png', { type: 'image/png' }));
-
-      await waitFor(() => {
-        const issues = screen.getAllByTestId('data-health-issue');
-        expect(issues.some((el) => el.textContent?.includes('FURNACE AT CAPACITY'))).toBe(true);
-      });
-
-      consoleErrorSpy.mockRestore();
-      vi.unstubAllGlobals();
     });
 
     it('shows the unknown-category message when analyzer throws a plain Error', async () => {
-      stubFileReaderSuccess('payload');
-      mockAnalyzeLegacyTech.mockRejectedValue(new Error('network down'));
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      render(<App onNavigateManifest={() => {}} />);
-      await triggerFilePicker(new File(['fake'], 'artifact.png', { type: 'image/png' }));
-
-      await waitFor(() => {
-        const issues = screen.getAllByTestId('data-health-issue');
-        expect(issues.some((el) => el.textContent?.includes('UNKNOWN FAULT'))).toBe(true);
-      });
-
-      consoleErrorSpy.mockRestore();
-      vi.unstubAllGlobals();
+      await expectAnalyzeIssueMessage(
+        new Error('network down'),
+        'UNKNOWN FAULT',
+      );
     });
 
     it('shows the file-read message when FileReader fails before the analyzer runs', async () => {
@@ -335,6 +236,160 @@ describe('App state transitions', () => {
 
       consoleErrorSpy.mockRestore();
       vi.unstubAllGlobals();
+    });
+  });
+
+  describe('P0 badge propagation', () => {
+    // These tests cover the three App-side wiring sites for the P0
+    // badge: the home queue (always-true), the deep-link overlay
+    // (derived from `recentLogs`), and the post-smelt analysis
+    // overlay (also derived from `recentLogs`). Without these tests,
+    // a regression that deleted the prop, flipped its derivation, or
+    // keyed it off the wrong id would ship silently because the
+    // IncidentLogCard and IncidentReportOverlay stubs used to render
+    // `() => null` and dropped the prop on the floor. The stubs in
+    // appSharedMocks now surface `data-show-p0` for prop-level
+    // assertions at both call sites.
+
+    it('passes showP0Badge=true to every card in the home queue', () => {
+      // Home queue hard-codes `showP0Badge` on every recent-queue
+      // card — the queue IS the top-3 by definition. A regression
+      // that removed the prop or gated it on a stale condition
+      // would flip every badge off silently.
+      recentIncidentLogsMockState.recentLogs = [
+        makeLog('queue-1', { impact_score: 100 }),
+        makeLog('queue-2', { impact_score: 90 }),
+        makeLog('queue-3', { impact_score: 80 }),
+      ];
+
+      render(<App onNavigateManifest={() => {}} />);
+
+      const cards = screen.getAllByTestId('incident-log-card-stub');
+      expect(cards).toHaveLength(3);
+      for (const card of cards) {
+        expect(card.dataset.showP0).toBe('true');
+      }
+    });
+
+    it('passes showP0Badge=true to the deep-link overlay when the incident is in the top-3', async () => {
+      recentIncidentLogsMockState.recentLogs = [
+        makeLog('inc-deeplink', { impact_score: 100 }),
+        makeLog('queue-2', { impact_score: 90 }),
+      ];
+      mockGetDoc.mockResolvedValue({
+        exists: () => true,
+        id: 'inc-deeplink',
+        data: () => ({ og_headline: 'headline' }),
+      });
+      mockParseSmeltLog.mockReturnValue(makeLog('inc-deeplink'));
+
+      render(<App onNavigateManifest={() => {}} deepLinkId="inc-deeplink" />);
+
+      await waitFor(() => {
+        const overlay = screen.queryByTestId('incident-report-overlay');
+        expect(overlay).not.toBeNull();
+        expect(overlay?.dataset.showP0).toBe('true');
+      });
+    });
+
+    it('passes showP0Badge=false to the deep-link overlay when the incident is NOT in the top-3', async () => {
+      // The deep-linked incident is outside the top-3 (stale share
+      // link, or the queue has moved on since the link was created).
+      // The badge must not appear just because the user arrived via
+      // a direct URL — this is the exact scenario that justifies the
+      // `recentLogs.some(...)` derivation over hard-coding true.
+      recentIncidentLogsMockState.recentLogs = [
+        makeLog('queue-1', { impact_score: 100 }),
+        makeLog('queue-2', { impact_score: 90 }),
+      ];
+      mockGetDoc.mockResolvedValue({
+        exists: () => true,
+        id: 'inc-stale-link',
+        data: () => ({ og_headline: 'headline' }),
+      });
+      mockParseSmeltLog.mockReturnValue(makeLog('inc-stale-link'));
+
+      render(<App onNavigateManifest={() => {}} deepLinkId="inc-stale-link" />);
+
+      await waitFor(() => {
+        const overlay = screen.queryByTestId('incident-report-overlay');
+        expect(overlay).not.toBeNull();
+        expect(overlay?.dataset.showP0).toBe('false');
+      });
+    });
+
+    it('defers opening the deep-link overlay until the top-3 subscription has loaded', async () => {
+      // Cold-load race: `recentLogsLoaded` starts false, so the
+      // pending deep-link log is staged but not yet transferred into
+      // `selectedRecentLog`. Once the subscription finishes loading
+      // (loaded flips true), the staging effect opens the overlay
+      // with the correct `showP0Badge` value on the first render —
+      // no false→true flash for an incident that IS in the top-3.
+      recentIncidentLogsMockState.loaded = false;
+      recentIncidentLogsMockState.recentLogs = [];
+      mockGetDoc.mockResolvedValue({
+        exists: () => true,
+        id: 'inc-deeplink',
+        data: () => ({ og_headline: 'headline' }),
+      });
+      mockParseSmeltLog.mockReturnValue(makeLog('inc-deeplink'));
+
+      const { rerender } = render(
+        <App onNavigateManifest={() => {}} deepLinkId="inc-deeplink" />,
+      );
+
+      await waitFor(() => {
+        expect(mockGetDoc).toHaveBeenCalled();
+      });
+      // Overlay must NOT open while `loaded === false`, even though
+      // the doc has already resolved.
+      expect(screen.queryByTestId('incident-report-overlay')).toBeNull();
+
+      // Subscription lands with the deep-linked incident in the top-3.
+      // Rerender with fresh mock state so the App re-reads it.
+      await act(async () => {
+        recentIncidentLogsMockState.loaded = true;
+        recentIncidentLogsMockState.recentLogs = [
+          makeLog('inc-deeplink', { impact_score: 100 }),
+        ];
+        rerender(
+          <App onNavigateManifest={() => {}} deepLinkId="inc-deeplink" />,
+        );
+      });
+
+      await waitFor(() => {
+        const overlay = screen.queryByTestId('incident-report-overlay');
+        expect(overlay).not.toBeNull();
+        expect(overlay?.dataset.showP0).toBe('true');
+      });
+    });
+
+    it('guards showP0Badge against empty-string incident ids', async () => {
+      // Defensive: if a future refactor ever produced a log or
+      // analysis with an empty `id`/`incidentId`, a naive
+      // `recentLogs.some(l => l.id === '')` would silently match
+      // any other empty-id entry in the queue. The shared helper
+      // `isInTopPriority` short-circuits to false on falsy ids.
+      recentIncidentLogsMockState.recentLogs = [
+        { ...makeLog('queue-1'), id: '' } as SmeltLog,
+      ];
+      mockGetDoc.mockResolvedValue({
+        exists: () => true,
+        id: '',
+        data: () => ({ og_headline: 'headline' }),
+      });
+      mockParseSmeltLog.mockReturnValue({
+        ...makeLog('empty'),
+        id: '',
+      } as SmeltLog);
+
+      render(<App onNavigateManifest={() => {}} deepLinkId="empty" />);
+
+      await waitFor(() => {
+        const overlay = screen.queryByTestId('incident-report-overlay');
+        expect(overlay).not.toBeNull();
+        expect(overlay?.dataset.showP0).toBe('false');
+      });
     });
   });
 });

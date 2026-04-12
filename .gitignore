@@ -4,9 +4,12 @@ dist/
 coverage/
 .gemini/
 .claude/
+.verdent/
 .playwright-mcp/
 .DS_Store
 *.log
 *.tmp
 .env*
 !.env.example
+
+.vite.env

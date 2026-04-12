@@ -60,7 +60,6 @@ Artifacts are destroyed. Nothing is recovered. Processing results in slag or mol
 | `chromatic_profile` | 4 | Diagnostic register: "Moldy Blossom," "Thermal Beige," "Incident Pink." Sounds like an internal color spec someone named badly. |
 | `primary_contamination` | 5 | Dominant visual or structural fault. |
 | `contributing_factor` | 5 | Secondary fault. |
-| `system_dx` | 18 | Compound clinical syndrome name. Stack real diagnostic patterns onto absurd observations. Structure: "[Adjective] [Noun] Syndrome with [Modifier] [Specific Observable]." Example: "Chronic Environmental Entanglement Syndrome with Recursive Self-Referential Glare." |
 | `failure_origin` | 20 | What decisions produced this artifact. Blame the history. End with a specific, mundane, deadpan detail. "Also, the green paint." |
 | `disposition` | 18 | System recommendation for this specific artifact. Do not restate the severity tier — the badge already shows it. Say what should happen and why. |
 | `incident_feed_summary` | 14 | One-line manifest entry. Vary the structure — do not always use the same pattern. |

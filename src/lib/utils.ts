@@ -24,13 +24,29 @@ export function formatTimestamp(date: Date): string {
   return `${p.year}.${p.month}.${p.day} // ${p.hour}:${p.minute}:${p.second} ${p.timeZoneName}`;
 }
 
+function trimTrailingFractionZeros(value: number): string {
+  const fixed = value.toFixed(3);
+  const decimalIndex = fixed.indexOf('.');
+  if (decimalIndex === -1) return fixed;
+
+  let end = fixed.length;
+  while (end > decimalIndex + 1 && fixed[end - 1] === '0') {
+    end -= 1;
+  }
+
+  if (end === decimalIndex + 1) {
+    return fixed.slice(0, decimalIndex);
+  }
+  return fixed.slice(0, end);
+}
+
 export function formatPixels(pixels: number): { value: string, unit: string } {
   if (pixels < 1_000) return { value: pixels.toString(), unit: 'PIXELS' };
-  if (pixels < 1_000_000) return { value: (pixels / 1_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'KILOPIXELS' };
-  if (pixels < 1_000_000_000) return { value: (pixels / 1_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'MEGAPIXELS' };
-  if (pixels < 1_000_000_000_000) return { value: (pixels / 1_000_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'GIGAPIXELS' };
-  if (pixels < 1_000_000_000_000_000) return { value: (pixels / 1_000_000_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'TERAPIXELS' };
-  return { value: (pixels / 1_000_000_000_000_000).toFixed(3).replace(/\.?0+$/, ''), unit: 'PETAPIXELS' };
+  if (pixels < 1_000_000) return { value: trimTrailingFractionZeros(pixels / 1_000), unit: 'KILOPIXELS' };
+  if (pixels < 1_000_000_000) return { value: trimTrailingFractionZeros(pixels / 1_000_000), unit: 'MEGAPIXELS' };
+  if (pixels < 1_000_000_000_000) return { value: trimTrailingFractionZeros(pixels / 1_000_000_000), unit: 'GIGAPIXELS' };
+  if (pixels < 1_000_000_000_000_000) return { value: trimTrailingFractionZeros(pixels / 1_000_000_000_000), unit: 'TERAPIXELS' };
+  return { value: trimTrailingFractionZeros(pixels / 1_000_000_000_000_000), unit: 'PETAPIXELS' };
 }
 
 export { getFiveDistinctColors } from '../../shared/colors.js';

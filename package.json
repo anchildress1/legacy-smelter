@@ -20,17 +20,17 @@
     "sanction-incidents": "tsx scripts/sanction-incidents.ts"
   },
   "dependencies": {
-    "@google/genai": "^1.48.0",
+    "@google/genai": "^1.49.0",
     "@tailwindcss/vite": "^4.2.2",
     "@vitejs/plugin-react": "^6.0.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
-    "firebase": "^12.11.0",
+    "firebase": "^12.12.0",
     "firebase-admin": "^13.7.0",
     "howler": "^2.2.4",
     "image-size": "^2.0.2",
-    "lucide-react": "^1.7.0",
+    "lucide-react": "^1.8.0",
     "pixi.js": "^8.17.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -42,7 +42,7 @@
     "@testing-library/react": "^16.3.2",
     "@types/express": "^5.0.6",
     "@types/howler": "^2.2.12",
-    "@types/node": "^25.5.2",
+    "@types/node": "^25.6.0",
     "@types/react-dom": "^19.2.3",
     "@types/supertest": "^7.2.0",
     "autoprefixer": "^10.4.27",
@@ -54,6 +54,9 @@
     "typescript": "~6.0.2",
     "vite": "^8.0.8",
     "vitest": "^4.1.4"
+  },
+  "overrides": {
+    "@tootallnate/once": "3.0.1"
   },
   "volta": {
     "node": "24.14.1"

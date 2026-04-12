@@ -64,17 +64,37 @@ src/
 │   ├── SmelterCanvas.tsx            PixiJS dragon animation
 │   ├── IncidentReportOverlay.tsx    Postmortem modal + share
 │   ├── IncidentManifest.tsx         Global incident manifest page
-│   └── IncidentLogCard.tsx          Shared incident log card
+│   ├── IncidentLogCard.tsx          Shared incident log card
+│   ├── DataHealthIndicator.tsx      Data integrity indicator
+│   ├── DecommissionIndex.tsx        Cumulative pixel decommission counter
+│   └── SiteFooter.tsx               Site footer
+├── hooks/
+│   └── useEscalation.ts             Escalation vote state
 ├── services/
-│   └── geminiService.ts             Gemini prompt, schema, analysis
+│   ├── geminiService.ts             Gemini prompt, schema, analysis
+│   ├── escalationService.ts         Escalation vote writes
+│   └── breachService.ts             Breach tracking writes
 └── lib/
     ├── utils.ts                     Pixel formatting + color utilities
-    └── firestoreErrors.ts           Firestore error handling
+    ├── firestoreErrors.ts           Firestore error handling
+    ├── smeltLogSchema.ts            Strict SmeltLog schema + parser
+    ├── animationWindow.ts           Animation timing utilities
+    ├── storageJson.ts               LocalStorage helpers
+    └── typeGuards.ts                Runtime type guards
+shared/
+├── impactScore.js                   Impact score formula (IMPACT_WEIGHTS, computeImpactScore)
+├── colors.js                        Fallback color palette
+└── admin-init.js                    Firebase Admin SDK initialization
+scripts/
+├── backfill-voting-fields.ts        Voting fields backfill migration
+└── firestore.rules.integration.test.ts  Firestore rules integration tests
 docs/
 ├── classification-prompt.md         AI generation constraints and field spec
 ├── ux-copy.md                       Voice, persona, and copy rules
 ├── design-decisions.md              Deliberate spec deviations
+├── sanction-rebuild-prompt.md       Sanction system rebuild build brief
 └── archive/
+    ├── judging-prompt.md            Original sanction judging prompt (superseded)
     ├── gemini-implementation-and-share-spec.md  Original Gemini spec (superseded)
     └── original-ai-studio-prompt.md             Original AI Studio scaffold prompt
 ```
@@ -84,3 +104,8 @@ docs/
 - [`docs/classification-prompt.md`](docs/classification-prompt.md) — AI prompt, severity tiers, field constraints
 - [`docs/ux-copy.md`](docs/ux-copy.md) — Voice, persona rules, writing constraints for UI and AI copy
 - [`docs/design-decisions.md`](docs/design-decisions.md) — Deliberate deviations from the original spec and their rationale
+- [`docs/sanction-rebuild-prompt.md`](docs/sanction-rebuild-prompt.md) — Sanction system rebuild build brief
+
+## License
+
+[Polyform Shield 1.0.0](LICENSE) — free to use, fork, and adapt; no monetization without permission.
