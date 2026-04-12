@@ -9,7 +9,7 @@ import { SanctionBadge } from './SanctionBadge';
 import {
   IMPACT_GLOW_BASE,
   IMPACT_GLOW_ESCALATED,
-  IMPACT_GLOW_FILTER_ESCALATED,
+  IMPACT_GLOW_FILTER_ESCALATED_BUTTON,
 } from '../lib/impactGlow';
 
 interface ManifestIncidentCardProps {
@@ -135,7 +135,7 @@ export const ManifestIncidentCard: FC<ManifestIncidentCardProps> = ({
         disabled={isToggling}
         className={`shrink-0 w-14 flex flex-col items-center justify-center gap-1 border-l transition-all focus-ring-inset ${
           escalated
-            ? `bg-hazard-amber/15 text-hazard-amber border-l-hazard-amber/30 ${IMPACT_GLOW_FILTER_ESCALATED}`
+            ? `bg-hazard-amber/15 text-hazard-amber border-l-hazard-amber/30 ${IMPACT_GLOW_FILTER_ESCALATED_BUTTON}`
             : 'border-l-concrete-border text-stone-gray hover:text-hazard-amber hover:bg-hazard-amber/10 hover:border-l-hazard-amber/40'
         } ${isToggling ? 'opacity-50' : ''}`}
         aria-label={escalated ? `Remove escalation for ${log.legacy_infra_class}` : `Escalate ${log.legacy_infra_class}`}

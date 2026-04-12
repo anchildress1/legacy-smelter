@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   IMPACT_GLOW_BASE,
   IMPACT_GLOW_ESCALATED,
-  IMPACT_GLOW_FILTER_ESCALATED,
+  IMPACT_GLOW_FILTER_ESCALATED_BUTTON,
 } from '../lib/impactGlow';
 
 // This suite pins multiple IncidentLogCard contracts that would
@@ -414,7 +414,7 @@ describe('IncidentLogCard — Impact glow + escalate halo', () => {
     // filter would make every card look permanently triggered.
     render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
     const col = findEscalateColumn();
-    expect(col.className).not.toContain(IMPACT_GLOW_FILTER_ESCALATED);
+    expect(col.className).not.toContain(IMPACT_GLOW_FILTER_ESCALATED_BUTTON);
   });
 
   // POSITIVE — escalated visual tier. Flip the mock state and
@@ -431,11 +431,11 @@ describe('IncidentLogCard — Impact glow + escalate halo', () => {
     }
   });
 
-  it('applies IMPACT_GLOW_FILTER_ESCALATED to the escalate column when escalated', () => {
+  it('applies IMPACT_GLOW_FILTER_ESCALATED_BUTTON to the escalate column when escalated', () => {
     escalationState.escalated = true;
     render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
     const col = findEscalateColumn();
-    expect(col.className).toContain(IMPACT_GLOW_FILTER_ESCALATED);
+    expect(col.className).toContain(IMPACT_GLOW_FILTER_ESCALATED_BUTTON);
     // And the triggered-state background/text classes stay intact — the
     // glow is additive, not a replacement for the color treatment.
     expect(col.className).toContain('bg-hazard-amber/15');

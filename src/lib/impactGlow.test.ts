@@ -4,6 +4,7 @@ import {
   IMPACT_GLOW_ESCALATED,
   IMPACT_GLOW_FILTER_BASE,
   IMPACT_GLOW_FILTER_ESCALATED,
+  IMPACT_GLOW_FILTER_ESCALATED_BUTTON,
 } from './impactGlow';
 
 // These constants are the single source of truth for the warm amber
@@ -46,6 +47,35 @@ describe('impactGlow — filter-only constants', () => {
 
   it('IMPACT_GLOW_FILTER_ESCALATED does not include a text-color class', () => {
     expect(IMPACT_GLOW_FILTER_ESCALATED).not.toMatch(/\btext-/);
+  });
+
+  it('IMPACT_GLOW_FILTER_ESCALATED_BUTTON is a 5px drop-shadow at 0.25 opacity', () => {
+    expect(IMPACT_GLOW_FILTER_ESCALATED_BUTTON).toBe(
+      '[filter:drop-shadow(0_0_5px_rgba(245,200,66,0.25))]',
+    );
+  });
+
+  it('IMPACT_GLOW_FILTER_ESCALATED_BUTTON does not include a text-color class', () => {
+    expect(IMPACT_GLOW_FILTER_ESCALATED_BUTTON).not.toMatch(/\btext-/);
+  });
+
+  it('button variant is subtler than the number variant', () => {
+    const radiusOf = (cls: string): number => {
+      const m = /0_0_(\d+)px/.exec(cls);
+      if (!m) throw new Error(`no radius parsed from ${cls}`);
+      return Number(m[1]);
+    };
+    const alphaOf = (cls: string): number => {
+      const m = /rgba\(245,200,66,([0-9.]+)\)/.exec(cls);
+      if (!m) throw new Error(`no alpha parsed from ${cls}`);
+      return Number(m[1]);
+    };
+    expect(radiusOf(IMPACT_GLOW_FILTER_ESCALATED)).toBeGreaterThan(
+      radiusOf(IMPACT_GLOW_FILTER_ESCALATED_BUTTON),
+    );
+    expect(alphaOf(IMPACT_GLOW_FILTER_ESCALATED)).toBeGreaterThan(
+      alphaOf(IMPACT_GLOW_FILTER_ESCALATED_BUTTON),
+    );
   });
 
   // NEGATIVE: the two tiers must be distinct. A regression that
@@ -149,6 +179,7 @@ describe('impactGlow — monotonicity and empty-string guards', () => {
   it.each([
     ['IMPACT_GLOW_FILTER_BASE', IMPACT_GLOW_FILTER_BASE],
     ['IMPACT_GLOW_FILTER_ESCALATED', IMPACT_GLOW_FILTER_ESCALATED],
+    ['IMPACT_GLOW_FILTER_ESCALATED_BUTTON', IMPACT_GLOW_FILTER_ESCALATED_BUTTON],
     ['IMPACT_GLOW_BASE', IMPACT_GLOW_BASE],
     ['IMPACT_GLOW_ESCALATED', IMPACT_GLOW_ESCALATED],
   ])('%s is a non-empty string', (_name, value) => {
@@ -165,5 +196,6 @@ describe('impactGlow — monotonicity and empty-string guards', () => {
   it('both filter tiers use the hazard-amber RGB triplet (245,200,66)', () => {
     expect(IMPACT_GLOW_FILTER_BASE).toContain('rgba(245,200,66,');
     expect(IMPACT_GLOW_FILTER_ESCALATED).toContain('rgba(245,200,66,');
+    expect(IMPACT_GLOW_FILTER_ESCALATED_BUTTON).toContain('rgba(245,200,66,');
   });
 });

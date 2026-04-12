@@ -610,7 +610,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
           {/* Right Column: Incident Queue */}
           <div className="lg:col-span-5">
             <div>
-              <div className="mb-3">
+              <div className="mb-4">
                 <h2 className="text-hazard-amber font-mono text-xs lg:text-sm uppercase tracking-wide lg:tracking-widest font-bold">
                   P0 INCIDENT QUEUE
                 </h2>

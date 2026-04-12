@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   IMPACT_GLOW_BASE,
   IMPACT_GLOW_ESCALATED,
-  IMPACT_GLOW_FILTER_ESCALATED,
+  IMPACT_GLOW_FILTER_ESCALATED_BUTTON,
 } from '../lib/impactGlow';
 
 // `useEscalation` itself is covered in src/hooks/useEscalation.test.tsx —
@@ -630,7 +630,7 @@ describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
       />,
     );
     const button = screen.getByRole('button', { name: /^escalate$/i });
-    expect(button.className).not.toContain(IMPACT_GLOW_FILTER_ESCALATED);
+    expect(button.className).not.toContain(IMPACT_GLOW_FILTER_ESCALATED_BUTTON);
   });
 
   // POSITIVE — triggered tier on both Impact number and button.
@@ -650,7 +650,7 @@ describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
     }
   });
 
-  it('applies IMPACT_GLOW_FILTER_ESCALATED to the Triggered button when triggered', () => {
+  it('applies IMPACT_GLOW_FILTER_ESCALATED_BUTTON to the Triggered button when triggered', () => {
     escalationState.escalated = true;
     render(
       <IncidentReportOverlay
@@ -660,7 +660,7 @@ describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
       />,
     );
     const button = screen.getByRole('button', { name: /remove escalation/i });
-    expect(button.className).toContain(IMPACT_GLOW_FILTER_ESCALATED);
+    expect(button.className).toContain(IMPACT_GLOW_FILTER_ESCALATED_BUTTON);
     // The triggered color treatment stays intact — the halo is additive.
     expect(button.className).toContain('bg-hazard-amber/15');
     expect(button.className).toContain('text-hazard-amber');

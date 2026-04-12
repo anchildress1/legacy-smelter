@@ -10,7 +10,7 @@ import { HEADER_PILL_BASE } from './HeaderPill';
 import {
   IMPACT_GLOW_BASE,
   IMPACT_GLOW_ESCALATED,
-  IMPACT_GLOW_FILTER_ESCALATED,
+  IMPACT_GLOW_FILTER_ESCALATED_BUTTON,
 } from '../lib/impactGlow';
 import { recordBreach } from '../services/breachService';
 import { useEscalation } from '../hooks/useEscalation';
@@ -317,7 +317,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                           disabled={isTogglingEscalation}
                           className={`${HEADER_PILL_BASE} transition-all focus-ring ${
                             escalated
-                              ? `border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber ${IMPACT_GLOW_FILTER_ESCALATED}`
+                              ? `border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber ${IMPACT_GLOW_FILTER_ESCALATED_BUTTON}`
                               : 'border-stone-gray text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
                           } ${isTogglingEscalation ? 'opacity-50' : ''}`}
                           aria-label={escalated ? 'Remove escalation' : 'Escalate'}
