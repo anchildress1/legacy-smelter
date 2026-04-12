@@ -86,18 +86,21 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
             </p>
           </div>
 
-          {/* Right cluster: [sanction placeholder] [severity].
-              Sanction badge is always rendered; `invisible` hides it
-              without collapsing its width, so the cluster width is
-              constant regardless of sanction state. */}
+          {/* Right cluster: [P0?] [sanction?] [severity]. Optional
+              badges render only when active — the previous invisible
+              placeholder pattern left visible air between P0 and the
+              severity badge. Cards may shift a few pixels when a
+              sanction is applied; that is preferable to carrying
+              dead space on every unsanctioned card. */}
           <div className="flex items-center gap-1.5 shrink-0">
             {showP0Badge && <P0Badge />}
-            <span
-              className={`inline-flex items-center text-[9px] font-mono font-bold text-zinc-950 bg-hazard-amber/90 px-1 py-0.5 rounded ${log.sanctioned ? '' : 'invisible'}`}
-              aria-hidden={!log.sanctioned}
-            >
-              <ShieldCheck size={8} aria-hidden="true" />
-            </span>
+            {log.sanctioned && (
+              <span
+                className="inline-flex items-center text-[9px] font-mono font-bold text-zinc-950 bg-hazard-amber/90 px-1 py-0.5 rounded"
+              >
+                <ShieldCheck size={8} aria-hidden="true" />
+              </span>
+            )}
             <SeverityBadge severity={log.severity} />
           </div>
         </div>
@@ -109,17 +112,19 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
           {log.incident_feed_summary}
         </p>
 
-        {/* Quote — tertiary emphasis. Border and text are intentionally dimmed so it
-            doesn't compete with the summary above. Full text preserved
-            in the native `title` attribute for hover access. Paragraph
-            is pinned to exactly two lines (`min-h-[2lh]` reserves space
-            for short quotes; `line-clamp-2` caps long ones) so every
-            card in the feed has the same vertical footprint regardless
-            of quote length. */}
-        <div className="mt-2 flex items-start gap-2 border-l-2 border-hazard-amber/25 pl-2.5">
-          <Quote size={12} className="mt-0.5 shrink-0 text-hazard-amber/45" aria-hidden="true" />
+        {/* Quote — tertiary emphasis. Slightly dimmer than the summary
+            above so the eye still reads the summary first, but bright
+            enough to be comfortably legible (the prior /25, /45, /55
+            opacity stack was noticeably hard to read). Full text
+            preserved in the native `title` attribute for hover access.
+            Paragraph is pinned to exactly two lines (`min-h-[2lh]`
+            reserves space for short quotes; `line-clamp-2` caps long
+            ones) so every card in the feed has the same vertical
+            footprint regardless of quote length. */}
+        <div className="mt-2 flex items-start gap-2 border-l-2 border-hazard-amber/60 pl-2.5">
+          <Quote size={12} className="mt-0.5 shrink-0 text-hazard-amber/70" aria-hidden="true" />
           <p
-            className="text-xs font-mono italic leading-snug text-hazard-amber/55 line-clamp-2 min-h-[2lh]"
+            className="text-xs font-mono italic leading-snug text-hazard-amber/85 line-clamp-2 min-h-[2lh]"
             title={log.share_quote}
           >
             "{log.share_quote}"

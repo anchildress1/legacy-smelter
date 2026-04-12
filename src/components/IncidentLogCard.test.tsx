@@ -316,24 +316,23 @@ describe('IncidentLogCard — interaction contract', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
-  it('hides the sanction badge (without collapsing its width) when the log is unsanctioned', () => {
-    // The sanction placeholder is always rendered with `invisible` so
-    // the right cluster width does not shift when a log becomes
-    // sanctioned. If a refactor replaces `invisible` with
-    // `display: none` / conditional rendering, the header would jitter
-    // as sanction state updates.
+  it('omits the sanction badge entirely when the log is unsanctioned', () => {
+    // The sanction badge is rendered only when the log is sanctioned.
+    // A previous revision kept an `invisible` placeholder to preserve
+    // cluster width, but that left visible air between P0 and the
+    // severity badge — see the right-cluster comment in IncidentLogCard.
     const { container } = render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
-    const placeholder = container.querySelector('span.invisible');
-    expect(placeholder).not.toBeNull();
+    // No invisible placeholder, and the ShieldCheck icon is absent
+    // from the right cluster.
+    expect(container.querySelector('span.invisible')).toBeNull();
+    expect(container.querySelector('[data-lucide="shield-check"]')).toBeNull();
   });
 
-  it('renders the sanction badge (visible) when the log is sanctioned', () => {
-    const { container } = render(
+  it('renders the sanction badge when the log is sanctioned', () => {
+    render(
       <IncidentLogCard log={makeLog({ sanctioned: true })} onClick={() => {}} />,
     );
-    // When sanctioned, the placeholder's `invisible` class is stripped
-    // and the "Sanctioned" label appears in the metadata row.
-    expect(container.querySelector('span.invisible')).toBeNull();
+    // The "Sanctioned" label appears in the metadata row when sanctioned.
     expect(screen.getByText('Sanctioned')).toBeInTheDocument();
   });
 

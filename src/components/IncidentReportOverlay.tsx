@@ -210,9 +210,15 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
       <div
         className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
       >
-        {/* Left chromatic strip — shows dominant colors at full saturation. */}
+        {/* Left chromatic strip. Inline filter — Tailwind v4 silently
+            swallows class-based filter utilities when composed with
+            overflow-hidden + rounded on the same element, so classes
+            will not work here. `brightness(0.9)` is a feather-light
+            dim that keeps hues vibrant and true (no saturation drop,
+            no gray cast) while just knocking the blinding edge off. */}
         <div
           className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden"
+          style={{ filter: 'brightness(0.9)' }}
           aria-hidden="true"
         >
           {report.dominantColors.map((color) => (
@@ -223,8 +229,14 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
         {/* Main content column */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 
-          {/* ── HEADER BAR ── */}
-          <div className="shrink-0 flex items-center justify-between gap-0 pl-5 sm:pl-8 pr-2 py-2.5">
+          {/* ── HEADER BAR ──
+              `justify-end` clusters the label and icons tight on the
+              right instead of pushing them to opposite edges of a wide
+              modal (`justify-between` + a short label left ~400px of
+              empty air between them). `gap-3` separates the label
+              group from the icon group; icons keep their own inner
+              `gap-1`. */}
+          <div className="shrink-0 flex items-center justify-end gap-3 pr-2 py-2.5">
             <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
               Postmortem
             </h2>
@@ -362,8 +374,8 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                     adds a touch of vertical breathing inside the
                     border frame so the italicized pull-quote feels
                     distinct from the surrounding text blocks. */}
-                <blockquote className="border-l-2 border-hazard-amber/60 pl-4 py-1">
-                  <p className="text-hazard-amber/75 font-mono text-sm italic leading-snug">
+                <blockquote className="border-l-2 border-hazard-amber/75 pl-4 py-1">
+                  <p className="text-hazard-amber/90 font-mono text-sm italic leading-snug">
                     "{report.shareQuote}"
                   </p>
                 </blockquote>
