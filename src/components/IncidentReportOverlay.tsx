@@ -1,9 +1,11 @@
-import React, { useEffect, useRef, useState, useId } from 'react';
+import { useEffect, useRef, useState, useId, type FC, type ReactNode } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { computeImpact, SmeltLog } from '../types';
 import { formatTimestamp, buildIncidentUrl } from '../lib/utils';
 import { X, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
 import { SeverityBadge } from './SeverityBadge';
+import { P0Badge } from './P0Badge';
+import { HEADER_PILL_BASE } from './HeaderPill';
 import {
   IMPACT_GLOW_BASE,
   IMPACT_GLOW_ESCALATED,
@@ -37,7 +39,7 @@ interface OverlayProps {
   showP0Badge?: boolean;
 }
 
-const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> = {
+const SHARE_PLATFORMS: Record<string, { name: string; icon: ReactNode }> = {
   twitter: {
     name: 'X',
     icon: (
@@ -86,7 +88,7 @@ function assertOverlayInputs(
   }
 }
 
-export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose, showP0Badge = false }) => {
+export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose, showP0Badge = false }) => {
   assertOverlayInputs(analysis, log, incidentId);
   const report = normalizeIncidentReport(analysis, log);
   const dialogRef = useModalDialog(onClose);
@@ -208,14 +210,15 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       <div
         className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
       >
-        {/* Left chromatic strip. Inline filter avoids Tailwind v4
-            CSS-variable composition issues with overflow-hidden + rounded
-            contexts. Stronger cut (0.6/0.85) than the card strip because
-            the modal is larger on screen and needs a deeper reduction
-            to stay subordinate to the title hierarchy. */}
+        {/* Left chromatic strip. Inline filter — Tailwind v4 silently
+            swallows class-based filter utilities when composed with
+            overflow-hidden + rounded on the same element, so classes
+            will not work here. `brightness(0.9)` is a feather-light
+            dim that keeps hues vibrant and true (no saturation drop,
+            no gray cast) while just knocking the blinding edge off. */}
         <div
           className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden"
-          style={{ filter: 'saturate(0.6) brightness(0.85)' }}
+          style={{ filter: 'brightness(0.9)' }}
           aria-hidden="true"
         >
           {report.dominantColors.map((color) => (
@@ -226,8 +229,14 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         {/* Main content column */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 
-          {/* ── HEADER BAR ── */}
-          <div className="shrink-0 flex items-center justify-between gap-2 pl-5 sm:pl-8 pr-2 py-2.5">
+          {/* ── HEADER BAR ──
+              `justify-end` clusters the label and icons tight on the
+              right instead of pushing them to opposite edges of a wide
+              modal (`justify-between` + a short label left ~400px of
+              empty air between them). `gap-3` separates the label
+              group from the icon group; icons keep their own inner
+              `gap-1`. */}
+          <div className="shrink-0 flex items-center justify-end gap-3 pr-2 py-2.5">
             <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
               Postmortem
             </h2>
@@ -241,7 +250,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={recordBreachAsync}
-                    className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                    className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                     aria-label={`Post to ${cfg.name}`}
                     title={cfg.name}
                   >
@@ -252,7 +261,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               {incidentUrl && (
                 <button
                   onClick={handleCopyLink}
-                  className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                  className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                   aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
                   title={copyLinkState === 'copied' ? 'Copied!' : 'Copy link'}
                 >
@@ -261,7 +270,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               )}
               <button
                 onClick={handleCopyText}
-                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                 aria-label={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
                 title={copyTextState === 'copied' ? 'Copied!' : 'Copy brief'}
               >
@@ -270,7 +279,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               <div className="w-px h-4 bg-concrete-border mx-0.5" aria-hidden="true" />
               <button
                 onClick={onClose}
-                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                 aria-label="Close report"
               >
                 <X size={14} aria-hidden="true" />
@@ -301,11 +310,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                       {report.legacyInfraClass}
                     </h3>
                     <div className="flex items-center gap-2 shrink-0">
-                      {showP0Badge && (
-                        <span className="inline-flex items-center rounded border border-hazard-amber/40 bg-hazard-amber/10 px-1.5 py-0.5 text-[9px] font-mono font-black uppercase tracking-[0.15em] text-hazard-amber">
-                          P0
-                        </span>
-                      )}
+                      {showP0Badge && <P0Badge />}
                       <SeverityBadge severity={report.severity} />
                       {incidentId && (
                         <>
@@ -313,7 +318,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                           <button
                             onClick={handleEscalate}
                             disabled={isTogglingEscalation}
-                            className={`inline-flex items-center gap-1 rounded border px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
+                            className={`${HEADER_PILL_BASE} transition-all focus-ring ${
                               escalated
                                 ? `border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber ${IMPACT_GLOW_FILTER_ESCALATED}`
                                 : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
@@ -322,7 +327,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                             aria-pressed={escalated}
                           >
                             <Siren size={10} aria-hidden="true" />
-                            {escalated ? 'Armed' : 'Escalate'}
+                            {escalated ? 'Triggered' : 'Escalate'}
                           </button>
                         </>
                       )}
@@ -369,8 +374,8 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     adds a touch of vertical breathing inside the
                     border frame so the italicized pull-quote feels
                     distinct from the surrounding text blocks. */}
-                <blockquote className="border-l-2 border-hazard-amber/60 pl-4 py-1">
-                  <p className="text-hazard-amber/75 font-mono text-sm italic leading-snug">
+                <blockquote className="border-l-2 border-hazard-amber/75 pl-4 py-1">
+                  <p className="text-hazard-amber/90 font-mono text-sm italic leading-snug">
                     "{report.shareQuote}"
                   </p>
                 </blockquote>
@@ -389,7 +394,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     amber palette and signal that it is the lead metric.
                     When `escalated` is true, the glow intensifies and
                     the number's contrast steps up a notch — a quiet
-                    visual echo of the ARMED escalate button above. */}
+                    visual echo of the TRIGGERED escalate button above. */}
                 <div
                   className="flex items-stretch py-4 border-t border-b border-concrete-border"
                   data-testid="incident-stats-row"

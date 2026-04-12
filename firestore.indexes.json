@@ -31,6 +31,14 @@
         { "fieldPath": "escalation_count", "order": "DESCENDING" },
         { "fieldPath": "timestamp", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "incident_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "evaluated", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

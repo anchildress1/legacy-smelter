@@ -532,9 +532,82 @@ describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
     resetEscalationState();
   });
 
+  // ESCALATION BUTTON INTERACTION
+
+  it('calls toggle() when the Escalate button is clicked', () => {
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: /^escalate$/i });
+    button.click();
+
+    expect(escalationState.toggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('sets aria-pressed=false when not escalated', () => {
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: /^escalate$/i });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('sets aria-pressed=true when escalated', () => {
+    escalationState.escalated = true;
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: /remove escalation/i });
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('disables the Escalate button while a toggle is in progress', () => {
+    escalationState.isToggling = true;
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: /^escalate$/i });
+    expect(button).toBeDisabled();
+  });
+
+  it('disables the Triggered button while a toggle is in progress', () => {
+    escalationState.escalated = true;
+    escalationState.isToggling = true;
+    render(
+      <IncidentReportOverlay
+        analysis={makeAnalysis()}
+        incidentId="incident-1"
+        onClose={() => {}}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: /remove escalation/i });
+    expect(button).toBeDisabled();
+  });
+
   // POSITIVE — at-rest glow tier on the Impact number.
 
-  it('applies IMPACT_GLOW_BASE to the Impact number when not armed', () => {
+  it('applies IMPACT_GLOW_BASE to the Impact number when not triggered', () => {
     const { container } = render(
       <IncidentReportOverlay
         analysis={makeAnalysis()}
@@ -548,7 +621,7 @@ describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
     }
   });
 
-  it('does not apply the escalated glow filter to the Armed button when not armed', () => {
+  it('does not apply the escalated glow filter to the Triggered button when not triggered', () => {
     render(
       <IncidentReportOverlay
         analysis={makeAnalysis()}
@@ -560,9 +633,9 @@ describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
     expect(button.className).not.toContain(IMPACT_GLOW_FILTER_ESCALATED);
   });
 
-  // POSITIVE — armed tier on both Impact number and button.
+  // POSITIVE — triggered tier on both Impact number and button.
 
-  it('applies IMPACT_GLOW_ESCALATED to the Impact number when armed', () => {
+  it('applies IMPACT_GLOW_ESCALATED to the Impact number when triggered', () => {
     escalationState.escalated = true;
     const { container } = render(
       <IncidentReportOverlay
@@ -577,7 +650,7 @@ describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
     }
   });
 
-  it('applies IMPACT_GLOW_FILTER_ESCALATED to the Armed button when armed', () => {
+  it('applies IMPACT_GLOW_FILTER_ESCALATED to the Triggered button when triggered', () => {
     escalationState.escalated = true;
     render(
       <IncidentReportOverlay
@@ -588,7 +661,7 @@ describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
     );
     const button = screen.getByRole('button', { name: /remove escalation/i });
     expect(button.className).toContain(IMPACT_GLOW_FILTER_ESCALATED);
-    // The armed color treatment stays intact — the halo is additive.
+    // The triggered color treatment stays intact — the halo is additive.
     expect(button.className).toContain('bg-hazard-amber/15');
     expect(button.className).toContain('text-hazard-amber');
   });
@@ -607,10 +680,16 @@ describe('IncidentReportOverlay — Impact glow + escalate halo', () => {
       />,
     );
     const impact = findImpactNumber(container);
-    const hasBaseRadius = impact.className.includes('0_0_6px');
-    const hasEscalatedRadius = impact.className.includes('0_0_8px');
-    expect(hasBaseRadius || hasEscalatedRadius).toBe(true);
-    expect(hasBaseRadius && hasEscalatedRadius).toBe(false);
+    // The glow classes come from IMPACT_GLOW_BASE or IMPACT_GLOW_ESCALATED.
+    // Both define exactly one drop-shadow filter; both are applied via the
+    // ternary at render time, not concatenated. Pin that exactly one is
+    // present by counting tokens from the constants.
+    const baseTokens = IMPACT_GLOW_BASE.split(' ');
+    const escalatedTokens = IMPACT_GLOW_ESCALATED.split(' ');
+    const baseCount = baseTokens.filter(t => impact.className.includes(t)).length;
+    const escalatedCount = escalatedTokens.filter(t => impact.className.includes(t)).length;
+    expect(baseCount + escalatedCount).toBeGreaterThan(0);
+    expect(baseCount === baseTokens.length || escalatedCount === escalatedTokens.length).toBe(true);
   });
 });
 

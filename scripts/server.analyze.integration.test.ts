@@ -275,6 +275,14 @@ describe('POST /api/analyze integration', () => {
           impact_score: 0,
           sanctioned: false,
           sanction_rationale: null,
+          // Sanction-trigger claim state. `evaluated=false` is the
+          // discriminator the `onIncidentCreated` Cloud Function uses to
+          // find candidates; `sanction_lease_at=null` is the inactive-lease
+          // sentinel. Persisting the wrong default here would either hide
+          // every new incident from the judging pipeline or create a
+          // permanently-stuck claim on first write.
+          evaluated: false,
+          sanction_lease_at: null,
         }),
       }),
     );

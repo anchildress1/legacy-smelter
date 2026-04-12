@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 export function useModalDialog(
   onClose: () => void,
-): React.RefObject<HTMLDialogElement | null> {
+): RefObject<HTMLDialogElement | null> {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {

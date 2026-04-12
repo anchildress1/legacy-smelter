@@ -26,6 +26,34 @@ async function loadHook() {
   return import('./useEscalation');
 }
 
+/**
+ * Builds a deferred promise + a paired settler for `mockToggleEscalation`.
+ * The test suite has two scenarios that need to hang a toggle mid-flight,
+ * bump the incident id, then resolve or reject the stale call. Before this
+ * helper, every caller inlined the `new Promise((res, rej) => { capture })`
+ * dance — Sonar flagged the 15-line duplication between the two sites. The
+ * helper captures the settler in a closure and returns it alongside a mock
+ * implementation ready to pass to `mockImplementationOnce`.
+ */
+function makeDeferredToggle(): {
+  impl: () => Promise<boolean>;
+  resolve: (value: boolean) => void;
+  reject: (err: Error) => void;
+} {
+  let resolveRef!: (value: boolean) => void;
+  let rejectRef!: (err: Error) => void;
+  const impl = () =>
+    new Promise<boolean>((resolve, reject) => {
+      resolveRef = resolve;
+      rejectRef = reject;
+    });
+  return {
+    impl,
+    resolve: (value) => resolveRef(value),
+    reject: (err) => rejectRef(err),
+  };
+}
+
 describe('useEscalation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -60,13 +88,8 @@ describe('useEscalation', () => {
   it('applies optimistic toggle and reconciles to server truth when response differs', async () => {
     mockHasEscalated.mockReturnValue(false);
     mockSyncEscalationState.mockResolvedValue(false);
-    let resolveToggle!: (value: boolean) => void;
-    mockToggleEscalation.mockImplementation(
-      () =>
-        new Promise<boolean>((resolve) => {
-          resolveToggle = resolve;
-        }),
-    );
+    const toggle = makeDeferredToggle();
+    mockToggleEscalation.mockImplementation(toggle.impl);
 
     const { useEscalation } = await loadHook();
     const { result } = renderHook(() => useEscalation('inc-2'));
@@ -80,7 +103,7 @@ describe('useEscalation', () => {
     });
 
     await act(async () => {
-      resolveToggle(false);
+      toggle.resolve(false);
       await Promise.resolve();
     });
 
@@ -96,13 +119,8 @@ describe('useEscalation', () => {
     // Block the rejection until the test has observed the optimistic flip,
     // so the test cannot pass if the production hook skips the optimistic
     // update entirely and only rolls back to the pre-toggle state.
-    let rejectToggle!: (err: Error) => void;
-    mockToggleEscalation.mockImplementation(
-      () =>
-        new Promise<boolean>((_, reject) => {
-          rejectToggle = reject;
-        }),
-    );
+    const toggle = makeDeferredToggle();
+    mockToggleEscalation.mockImplementation(toggle.impl);
 
     const { useEscalation } = await loadHook();
     const { result } = renderHook(() => useEscalation('inc-3'));
@@ -118,7 +136,7 @@ describe('useEscalation', () => {
     });
 
     await act(async () => {
-      rejectToggle(new Error('write failed'));
+      toggle.reject(new Error('write failed'));
       await Promise.resolve();
     });
 
@@ -245,13 +263,8 @@ describe('useEscalation', () => {
     mockHasEscalated.mockImplementation((id: string) => id === 'inc-a');
     mockSyncEscalationState.mockResolvedValue(false);
 
-    let rejectOldToggle!: (err: Error) => void;
-    mockToggleEscalation.mockImplementationOnce(
-      () =>
-        new Promise<boolean>((_, reject) => {
-          rejectOldToggle = reject;
-        }),
-    );
+    const oldToggle = makeDeferredToggle();
+    mockToggleEscalation.mockImplementationOnce(oldToggle.impl);
 
     const { useEscalation } = await loadHook();
     const { result, rerender } = renderHook(
@@ -277,7 +290,7 @@ describe('useEscalation', () => {
     });
 
     await act(async () => {
-      rejectOldToggle(new Error('old incident write failed'));
+      oldToggle.reject(new Error('old incident write failed'));
       await Promise.resolve();
     });
 
@@ -475,21 +488,11 @@ describe('useEscalation', () => {
     mockHasEscalated.mockImplementation((id: string) => id === 'inc-a');
     mockSyncEscalationState.mockResolvedValue(false);
 
-    let rejectOldToggle!: (err: Error) => void;
-    let resolveNewToggle!: (value: boolean) => void;
+    const oldToggle = makeDeferredToggle();
+    const newToggle = makeDeferredToggle();
     mockToggleEscalation
-      .mockImplementationOnce(
-        () =>
-          new Promise<boolean>((_, reject) => {
-            rejectOldToggle = reject;
-          }),
-      )
-      .mockImplementationOnce(
-        () =>
-          new Promise<boolean>((resolve) => {
-            resolveNewToggle = resolve;
-          }),
-      );
+      .mockImplementationOnce(oldToggle.impl)
+      .mockImplementationOnce(newToggle.impl);
 
     const { useEscalation } = await loadHook();
     const { result, rerender } = renderHook(
@@ -523,7 +526,7 @@ describe('useEscalation', () => {
     // the ref stays `true`, protecting toggle B. Without the fix, the ref
     // would be cleared to `false` here.
     await act(async () => {
-      rejectOldToggle(new Error('stale inc-a write failed'));
+      oldToggle.reject(new Error('stale inc-a write failed'));
       await Promise.resolve();
     });
 
@@ -540,7 +543,7 @@ describe('useEscalation', () => {
     // Clean up — settle toggle B so the test teardown does not leak a
     // pending promise chain into subsequent tests.
     await act(async () => {
-      resolveNewToggle(true);
+      newToggle.resolve(true);
       await Promise.resolve();
     });
 

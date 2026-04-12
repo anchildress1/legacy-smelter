@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type FC } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getLogShareLinks } from '../lib/utils';
 import { IncidentLogCard } from './IncidentLogCard';
@@ -23,7 +23,7 @@ interface IncidentManifestProps {
   onNavigateHome: () => void;
 }
 
-export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHome }) => {
+export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) => {
   const { globalStats, statsIssue } = useGlobalStats({
     source: 'IncidentManifest',
   });
@@ -154,7 +154,7 @@ export const IncidentManifest: React.FC<IncidentManifestProps> = ({ onNavigateHo
               type="button"
               onClick={() => setFilterMode(value)}
               aria-pressed={filterMode === value}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset ${
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors focus-ring-inset ${
                 filterMode === value
                   ? 'border-hazard-amber/70 bg-hazard-amber/20 text-hazard-amber'
                   : 'border-[#444] bg-[#1a1a1a] text-stone-gray hover:text-ash-white hover:border-[#555]'

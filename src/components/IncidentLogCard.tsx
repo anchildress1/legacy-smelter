@@ -1,9 +1,10 @@
-import React from 'react';
+import type { FC, MouseEvent } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
 import { Siren, Quote, ShieldCheck } from 'lucide-react';
 import { useEscalation } from '../hooks/useEscalation';
 import { SeverityBadge } from './SeverityBadge';
+import { P0Badge } from './P0Badge';
 import {
   IMPACT_GLOW_BASE,
   IMPACT_GLOW_ESCALATED,
@@ -25,7 +26,7 @@ interface IncidentLogCardProps {
   showP0Badge?: boolean;
 }
 
-export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
+export const IncidentLogCard: FC<IncidentLogCardProps> = ({
   log,
   onClick,
   showP0Badge = false,
@@ -38,23 +39,22 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
 
   const impact = computeImpact(log);
 
-  const handleEscalate = (e: React.MouseEvent) => {
+  const handleEscalate = (e: MouseEvent) => {
     e.stopPropagation();
     void toggle();
   };
 
-  const escalationStateLabel = escalated ? 'Armed' : 'Escalate';
+  const escalationStateLabel = escalated ? 'Triggered' : 'Escalate';
 
   return (
     <div className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors group">
-      {/* Left chromatic fingerprint strip. Lighter cut (0.75/0.90)
-          than the overlay's 0.6/0.85 — at the card's 8px strip width
-          a deeper reduction collapses the bands into an opaque smear
-          and loses the chroma signal. The overlay can afford a
-          stronger cut because its strip runs the full modal height
-          and has room to breathe. */}
+      {/* Left chromatic fingerprint strip. Lighter cut than the
+          overlay's strip — at the card's 8px width a deeper reduction
+          collapses the bands into an opaque smear and loses the chroma
+          signal. The goal is just to keep the palette from clashing
+          with the dark card chrome, not mute it into dullness. */}
       <div
-        className="w-2 shrink-0 flex flex-col overflow-hidden saturate-75 brightness-90"
+        className="w-2 shrink-0 flex flex-col overflow-hidden saturate-[.95] brightness-[.97]"
         aria-hidden="true"
       >
         {finalColors.map((col) => (
@@ -65,7 +65,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
       {/* Primary action: open incident detail */}
       <button
         onClick={onClick}
-        className="p-4 flex-1 min-w-0 cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset"
+        className="p-4 flex-1 min-w-0 cursor-pointer text-left focus-ring-inset"
       >
         {/* ── HEADER ROW ──
             Fixed right cluster reserves space for all possible badges
@@ -86,22 +86,21 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
             </p>
           </div>
 
-          {/* Right cluster: [sanction placeholder] [severity].
-              Sanction badge is always rendered; `invisible` hides it
-              without collapsing its width, so the cluster width is
-              constant regardless of sanction state. */}
+          {/* Right cluster: [P0?] [sanction?] [severity]. Optional
+              badges render only when active — the previous invisible
+              placeholder pattern left visible air between P0 and the
+              severity badge. Cards may shift a few pixels when a
+              sanction is applied; that is preferable to carrying
+              dead space on every unsanctioned card. */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {showP0Badge && (
-              <span className="inline-flex items-center rounded border border-hazard-amber/40 bg-hazard-amber/10 px-1.5 py-0.5 text-[9px] font-mono font-black uppercase tracking-[0.15em] text-hazard-amber">
-                P0
+            {showP0Badge && <P0Badge />}
+            {log.sanctioned && (
+              <span
+                className="inline-flex items-center text-[9px] font-mono font-bold text-zinc-950 bg-hazard-amber/90 px-1 py-0.5 rounded"
+              >
+                <ShieldCheck size={8} aria-hidden="true" />
               </span>
             )}
-            <span
-              className={`inline-flex items-center text-[9px] font-mono font-bold text-zinc-950 bg-hazard-amber/90 px-1 py-0.5 rounded ${log.sanctioned ? '' : 'invisible'}`}
-              aria-hidden={!log.sanctioned}
-            >
-              <ShieldCheck size={8} aria-hidden="true" />
-            </span>
             <SeverityBadge severity={log.severity} />
           </div>
         </div>
@@ -113,17 +112,19 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
           {log.incident_feed_summary}
         </p>
 
-        {/* Quote — tertiary emphasis. Border and text are intentionally dimmed so it
-            doesn't compete with the summary above. Full text preserved
-            in the native `title` attribute for hover access. Paragraph
-            is pinned to exactly two lines (`min-h-[2lh]` reserves space
-            for short quotes; `line-clamp-2` caps long ones) so every
-            card in the feed has the same vertical footprint regardless
-            of quote length. */}
-        <div className="mt-2 flex items-start gap-2 border-l-2 border-hazard-amber/25 pl-2.5">
-          <Quote size={12} className="mt-0.5 shrink-0 text-hazard-amber/45" aria-hidden="true" />
+        {/* Quote — tertiary emphasis. Slightly dimmer than the summary
+            above so the eye still reads the summary first, but bright
+            enough to be comfortably legible (the prior /25, /45, /55
+            opacity stack was noticeably hard to read). Full text
+            preserved in the native `title` attribute for hover access.
+            Paragraph is pinned to exactly two lines (`min-h-[2lh]`
+            reserves space for short quotes; `line-clamp-2` caps long
+            ones) so every card in the feed has the same vertical
+            footprint regardless of quote length. */}
+        <div className="mt-2 flex items-start gap-2 border-l-2 border-hazard-amber/60 pl-2.5">
+          <Quote size={12} className="mt-0.5 shrink-0 text-hazard-amber/70" aria-hidden="true" />
           <p
-            className="text-xs font-mono italic leading-snug text-hazard-amber/55 line-clamp-2 min-h-[2lh]"
+            className="text-xs font-mono italic leading-snug text-hazard-amber/85 line-clamp-2 min-h-[2lh]"
             title={log.share_quote}
           >
             "{log.share_quote}"
@@ -182,7 +183,7 @@ export const IncidentLogCard: React.FC<IncidentLogCardProps> = ({
       <button
         onClick={handleEscalate}
         disabled={isToggling}
-        className={`shrink-0 w-16 flex flex-col items-center justify-center gap-1 border-l transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber focus-visible:ring-inset ${
+        className={`shrink-0 w-16 flex flex-col items-center justify-center gap-1 border-l transition-all focus-ring-inset ${
           escalated
             ? `bg-hazard-amber/15 text-hazard-amber border-l-hazard-amber/30 ${IMPACT_GLOW_FILTER_ESCALATED}`
             : 'border-l-concrete-border text-stone-gray/60 hover:text-hazard-amber hover:bg-hazard-amber/10 hover:border-l-hazard-amber/40'

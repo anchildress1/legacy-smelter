@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, forwardRef, useImperativeHandle, type MutableRefObject } from 'react';
 import * as PIXI from 'pixi.js';
 import { getFiveDistinctColors } from '../lib/utils';
 import { advanceAnimationWindow } from '../lib/animationWindow';
@@ -92,6 +92,22 @@ const PUDDLE_FRAG = `
         gl_FragColor = vec4(color * tex.a, tex.a);
     }
 `;
+
+/**
+ * Typed accessor for the melt filter's `meltUniforms` resource. PixiJS v8
+ * does not expose a typed view of custom shader uniform groups — the runtime
+ * object lives under `filter.resources.meltUniforms.uniforms` but the type
+ * declaration is `Record<string, unknown>`. This cast stays in one place so
+ * the rest of the code can treat the uniforms as a concrete shape.
+ */
+interface MeltUniforms {
+  uMeltAmount: number;
+  uTime: number;
+}
+function getMeltUniforms(filter: PIXI.Filter): MeltUniforms {
+  const resources = filter.resources as { meltUniforms: { uniforms: MeltUniforms } };
+  return resources.meltUniforms.uniforms;
+}
 
 const DRAGON_TEX_H = 672;     // native pixel height of dragon sprite frames
 const ANIM_SPEED = 0.2;
@@ -283,7 +299,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         // Reset melt filter uniforms
         if (meltFilterRef.current) {
           try {
-            const u = (meltFilterRef.current.resources as any).meltUniforms.uniforms;
+            const u = getMeltUniforms(meltFilterRef.current);
             u.uMeltAmount = 0;
             u.uTime = 0;
           } catch (err) {
@@ -456,13 +472,13 @@ interface StepContext {
   dragon: PIXI.AnimatedSprite;
   puddle: PIXI.AnimatedSprite;
   textures: PixiState['textures'];
-  spriteRef: React.MutableRefObject<PIXI.Sprite | null>;
-  meltFilterRef: React.MutableRefObject<PIXI.Filter | null>;
-  puddleFilterRef: React.MutableRefObject<PIXI.Filter | null>;
-  phaseRef: React.MutableRefObject<AnimPhase>;
-  flyProgressRef: React.MutableRefObject<number>;
-  meltProgressRef: React.MutableRefObject<number>;
-  settleProgressRef: React.MutableRefObject<number>;
+  spriteRef: MutableRefObject<PIXI.Sprite | null>;
+  meltFilterRef: MutableRefObject<PIXI.Filter | null>;
+  puddleFilterRef: MutableRefObject<PIXI.Filter | null>;
+  phaseRef: MutableRefObject<AnimPhase>;
+  flyProgressRef: MutableRefObject<number>;
+  meltProgressRef: MutableRefObject<number>;
+  settleProgressRef: MutableRefObject<number>;
   callbacks: SmelterCanvasProps & { onRenderFailure?: (err: Error) => void };
   setDragonTex: (tex: PIXI.Texture[], loop: boolean) => void;
 }
@@ -500,7 +516,7 @@ function stepLanding(ctx: StepContext, dragonRestX: number, dragonY: number, bas
 }
 
 function advanceMeltShader(meltFilter: PIXI.Filter, mp: number, deltaTime: number): void {
-  const u = (meltFilter.resources as any).meltUniforms.uniforms;
+  const u = getMeltUniforms(meltFilter);
   u.uMeltAmount = mp;
   u.uTime += 0.005 * deltaTime;
 }

@@ -1,6 +1,13 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import {
+  getAuth,
+  connectAuthEmulator,
+  inMemoryPersistence,
+  setPersistence,
+  signInAnonymously,
+  signOut,
+} from 'firebase/auth';
 
 const requiredVars = [
   'VITE_FIREBASE_API_KEY',
@@ -30,10 +37,49 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID);
 const auth = getAuth(app);
+let emulatorAuthBootstrap: Promise<void> = Promise.resolve();
+
+// Local emulator wiring. Opt-in via `VITE_USE_FIREBASE_EMULATOR=true` in
+// `.env.local` so developer setups can freely toggle between the local
+// emulator (fires the local `functions` trigger, keeps prod untouched)
+// and production (reproduces the real trigger latency). Ports must match
+// the `emulators` block in `firebase.json` — firestore:9180, auth:9099.
+// The connect calls must run before any read/write, hence the top-of-file
+// placement right after `getFirestore`/`getAuth`.
+if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
+  const host = import.meta.env.VITE_FIREBASE_EMULATOR_HOST ?? '127.0.0.1';
+  connectFirestoreEmulator(db, host, 9180);
+  connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
+  // Switch to in-memory persistence and purge any cached user from an
+  // earlier production session. Without this, the Firebase Auth SDK
+  // restores the cached prod ID token from IndexedDB on page load and
+  // refreshes it against the emulator — which then logs "Received a
+  // signed JWT. Auth Emulator does not validate JWTs and IS NOT SECURE"
+  // for every refresh. In-memory persistence guarantees each emulator
+  // session starts with no user and mints fresh, unsigned tokens.
+  emulatorAuthBootstrap = (async () => {
+    try {
+      await setPersistence(auth, inMemoryPersistence);
+    } catch (err) {
+      console.warn('[firebase] Failed to set in-memory auth persistence for emulator:', err);
+    }
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.warn('[firebase] Failed to sign out restored auth session for emulator:', err);
+    }
+  })();
+  // Loud log so it is obvious in the browser console which backend the
+  // app is talking to — a silent fallback is how "why is nothing in the
+  // emulator log" happens in the first place.
+  console.info(`[firebase] Connected to local emulators at ${host} (firestore:9180, auth:9099)`);
+}
+
 let anonymousAuthPromise: Promise<void> | null = null;
 
 export async function ensureAnonymousAuth(): Promise<void> {
   if (globalThis.window === undefined) return;
+  await emulatorAuthBootstrap;
   if (auth.currentUser) return;
   if (!anonymousAuthPromise) {
     anonymousAuthPromise = signInAnonymously(auth).then(() => undefined).catch((err) => {

@@ -17,17 +17,10 @@
  */
 
 import 'dotenv/config';
-import { FieldValue } from 'firebase-admin/firestore';
-import type { DocumentData, QueryDocumentSnapshot, WriteBatch } from 'firebase-admin/firestore';
-import { randomUUID } from 'node:crypto';
-import { db } from './lib/admin-init.js';
 import { computeImpactScore } from '../shared/impactScore.js';
+import { runIncidentBackfill } from './lib/backfill-runner.js';
 
-const BATCH_LIMIT = 400;
-const READ_PAGE_SIZE = 500;
-const MIGRATION_COLLECTION = 'system_migrations';
-const MIGRATION_DOC_ID = 'voting-fields-v1';
-const RUN_ID = randomUUID();
+const LOG_PREFIX = 'backfill';
 
 const REQUIRED_DEFAULTS = {
   breach_count: 0,
@@ -38,13 +31,6 @@ const REQUIRED_DEFAULTS = {
 } as const;
 
 type CounterKey = 'breach_count' | 'escalation_count' | 'sanction_count';
-
-interface BackfillState {
-  batch: WriteBatch;
-  batchSize: number;
-  scanned: number;
-  patched: number;
-}
 
 function resolveFiniteNumber(
   data: Record<string, unknown>,
@@ -123,113 +109,14 @@ function buildDocPatch(data: Record<string, unknown>): Record<string, unknown> |
   return Object.keys(updates).length === 0 ? null : updates;
 }
 
-async function flushBatchIfFull(state: BackfillState): Promise<void> {
-  if (state.batchSize < BATCH_LIMIT) return;
-  await state.batch.commit();
-  console.log(`[backfill] Committed batch of ${state.batchSize}`);
-  state.batch = db.batch();
-  state.batchSize = 0;
-}
-
-async function backfillPage(
-  docs: QueryDocumentSnapshot<DocumentData>[],
-  state: BackfillState,
-): Promise<void> {
-  for (const doc of docs) {
-    const updates = buildDocPatch(doc.data());
-    if (!updates) continue;
-    console.log(`[backfill] ${doc.id} <- ${JSON.stringify(updates)}`);
-    state.batch.update(doc.ref, updates);
-    state.patched++;
-    state.batchSize++;
-    await flushBatchIfFull(state);
-  }
-}
-
-async function fetchNextPage(
-  cursor: QueryDocumentSnapshot<DocumentData> | null,
-): Promise<QueryDocumentSnapshot<DocumentData>[]> {
-  let queryRef = db
-    .collection('incident_logs')
-    .orderBy('__name__')
-    .limit(READ_PAGE_SIZE);
-  if (cursor) queryRef = queryRef.startAfter(cursor);
-  const pageSnap = await queryRef.get();
-  return pageSnap.docs;
-}
-
-async function recordMigrationRun(scanned: number, patched: number): Promise<void> {
-  // Append an immutable run entry so the audit trail is preserved across
-  // re-runs. The top-level marker doc records `first_run_at` once and
-  // `last_run_at` on every run; the `runs` subcollection holds the full
-  // history keyed by RUN_ID.
-  const markerRef = db.collection(MIGRATION_COLLECTION).doc(MIGRATION_DOC_ID);
-  const runRef = markerRef.collection('runs').doc(RUN_ID);
-  const now = FieldValue.serverTimestamp();
-  await runRef.set({
-    run_id: RUN_ID,
-    completed_at: now,
-    scanned_count: scanned,
-    patched_count: patched,
-    source: 'scripts/backfill-voting-fields.ts',
-  });
-  // merge: true lets us initialize first_run_at on the first run and
-  // preserve it on subsequent runs. last_run_at always rolls forward.
-  const markerSnap = await markerRef.get();
-  const markerUpdate: Record<string, unknown> = {
-    last_run_at: now,
-    last_run_id: RUN_ID,
-    last_scanned_count: scanned,
-    last_patched_count: patched,
-  };
-  if (!markerSnap.exists || !markerSnap.data()?.first_run_at) {
-    markerUpdate.first_run_at = now;
-    markerUpdate.first_run_id = RUN_ID;
-  }
-  await markerRef.set(markerUpdate, { merge: true });
-  console.log(
-    `[backfill] Marked migration ${MIGRATION_COLLECTION}/${MIGRATION_DOC_ID} run ${RUN_ID} as complete.`,
-  );
-}
-
-async function run(): Promise<void> {
-  console.log(`[backfill] Scanning incident_logs collection…`);
-
-  const state: BackfillState = {
-    batch: db.batch(),
-    batchSize: 0,
-    scanned: 0,
-    patched: 0,
-  };
-  let cursor: QueryDocumentSnapshot<DocumentData> | null = null;
-
-  while (true) {
-    const pageDocs = await fetchNextPage(cursor);
-    if (pageDocs.length === 0) break;
-
-    state.scanned += pageDocs.length;
-    await backfillPage(pageDocs, state);
-    cursor = pageDocs.at(-1)!;
-  }
-
-  if (state.batchSize > 0) {
-    await state.batch.commit();
-    console.log(`[backfill] Committed final batch of ${state.batchSize}`);
-  }
-
-  console.log(`[backfill] ${state.scanned} documents scanned`);
-  if (state.patched === 0) {
-    console.log(`[backfill] All ${state.scanned} documents already conform. No changes.`);
-  } else {
-    console.log(`[backfill] Patched ${state.patched} document(s) out of ${state.scanned}.`);
-  }
-
-  await recordMigrationRun(state.scanned, state.patched);
-}
-
 try {
-  await run();
+  await runIncidentBackfill({
+    migrationDocId: 'voting-fields-v1',
+    source: 'scripts/backfill-voting-fields.ts',
+    logPrefix: LOG_PREFIX,
+    buildDocPatch,
+  });
 } catch (err) {
-  console.error('[backfill] Fatal:', err);
+  console.error(`[${LOG_PREFIX}] Fatal:`, err);
   process.exit(1);
 }

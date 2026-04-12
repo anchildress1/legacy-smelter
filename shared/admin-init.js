@@ -18,13 +18,13 @@ function getServiceAccountCredential() {
   const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (json) {
     try { return JSON.parse(json); }
-    catch (e) { throw new Error(`FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON: ${e}`); }
+    catch (cause) { throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON', { cause }); }
   }
 
   const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (credPath) {
     try { return JSON.parse(readFileSync(credPath, 'utf-8')); }
-    catch (e) { throw new Error(`Failed to read/parse GOOGLE_APPLICATION_CREDENTIALS at ${credPath}: ${e}`); }
+    catch (cause) { throw new Error(`Failed to read/parse GOOGLE_APPLICATION_CREDENTIALS at ${credPath}`, { cause }); }
   }
 
   return undefined;
@@ -34,9 +34,36 @@ function ensureApp() {
   const projectId = process.env.FIREBASE_PROJECT_ID;
   if (!projectId) throw new Error('Missing FIREBASE_PROJECT_ID');
 
+  // Pair the auth emulator to the firestore one. The firebase-admin SDK
+  // reads FIRESTORE_EMULATOR_HOST and FIREBASE_AUTH_EMULATOR_HOST as two
+  // independent knobs, but in local dev we never want only one of them —
+  // splitting them means server.js verifies unsigned tokens minted by
+  // the auth emulator against *production* Firebase Auth and returns
+  // 401 "Invalid or expired ID token" for every authenticated request.
+  // Auto-wiring the auth host whenever FIRESTORE_EMULATOR_HOST is set
+  // keeps the "leaves production untouched" invariant intact without
+  // forcing developers to remember two env vars.
+  const firestoreEmulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
+  if (firestoreEmulatorHost && !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+    const [host] = firestoreEmulatorHost.split(':');
+    process.env.FIREBASE_AUTH_EMULATOR_HOST = `${host || '127.0.0.1'}:9099`;
+  }
+
   if (getApps().length === 0) {
     const credential = getServiceAccountCredential();
     initializeApp(credential ? { credential: cert(credential), projectId } : { projectId });
+    // The firebase-admin SDK auto-routes to the emulator when this env
+    // var is set, but that routing is silent — in local dev it is easy
+    // to believe the server is writing to the emulator when it is
+    // actually writing to production. Log the destination loud and
+    // clear at init so a mis-set env var surfaces on the first boot.
+    if (firestoreEmulatorHost) {
+      console.info(
+        `[admin-init] Firestore → EMULATOR at ${firestoreEmulatorHost}, Auth → EMULATOR at ${process.env.FIREBASE_AUTH_EMULATOR_HOST} (project=${projectId})`,
+      );
+    } else {
+      console.info(`[admin-init] Firestore → PRODUCTION, Auth → PRODUCTION (project=${projectId})`);
+    }
   }
   return projectId;
 }
