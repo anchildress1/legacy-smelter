@@ -71,6 +71,14 @@ vi.mock('../hooks/useGlobalStats', () => ({
 // directly via a data attribute. The real card's rendering is
 // covered in IncidentLogCard.test.tsx — this suite only cares
 // about what the MANIFEST decides to pass in.
+// Both card variants are stubbed to the same transparent wrapper.
+// The compact (mobile) card is hidden by CSS in tests (no viewport),
+// so only the manifest stub is visible — but both must be mocked
+// since the component imports both.
+vi.mock('./IncidentLogCard', async () => {
+  const { createIncidentLogCardP0Stub } = await import('../test/p0BadgeStubs');
+  return { IncidentLogCard: createIncidentLogCardP0Stub('incident-log-card-compact-stub') };
+});
 vi.mock('./ManifestIncidentCard', async () => {
   const { IncidentLogCardP0Stub } = await import('../test/p0BadgeStubs');
   return { ManifestIncidentCard: IncidentLogCardP0Stub };

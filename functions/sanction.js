@@ -59,7 +59,7 @@ export const MAX_SELECTION_ATTEMPTS = 2;
 // reasoning the lite model cannot do — it defaults to academic rubric-speak
 // regardless of prompt. Full flash has the depth to actually read the batch
 // and write a rationale that sounds like a person, not a grading engine.
-const GEMINI_MODEL = 'gemini-3.1-pro-preview';
+const GEMINI_MODEL = 'gemini-3-flash-preview';
 
 // Named Firestore database — the project writes to `legacy-smelter`, not the
 // default `(default)` DB. Must be specified explicitly at every `getFirestore`
@@ -73,40 +73,48 @@ const FIRESTORE_DATABASE = 'legacy-smelter';
  * Intentionally in source (not loaded from docs) so deploy artifacts pin the
  * exact rubric version and edits are code-reviewed.
  */
-const JUDGING_PROMPT = `You are picking the funniest incident report from a batch of five.
+const JUDGING_PROMPT = `You are the sanction judge for Legacy Smelter's incident queue.
 
-These are satire incident reports — fake postmortems for uploaded screenshots of legacy code, broken UIs, cursed dev setups, and other engineering disasters, written in deadpan enterprise language. Your job: read all five and pick the one that's genuinely the funniest. You don't have to pick one — if the batch is mid, say so.
+Five incident records are below. They are fictional incident reports about software-adjacent failure: legacy code, flawed UI, questionable design decisions, operational churn, and the people forced to survive them.
 
-Return a single JSON object matching the schema.
+Your job is to determine whether any one record is distinctly funnier than the rest.
 
-## What makes one win
+Judge based on comedic effect within this setting. Favor records that turn familiar software misery into official-seeming incident language with strong deadpan impact.
 
-The one you'd screenshot and send to a group chat. Specifically:
+Signals that a record may deserve sanction:
+- disproportionate institutional seriousness applied to an ordinary software or workplace failure
+- precise, concrete details that make the situation feel embarrassingly real
+- escalation from a small defect, design choice, or human workaround into procedural absurdity
+- wording that implies everyone involved has accepted something obviously unreasonable as normal
+- dry phrasing that lands harder the straighter it is read
 
-- It never winks. The funniest ones sound 100% serious about something completely absurd. The moment it acknowledges it's joking, it's dead.
-- The subject matter is mundane but the language treats it like a disaster. A dusty shelf described like a containment breach. A crooked picture frame classified as structural failure.
-- There's a specific detail that makes it. Not "anomalies detected" but "the green paint." The weirder and more concrete, the better.
-- The share_quote lands in under ten words. If you'd actually say it out loud to someone, it's probably the one.
+Do not reward a record merely for being:
+- wordy
+- random
+- technically dense
+- surreal without a clear comedic turn
+- mildly clever but interchangeable with the others
 
-## When nobody wins
+You may decline to sanction. If no record clearly stands out as funnier or more deserving than the others, do not force a winner.
 
-If nothing made you laugh — if you're reaching to justify a pick — set \`sanctioned_incident_id\` to \`null\`. Forcing a winner when the batch is flat is worse than no winner.
+Use only the information present in the records provided in this batch. Do not invent missing details. Do not reconstruct, guess at, or list possible text beyond what is actually available in the provided incident content.
 
-## Writing the rationale
+Return exactly one JSON object with these fields:
+- sanctioned_incident_id: string or null
+- sanction_rationale: string
+- reason: string
 
-One sentence, max 150 characters. Write it like you're texting a friend about why this one's funny. Casual. No analysis, no literary commentary, no words like "juxtaposition" or "deadpan" or "flawless." Just say what's funny about it.
+Rules:
+- If one record clearly stands out, set sanctioned_incident_id to its exact incident_id, write a one-sentence sanction_rationale, and set reason to "".
+- If none clearly stands out, set sanctioned_incident_id to null, set sanction_rationale to "", and write a one-sentence reason.
+- The sanction_rationale must be written in the same institutional voice as the incident records: dry, procedural, and official.
+- The sanction_rationale must not explain the joke or praise it directly.
+- Avoid generic award language such as "commended", "recognized", "praised", "awarded for excellence", or anything that sounds ceremonial instead of bureaucratic.
+- Keep sanction_rationale under 300 characters.
+- Keep reason to one sentence.
+- Output valid JSON only.
 
-Good:
-- "They wrote a full postmortem for a dusty lamp."
-- "Classified a sandwich as a thermal event."
-- "'Headboard is dusty' after three paragraphs of structural analysis."
-- "Root cause: the plant is fake. Recommendation: continued monitoring."
-
-Bad (do NOT write like this):
-- "The clinical escalation is a flawless deadpan turn."
-- "Sustained commitment to procedural language under conditions that did not warrant it."
-
-When no winner: leave \`sanction_rationale\` empty. Put a one-sentence explanation in \`reason\`.`;
+Most important: select a winner only when the record is genuinely distinct; otherwise return null.`;
 
 const JUDGING_RESPONSE_SCHEMA = {
   type: Type.OBJECT,

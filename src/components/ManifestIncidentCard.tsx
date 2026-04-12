@@ -97,9 +97,9 @@ export const ManifestIncidentCard: FC<ManifestIncidentCardProps> = ({
         </div>
 
         {/* Row 4: inline metrics + timestamp */}
-        <div className="mt-3 flex items-baseline justify-between gap-4 border-t border-concrete-border pt-3">
-          <div className="flex items-baseline gap-4" data-testid="manifest-card-stats-row">
-            <span className="flex items-baseline gap-1">
+        <div className="mt-3 flex items-center justify-between gap-4 border-t border-concrete-border pt-3">
+          <div className="flex items-center gap-4" data-testid="manifest-card-stats-row">
+            <span className="flex items-center gap-1">
               <span
                 data-testid="manifest-card-impact-number"
                 className={`font-mono text-lg font-black leading-none transition-all ${

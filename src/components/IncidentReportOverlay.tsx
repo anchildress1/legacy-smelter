@@ -401,7 +401,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                     </div>
                   </div>
                   <div className="w-px self-stretch bg-concrete-border" aria-hidden="true" />
-                  <div className="flex flex-1 items-baseline justify-around">
+                  <div className="flex flex-1 items-center justify-around">
                     {[
                       { value: counts.sanction, label: 'Sanctions' },
                       { value: counts.escalation, label: 'Escalations' },

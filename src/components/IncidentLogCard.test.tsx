@@ -364,9 +364,10 @@ describe('IncidentLogCard — interaction contract', () => {
     const statsRow = screen.getByTestId('incident-card-stats-row');
     expect(statsRow).toBeInTheDocument();
     expect(screen.getByTestId('incident-card-impact-number').textContent).toBe('0');
-    expect(within(statsRow).getByText('Sanctions')).toBeInTheDocument();
-    expect(within(statsRow).getByText('Escalations')).toBeInTheDocument();
-    expect(within(statsRow).getByText('Breaches')).toBeInTheDocument();
+    // Counter labels are icons with aria-labels on narrow cards
+    expect(within(statsRow).getByLabelText(/Sanctions/)).toBeInTheDocument();
+    expect(within(statsRow).getByLabelText(/Escalations/)).toBeInTheDocument();
+    expect(within(statsRow).getByLabelText(/Breaches/)).toBeInTheDocument();
     // Vertical divider between Impact cluster and counters.
     expect(container.querySelector('[data-testid="incident-card-stats-row"] .w-px')).not.toBeNull();
   });

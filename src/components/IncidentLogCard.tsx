@@ -1,7 +1,7 @@
 import type { FC, MouseEvent } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors } from '../lib/utils';
-import { Siren, Quote, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Siren, Quote, AlertTriangle, ShieldCheck, TrendingUp, OctagonAlert } from 'lucide-react';
 import { useEscalation } from '../hooks/useEscalation';
 import {
   IMPACT_GLOW_BASE,
@@ -104,35 +104,32 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
         </div>
 
         <div
-          className="mt-3 flex items-stretch py-3 border-t border-b border-concrete-border"
+          className="mt-3 flex items-center gap-3 border-t border-concrete-border pt-3"
           data-testid="incident-card-stats-row"
         >
-          <div className="basis-[34%] flex flex-col items-center justify-center">
-            <div
+          <span className="flex items-center gap-1">
+            <span
               data-testid="incident-card-impact-number"
-              className={`font-mono text-2xl font-black leading-none transition-all ${
+              className={`font-mono text-lg font-black leading-none transition-all ${
                 escalated ? IMPACT_GLOW_ESCALATED : IMPACT_GLOW_BASE
               }`}
             >
               {impact}
-            </div>
-            <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] font-bold text-hazard-amber">
-              Impact
-            </div>
-          </div>
-          <div className="w-px self-stretch bg-concrete-border" aria-hidden="true" />
-          <div className="flex flex-1 items-baseline justify-around">
-            {[
-              { value: log.sanction_count, label: 'Sanctions' },
-              { value: log.escalation_count, label: 'Escalations' },
-              { value: log.breach_count, label: 'Breaches' },
-            ].map(({ value, label }) => (
-              <div key={label} className="text-center">
-                <div className="text-ash-white font-mono text-lg font-black leading-none">{value}</div>
-                <div className="mt-1 text-[8px] font-mono uppercase tracking-[0.12em] text-ash-white/60">{label}</div>
-              </div>
-            ))}
-          </div>
+            </span>
+            <span className="text-[9px] font-mono uppercase tracking-wider font-bold text-hazard-amber">Impact</span>
+          </span>
+          <span className="w-px h-3 bg-concrete-border" aria-hidden="true" />
+          {[
+            { value: log.sanction_count, label: 'Sanctions', Icon: ShieldCheck },
+            { value: log.escalation_count, label: 'Escalations', Icon: TrendingUp },
+            { value: log.breach_count, label: 'Breaches', Icon: OctagonAlert },
+          ].map(({ value, label, Icon }) => (
+            <span key={label} className="flex items-center gap-1" role="group" aria-label={`${value} ${label}`}>
+              <Icon size={14} className="sm:hidden text-ash-white/80" aria-hidden="true" />
+              <span className="text-ash-white font-mono text-sm font-black leading-none">{value}</span>
+              <span className="hidden sm:inline text-[9px] font-mono uppercase text-ash-white/60">{label}</span>
+            </span>
+          ))}
         </div>
       </button>
 

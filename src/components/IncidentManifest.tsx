@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, type FC } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getLogShareLinks } from '../lib/utils';
+import { IncidentLogCard } from './IncidentLogCard';
 import { ManifestIncidentCard } from './ManifestIncidentCard';
 import { IncidentReportOverlay } from './IncidentReportOverlay';
 import { DecommissionIndex } from './DecommissionIndex';
@@ -170,7 +171,7 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
             aria-label="Sort incidents"
             className="ml-auto rounded-full border border-[#666] bg-[#1a1a1a] px-3.5 py-2 font-mono text-[10px] uppercase tracking-widest text-stone-gray focus:border-hazard-amber focus:outline-none"
           >
-            <option value="impact">P0 Impact (Highest First)</option>
+            <option value="impact">Highest Impact</option>
             <option value="newest">Newest First</option>
             <option value="breaches">Most Breaches</option>
             <option value="escalations">Most Escalations</option>
@@ -187,11 +188,21 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
 
           {!isLoading && pageLogs.map((log) => (
             <li key={log.id}>
-              <ManifestIncidentCard
-                log={log}
-                showP0Badge={topPriorityIds.has(log.id)}
-                onClick={() => setSelectedLog(log)}
-              />
+              {/* Compact card on mobile, dense wide card on sm+ */}
+              <div className="sm:hidden">
+                <IncidentLogCard
+                  log={log}
+                  showP0Badge={topPriorityIds.has(log.id)}
+                  onClick={() => setSelectedLog(log)}
+                />
+              </div>
+              <div className="hidden sm:block">
+                <ManifestIncidentCard
+                  log={log}
+                  showP0Badge={topPriorityIds.has(log.id)}
+                  onClick={() => setSelectedLog(log)}
+                />
+              </div>
             </li>
           ))}
 
