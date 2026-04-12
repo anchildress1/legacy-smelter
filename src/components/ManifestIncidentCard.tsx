@@ -59,7 +59,7 @@ export const ManifestIncidentCard: FC<ManifestIncidentCardProps> = ({
       {/* Primary action: open incident detail */}
       <button
         onClick={onClick}
-        className="px-4 py-3 flex-1 min-w-0 cursor-pointer text-left focus-ring-inset"
+        className="px-4 py-4 flex-1 min-w-0 cursor-pointer text-left focus-ring-inset"
       >
         {/* Row 1: title + badges */}
         <div className="flex justify-between items-center gap-4">
@@ -81,12 +81,12 @@ export const ManifestIncidentCard: FC<ManifestIncidentCardProps> = ({
         </div>
 
         {/* Row 2: summary — single line */}
-        <p className="text-ash-white font-mono text-sm leading-snug mt-2 truncate">
+        <p className="text-ash-white font-mono text-sm leading-snug mt-2.5 truncate">
           {log.incident_feed_summary}
         </p>
 
         {/* Row 3: quote — single line */}
-        <div className="mt-1.5 flex items-center gap-1.5 border-l-2 border-hazard-amber/60 pl-2.5 min-w-0">
+        <div className="mt-2 flex items-center gap-1.5 border-l-2 border-hazard-amber/60 pl-2.5 min-w-0">
           <Quote size={10} className="shrink-0 text-hazard-amber/70" aria-hidden="true" />
           <p
             className="text-xs font-mono italic leading-snug text-hazard-amber/85 truncate"
@@ -97,7 +97,7 @@ export const ManifestIncidentCard: FC<ManifestIncidentCardProps> = ({
         </div>
 
         {/* Row 4: inline metrics + timestamp */}
-        <div className="mt-2.5 flex items-baseline justify-between gap-4 border-t border-concrete-border pt-2.5">
+        <div className="mt-3 flex items-baseline justify-between gap-4 border-t border-concrete-border pt-3">
           <div className="flex items-baseline gap-4" data-testid="manifest-card-stats-row">
             <span className="flex items-baseline gap-1">
               <span
@@ -112,9 +112,9 @@ export const ManifestIncidentCard: FC<ManifestIncidentCardProps> = ({
             </span>
             <span className="w-px h-3 bg-concrete-border" aria-hidden="true" />
             {[
-              { value: log.sanction_count, label: 'S' },
-              { value: log.escalation_count, label: 'E' },
-              { value: log.breach_count, label: 'B' },
+              { value: log.sanction_count, label: 'Sanctions' },
+              { value: log.escalation_count, label: 'Escalations' },
+              { value: log.breach_count, label: 'Breaches' },
             ].map(({ value, label }) => (
               <span key={label} className="flex items-baseline gap-1">
                 <span className="text-ash-white font-mono text-sm font-black leading-none">{value}</span>

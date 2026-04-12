@@ -75,34 +75,36 @@ const FIRESTORE_DATABASE = 'legacy-smelter';
  */
 const JUDGING_PROMPT = `You are picking the funniest incident report from a batch of five.
 
-These are satire incident reports — real postmortems for uploaded images, written in deadpan enterprise voice. You are judging to pick the funniest most impactful to humans, if one exists. You do not have to select a winner if none would qualify. Read all five, then pick the one that made you laugh hardest. Trust your gut.
+These are satire incident reports — fake postmortems for uploaded screenshots of legacy code, broken UIs, cursed dev setups, and other engineering disasters, written in deadpan enterprise language. Your job: read all five and pick the one that's genuinely the funniest. You don't have to pick one — if the batch is mid, say so.
 
 Return a single JSON object matching the schema.
 
-## What makes one better than the others
+## What makes one win
 
-You know it when you see it. But if you need a compass:
+The one you'd screenshot and send to a group chat. Specifically:
 
-- **Commitment.** The best ones never break character. They sustain an absurd register — clinical, forensic, actuarial — so straight-faced that the reader does the laughing. A record that winks at its own joke is worse than one that plays it dead straight.
-- **Compression.** Funny is short. A seven-word \`share_quote\` that lands is better than a fifteen-word one that also lands. If a dev would screenshot it and drop it in Slack, that's the one.
-- **The turn.** One field does something the rest didn't set up — and sticks the landing. Not random-for-random's-sake, but a hard left that feels earned by the tone around it.
-- **Specificity.** "Also, the green paint" beats "Further anomalies detected." The weird concrete detail is always funnier than the generic institutional phrase.
-
-These are instincts, not a rubric. Don't score them. Just read the batch and pick the one a dev would quote to a coworker.
+- It never winks. The funniest ones sound 100% serious about something completely absurd. The moment it acknowledges it's joking, it's dead.
+- The subject matter is mundane but the language treats it like a disaster. A dusty shelf described like a containment breach. A crooked picture frame classified as structural failure.
+- There's a specific detail that makes it. Not "anomalies detected" but "the green paint." The weirder and more concrete, the better.
+- The share_quote lands in under ten words. If you'd actually say it out loud to someone, it's probably the one.
 
 ## When nobody wins
 
-If the batch is flat — if nothing stands out, if you'd be flipping a coin — set \`sanctioned_incident_id\` to \`null\`. No winner is a legitimate outcome. Don't force it.
+If nothing made you laugh — if you're reaching to justify a pick — set \`sanctioned_incident_id\` to \`null\`. Forcing a winner when the batch is flat is worse than no winner.
 
 ## Writing the rationale
 
-One sentence, max 150 characters. You're a dev who found this funny and is telling a coworker why. Plain words, short, dry.
+One sentence, max 150 characters. Write it like you're texting a friend about why this one's funny. Casual. No analysis, no literary commentary, no words like "juxtaposition" or "deadpan" or "flawless." Just say what's funny about it.
 
-Examples of the voice:
+Good:
+- "They wrote a full postmortem for a dusty lamp."
+- "Classified a sandwich as a thermal event."
+- "'Headboard is dusty' after three paragraphs of structural analysis."
+- "Root cause: the plant is fake. Recommendation: continued monitoring."
+
+Bad (do NOT write like this):
+- "The clinical escalation is a flawless deadpan turn."
 - "Sustained commitment to procedural language under conditions that did not warrant it."
-- "Filed a postmortem for paint drying and somehow made it feel urgent."
-- "The phrase 'thermal event' is doing a lot of heavy lifting here."
-- "Nobody asked for a root cause analysis of a sandwich. That's what makes it good."
 
 When no winner: leave \`sanction_rationale\` empty. Put a one-sentence explanation in \`reason\`.`;
 

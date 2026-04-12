@@ -455,6 +455,26 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                 </dl>
               </section>
 
+              {/* ═══ SANCTION CALLOUT ═══
+                  Visually distinct from the diagnostic/archive sections.
+                  Sanctions are an achievement — the one incident out of
+                  five that Gemini picked as the funniest. The callout
+                  uses molten-orange branding to match the SanctionBadge
+                  and stands apart from the neutral gray layout. */}
+              {counts.sanction > 0 && report.sanctionRationale && (
+                <div className="mt-8 rounded-lg border border-molten-orange/30 bg-molten-orange/5 px-5 py-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <ShieldCheck size={14} className="text-molten-orange" aria-hidden="true" />
+                    <h4 className="text-molten-orange font-mono text-[10px] uppercase tracking-widest font-bold">
+                      Sanctioned
+                    </h4>
+                  </div>
+                  <p className="text-ash-white font-mono text-sm italic leading-relaxed">
+                    {report.sanctionRationale}
+                  </p>
+                </div>
+              )}
+
               {/* ═══ SECTION 4 — ARCHIVE ═══
                   Lowest priority. Always rendered in full. */}
               <section aria-label="Archive" className="mt-8 border-t border-concrete-border/50 pt-6 space-y-4">
@@ -468,14 +488,6 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                     {report.archiveNote}
                   </p>
                 </div>
-
-                {/* Sanction rationale — subtle, not a headline */}
-                {counts.sanction > 0 && report.sanctionRationale && (
-                  <p className="text-stone-gray font-mono text-xs italic leading-relaxed">
-                    <ShieldCheck size={10} className="inline -mt-0.5 mr-1 text-molten-orange/60" aria-hidden="true" />
-                    {report.sanctionRationale}
-                  </p>
-                )}
 
                 {/* Case footer */}
                 <div className="border-t border-concrete-border/40 pt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-xs text-stone-gray">
