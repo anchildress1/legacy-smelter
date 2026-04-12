@@ -134,6 +134,7 @@ function stubGeminiWinner(id, rationale = 'integration-picked') {
     text: JSON.stringify({
       sanctioned_incident_id: id,
       sanction_rationale: rationale,
+      reason: '',
     }),
   });
 }
@@ -299,7 +300,7 @@ describe('finalizeWinner (emulator)', () => {
     };
     const result = await finalizeWinner({ batchDocs, selection, db });
     // breach_count=1, escalation_count=2, sanction_count=1 → 5+6+2 = 13
-    expect(result).toEqual({ winnerId: ids[2], impactScore: 13 });
+    expect(result).toEqual({ winnerId: ids[2], impactScore: 13, path: 'winner' });
 
     const winnerSnap = await db.collection('incident_logs').doc(ids[2]).get();
     const winner = winnerSnap.data();

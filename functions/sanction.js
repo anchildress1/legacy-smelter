@@ -68,48 +68,66 @@ const FIRESTORE_DATABASE = 'legacy-smelter';
 // ── Inlined judging prompt ──────────────────────────────────────────────────
 
 /**
- * JUDGING_PROMPT is written fresh from the criteria in
- * `docs/archive/judging-prompt.md`. Not a copy — optimized for Gemini's
- * structured-output schema path, tightened to match the voice of the
- * `GEMINI_PROMPT` constant in `server.js`, and reshaped so the candidate
- * incidents are appended as a JSON block at call time. Do NOT `readFileSync`
- * the archive file — keeping the prompt as source code means a deploy
- * necessarily captures the prompt version, and a prompt edit is a commit the
- * review pipeline sees.
+ * Voice-craft judging rubric from docs/sanction-judging-patch.md.
+ * Intentionally in source (not loaded from docs) so deploy artifacts pin the
+ * exact rubric version and edits are code-reviewed.
  */
-const JUDGING_PROMPT = `You are the AI sanction engine for Legacy Smelter's incident queue.
+const JUDGING_PROMPT = `You are the sanction judge for Legacy Smelter's incident queue.
 
-Five incident reports are below. Exactly one must be sanctioned. "Sanctioned" means: this is the incident a developer would screenshot and send to a coworker. Pick the one that would stop someone scrolling.
+Five incident records are below. They are pure-text artifacts. You are judging voice craft, not accuracy or fidelity. Pick the one whose **writing** is the most outrageously funny on its own terms.
 
-Return a single JSON object matching the schema. Use the exact \`incident_id\` value from the records as \`sanctioned_incident_id\`. Do not invent IDs. Do not return more than one.
+Return a single JSON object matching the schema. If a candidate clearly wins, set \`sanctioned_incident_id\` to its exact \`incident_id\` and write a one-sentence \`sanction_rationale\` in institutional voice referencing the specific axis it won on. If no candidate clearly earned it — if the batch is flat, if nothing stands out, if you would be picking at random — set \`sanctioned_incident_id\` to \`null\`, leave \`sanction_rationale\` empty, and explain in \`reason\` why no incident rose above the rest. The escape hatch is a legitimate outcome. Use it when it is true.
 
-## Selection criteria (in order of weight)
+## Axes (score each candidate on all five, then sum)
 
-1. Classification hook. \`legacy_infra_class\` names something specific and unexpected. Immediately legible — you read it and know exactly what kind of artifact this is. Strong: "DESKTOP FAUNA INCIDENT". Weak: "HUMAN-INTEGRATED WORKSPACE NODE".
+1. **Tonal overcommitment.** The record sustains a single absurd register — bureaucratic, clinical, forensic, actuarial — through fields that would normally break into a different register. The funnier the mismatch between the register and the subject, the higher the score. A flatter, more committed voice beats a voice that winks at the joke.
 
-2. Best single line. The one sentence in \`archive_note\` or \`failure_origin\` that would survive being screenshotted out of context. Flat, specific, deadpan observations. "The lamp is needlessly ornamental" lands. Generic enterprise language does not.
+2. **Register collision.** Adjacent fields land in registers that do not belong together (clinical \`severity\` next to deadpan \`archive_note\`, legal \`failure_origin\` next to whimsical \`chromatic_profile\`). The collision itself is the joke. Score the sharpest single collision in the record, not the average.
 
-3. Severity word. \`severity\` is clinical, unexpected, slightly too specific for the situation. Unexpected escalation of a mundane subject is the mechanic. "VAPORIZED" beats "CRITICAL".
+3. **Declarative compression.** The shortest sentence that still carries the full absurdity wins. Penalize padding. A nine-word \`share_quote\` that lands beats a twenty-word one that also lands. Compression is the difference between a line you'd quote and a line you'd skim.
 
-4. Commitment. The incident stays on one specific premise across every field. Specific subject references beat generic institutional language.
+4. **Non-sequitur landing.** One field executes a hard left turn the rest of the record did not telegraph — and lands it. Not weird-for-its-own-sake; the turn has to feel earned by the tonal commitment of the surrounding fields. Score zero if the turn feels random instead of earned.
+
+5. **Severity word commitment.** The \`severity\` value is a clinical or procedural word that is one step too specific for what is being described. "VAPORIZED," "DECOMMISSIONED," "QUARANTINED" beat "CRITICAL," "HIGH," "SEVERE." Score the mismatch between the severity word's usual weight and the subject it is applied to.
+
+## Penalty patterns (each deducts from the total; stack freely)
+
+- **Wink penalty.** The record steps outside its voice to acknowledge the joke. Any phrase that reads as the writer nudging the reader. -1 per occurrence.
+- **Generic-institutional penalty.** Fields read like real enterprise boilerplate instead of committed absurdity. "Comprehensive review recommended," "stakeholders notified," etc. -1 per field.
+- **Register-drift penalty.** The record starts in one committed register and drifts into another partway through — not a deliberate collision, just inconsistency. -1 total per record.
+- **Padding penalty.** Sentences hit length the joke does not earn. -1 per padded sentence.
+
+## Tie-breaking
+
+If two candidates tie on total score, prefer the one with the higher **declarative compression** score. If still tied, pick either — ties are rare at the scoring resolution above.
 
 ## Rationale
 
-\`sanction_rationale\` is one sentence, institutional voice. Reference the specific detail that earned the sanction — not the category. Maximum 500 characters.`;
+When \`sanctioned_incident_id\` is set, \`sanction_rationale\` is one sentence, institutional voice, maximum 500 characters. It names the specific axis that earned the sanction. Do NOT quote the candidate's own text. Do NOT name the subject matter. Reference the craft, not the content.
+
+When \`sanctioned_incident_id\` is \`null\`, \`sanction_rationale\` is an empty string and \`reason\` is a one-sentence explanation of what the batch was missing. Soft, not punitive. "No candidate clearly earned the sanction this round" is the tone.`;
 
 const JUDGING_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     sanctioned_incident_id: {
       type: Type.STRING,
-      description: 'The exact incident_id of the single selected incident.',
+      nullable: true,
+      description:
+        'The exact incident_id of the single selected incident, or null when no candidate clearly earned the sanction.',
     },
     sanction_rationale: {
       type: Type.STRING,
-      description: 'One-sentence institutional-voice explanation of why this incident was selected.',
+      description:
+        'One-sentence institutional-voice explanation when an incident was selected; empty string when null.',
+    },
+    reason: {
+      type: Type.STRING,
+      description:
+        'When sanctioned_incident_id is null, one-sentence soft explanation of why the batch produced no winner. Empty string otherwise.',
     },
   },
-  required: ['sanctioned_incident_id', 'sanction_rationale'],
+  required: ['sanctioned_incident_id', 'sanction_rationale', 'reason'],
 };
 
 // ── Lazy singletons (admin app + Gemini client) ─────────────────────────────
@@ -146,6 +164,11 @@ export function __resetSanctionSingletonsForTests() {
 // ── Helpers ported verbatim from scripts/sanction-incidents.ts ──────────────
 
 export function sanitizeRationale(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim().slice(0, 500);
+}
+
+export function sanitizeReason(value) {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, 500);
 }
@@ -213,15 +236,40 @@ export function normalizeSelection(raw, candidates) {
 
   let selectedRaw;
   let rationaleRaw;
+  let reasonRaw;
   if (raw && typeof raw === 'object') {
     selectedRaw = raw.sanctioned_incident_id;
-    rationaleRaw = raw.sanction_rationale ?? raw.rationale;
+    rationaleRaw = raw.sanction_rationale;
+    reasonRaw = raw.reason;
   }
 
-  const selectedIncidentId = typeof selectedRaw === 'string' ? selectedRaw.trim() : '';
+  if (selectedRaw === null) {
+    const reason = sanitizeReason(reasonRaw);
+    if (!reason) {
+      throw new Error(
+        `[sanction] Model returned no winner without a reason. ` +
+          `Raw response: ${JSON.stringify(raw).slice(0, 300)}`,
+      );
+    }
+    return {
+      sanctioned_incident_id: null,
+      sanction_rationale: '',
+      reason,
+    };
+  }
+
+  if (typeof selectedRaw !== 'string') {
+    throw new Error(
+      `[sanction] Model must return "sanctioned_incident_id" as a non-empty string or null. ` +
+        `Candidates: ${candidates.map((c) => c.incident_id).join(', ')}. ` +
+        `Raw response: ${JSON.stringify(raw).slice(0, 300)}`,
+    );
+  }
+
+  const selectedIncidentId = selectedRaw.trim();
   if (!selectedIncidentId) {
     throw new Error(
-      `[sanction] Model must return "sanctioned_incident_id". ` +
+      `[sanction] Model must return "sanctioned_incident_id" as a non-empty string or null. ` +
         `Candidates: ${candidates.map((c) => c.incident_id).join(', ')}. ` +
         `Raw response: ${JSON.stringify(raw).slice(0, 300)}`,
     );
@@ -244,6 +292,7 @@ export function normalizeSelection(raw, candidates) {
   return {
     sanctioned_incident_id: selectedIncidentId,
     sanction_rationale: sanctionRationale,
+    reason: '',
   };
 }
 
@@ -436,7 +485,31 @@ export async function finalizeWinner({ batchDocs, selection, db = getDb() }) {
   console.log(
     `[sanction] Finalized winner ${winnerDoc.id} (impact_score=${impactScore}, batch_size=${batchDocs.length})`,
   );
-  return { winnerId: winnerDoc.id, impactScore };
+  return { winnerId: winnerDoc.id, impactScore, path: 'winner' };
+}
+
+/**
+ * Commit a no-winner round: clear leases on all claimed docs and preserve all
+ * sanction/counter fields exactly as-is.
+ */
+export async function finalizeNoWinner({ batchDocs, selection, db = getDb() }) {
+  const batch = db.batch();
+  for (const doc of batchDocs) {
+    batch.update(doc.ref, { sanction_lease_at: null });
+  }
+  await batch.commit();
+
+  console.log(
+    `[sanction] Finalized no-winner batch (batch_size=${batchDocs.length}, reason=${selection.reason})`,
+  );
+  return { winnerId: null, impactScore: null, path: 'no-winner' };
+}
+
+export async function finalizeBatch({ batchDocs, selection, db = getDb() }) {
+  if (selection.sanctioned_incident_id === null) {
+    return finalizeNoWinner({ batchDocs, selection, db });
+  }
+  return finalizeWinner({ batchDocs, selection, db });
 }
 
 // ── Orchestrator ────────────────────────────────────────────────────────────
@@ -487,7 +560,7 @@ export async function runSanctionBatch({ geminiApiKey, aiClient, db, now = Date.
   );
 
   const selection = await judgeBatch(candidates, { geminiApiKey, aiClient });
-  const result = await finalizeWinner({ batchDocs, selection, db: dbHandle });
+  const result = await finalizeBatch({ batchDocs, selection, db: dbHandle });
 
   return { status: 'completed', ...result };
 }

@@ -79,6 +79,7 @@ const {
   MIN_BATCH,
   MAX_SELECTION_ATTEMPTS,
   sanitizeRationale,
+  sanitizeReason,
   parseIncidentDoc,
   requireNonNegativeCounter,
   normalizeSelection,
@@ -86,6 +87,8 @@ const {
   claimBatch,
   judgeBatch,
   finalizeWinner,
+  finalizeNoWinner,
+  finalizeBatch,
   runSanctionBatch,
   __resetSanctionSingletonsForTests,
 } = await import('./sanction.js');
@@ -248,6 +251,17 @@ describe('sanitizeRationale', () => {
   });
 });
 
+describe('sanitizeReason', () => {
+  it('trims, caps at 500 chars, and rejects non-strings', () => {
+    expect(sanitizeReason('  flat batch  ')).toBe('flat batch');
+    expect(sanitizeReason('x'.repeat(600))).toHaveLength(500);
+    expect(sanitizeReason('   ')).toBe('');
+    expect(sanitizeReason(42)).toBe('');
+    expect(sanitizeReason(null)).toBe('');
+    expect(sanitizeReason(undefined)).toBe('');
+  });
+});
+
 describe('parseIncidentDoc', () => {
   it('parses complete payload into the candidate shape', () => {
     const parsed = parseIncidentDoc(
@@ -317,17 +331,71 @@ describe('requireNonNegativeCounter', () => {
 describe('normalizeSelection', () => {
   const candidates = [makeCandidate('inc-a'), makeCandidate('inc-b')];
 
-  it('accepts valid candidate and rationale fallback key', () => {
+  it('returns no-winner shape for null selection with non-empty reason', () => {
     expect(
-      normalizeSelection({ sanctioned_incident_id: 'inc-a', rationale: '  because  ' }, candidates),
+      normalizeSelection(
+        {
+          sanctioned_incident_id: null,
+          sanction_rationale: '',
+          reason: '  No candidate clearly earned the sanction this round.  ',
+        },
+        candidates,
+      ),
+    ).toEqual({
+      sanctioned_incident_id: null,
+      sanction_rationale: '',
+      reason: 'No candidate clearly earned the sanction this round.',
+    });
+  });
+
+  it('rejects null selection with empty reason', () => {
+    expect(
+      () =>
+        normalizeSelection(
+          { sanctioned_incident_id: null, sanction_rationale: '', reason: '   ' },
+          candidates,
+        ),
+    ).toThrow('returned no winner without a reason');
+  });
+
+  it('drops sanction_rationale on null winner and keeps reason', () => {
+    expect(
+      normalizeSelection(
+        {
+          sanctioned_incident_id: null,
+          sanction_rationale: 'this should be ignored',
+          reason: 'flat batch',
+        },
+        candidates,
+      ),
+    ).toEqual({
+      sanctioned_incident_id: null,
+      sanction_rationale: '',
+      reason: 'flat batch',
+    });
+  });
+
+  it('accepts valid winner, requires rationale, and clears reason', () => {
+    expect(
+      normalizeSelection(
+        {
+          sanctioned_incident_id: 'inc-a',
+          sanction_rationale: '  because  ',
+          reason: 'should be ignored on winner',
+        },
+        candidates,
+      ),
     ).toEqual({
       sanctioned_incident_id: 'inc-a',
       sanction_rationale: 'because',
+      reason: '',
     });
   });
 
   it('rejects missing id, unknown candidate, and missing rationale', () => {
-    expect(() => normalizeSelection({}, candidates)).toThrow('must return "sanctioned_incident_id"');
+    expect(() => normalizeSelection({}, candidates)).toThrow(
+      'must return "sanctioned_incident_id" as a non-empty string or null',
+    );
     expect(() =>
       normalizeSelection({ sanctioned_incident_id: 'inc-z', sanction_rationale: 'r' }, candidates),
     ).toThrow('selected non-candidate incident "inc-z"');
@@ -336,7 +404,7 @@ describe('normalizeSelection', () => {
     ).toThrow('without a rationale');
     expect(() =>
       normalizeSelection({ sanctioned_incident_id: 42, sanction_rationale: 'r' }, candidates),
-    ).toThrow('must return "sanctioned_incident_id"');
+    ).toThrow('must return "sanctioned_incident_id" as a non-empty string or null');
   });
 });
 
@@ -439,11 +507,35 @@ describe('judgeBatch', () => {
       text: JSON.stringify({
         sanctioned_incident_id: 'c2',
         sanction_rationale: 'reason',
+        reason: '',
       }),
     });
     const aiClient = { models: { generateContent: generateContentMock } };
     const result = await judgeBatch(candidates, { aiClient });
-    expect(result).toEqual({ sanctioned_incident_id: 'c2', sanction_rationale: 'reason' });
+    expect(result).toEqual({
+      sanctioned_incident_id: 'c2',
+      sanction_rationale: 'reason',
+      reason: '',
+    });
+    expect(generateContentMock).toHaveBeenCalledOnce();
+  });
+
+  it('passes through no-winner selections', async () => {
+    const candidates = [makeCandidate('c1'), makeCandidate('c2')];
+    generateContentMock.mockResolvedValueOnce({
+      text: JSON.stringify({
+        sanctioned_incident_id: null,
+        sanction_rationale: '',
+        reason: 'flat batch',
+      }),
+    });
+    const aiClient = { models: { generateContent: generateContentMock } };
+    const result = await judgeBatch(candidates, { aiClient });
+    expect(result).toEqual({
+      sanctioned_incident_id: null,
+      sanction_rationale: '',
+      reason: 'flat batch',
+    });
     expect(generateContentMock).toHaveBeenCalledOnce();
   });
 
@@ -452,7 +544,7 @@ describe('judgeBatch', () => {
     generateContentMock
       .mockResolvedValueOnce({ text: '' })
       .mockResolvedValueOnce({
-        text: JSON.stringify({ sanctioned_incident_id: 'c1', sanction_rationale: 'ok' }),
+        text: JSON.stringify({ sanctioned_incident_id: 'c1', sanction_rationale: 'ok', reason: '' }),
       });
     const aiClient = { models: { generateContent: generateContentMock } };
     const result = await judgeBatch(candidates, { aiClient });
@@ -510,7 +602,7 @@ describe('finalizeWinner', () => {
     const result = await finalizeWinner({ batchDocs, selection, db });
 
     // impact_score = 5*1 + 3*2 + 2*3 = 17
-    expect(result).toEqual({ winnerId: 'inc-2', impactScore: 17 });
+    expect(result).toEqual({ winnerId: 'inc-2', impactScore: 17, path: 'winner' });
     expect(batchObj.commit).toHaveBeenCalledOnce();
     expect(batchUpdates).toHaveLength(5);
 
@@ -551,6 +643,61 @@ describe('finalizeWinner', () => {
     await expect(finalizeWinner({ batchDocs, selection, db })).rejects.toThrow(
       'non-finite "breach_count"',
     );
+  });
+});
+
+describe('finalizeNoWinner / finalizeBatch', () => {
+  beforeEach(() => {
+    __resetSanctionSingletonsForTests();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('clears only leases on every doc for no-winner batches', async () => {
+    const batchDocs = Array.from({ length: MIN_BATCH }, (_, i) => ({
+      id: `inc-${i + 1}`,
+      ref: { path: `incident_logs/inc-${i + 1}` },
+      data: makeIncidentData(),
+    }));
+    const selection = {
+      sanctioned_incident_id: null,
+      sanction_rationale: '',
+      reason: 'flat batch',
+    };
+    const { db, batchObj, batchUpdates } = makeMockDb();
+
+    const result = await finalizeNoWinner({ batchDocs, selection, db });
+
+    expect(result).toEqual({ winnerId: null, impactScore: null, path: 'no-winner' });
+    expect(batchObj.commit).toHaveBeenCalledOnce();
+    expect(batchUpdates).toHaveLength(MIN_BATCH);
+    for (const update of batchUpdates) {
+      expect(update.payload).toEqual({ sanction_lease_at: null });
+    }
+  });
+
+  it('dispatches to no-winner path when selection id is null', async () => {
+    const batchDocs = Array.from({ length: MIN_BATCH }, (_, i) => ({
+      id: `inc-${i + 1}`,
+      ref: { path: `incident_logs/inc-${i + 1}` },
+      data: makeIncidentData(),
+    }));
+    const selection = {
+      sanctioned_incident_id: null,
+      sanction_rationale: '',
+      reason: 'flat batch',
+    };
+    const { db, batchObj, batchUpdates } = makeMockDb();
+
+    const result = await finalizeBatch({ batchDocs, selection, db });
+
+    expect(result.path).toBe('no-winner');
+    expect(batchObj.commit).toHaveBeenCalledOnce();
+    for (const update of batchUpdates) {
+      expect(update.payload).toEqual({ sanction_lease_at: null });
+    }
   });
 });
 
@@ -610,6 +757,7 @@ describe('runSanctionBatch', () => {
       text: JSON.stringify({
         sanctioned_incident_id: 'inc-3',
         sanction_rationale: 'stood out',
+        reason: '',
       }),
     });
     const aiClient = { models: { generateContent: generateContentMock } };
@@ -617,7 +765,12 @@ describe('runSanctionBatch', () => {
     const result = await runSanctionBatch({ aiClient, db });
 
     // impact_score = 5*1 + 3*1 + 2*1 = 10
-    expect(result).toEqual({ status: 'completed', winnerId: 'inc-3', impactScore: 10 });
+    expect(result).toEqual({
+      status: 'completed',
+      winnerId: 'inc-3',
+      impactScore: 10,
+      path: 'winner',
+    });
     expect(generateContentMock).toHaveBeenCalledOnce();
     // One batch commit for the finalize step — sweep short-circuited on
     // empty, and claim uses a transaction.
@@ -640,5 +793,37 @@ describe('runSanctionBatch', () => {
     await expect(runSanctionBatch({ aiClient, db })).rejects.toThrow(
       'Gemini failed to produce a valid selection',
     );
+  });
+
+  it('completes with no-winner path when judge returns null winner', async () => {
+    const claimDocs = Array.from({ length: MIN_BATCH }, (_, i) =>
+      makeDocSnapshot(`inc-${i + 1}`, makeIncidentData()),
+    );
+    const { db, batchCommits, batchUpdates } = makeMockDb({
+      claimQuerySize: MIN_BATCH,
+      claimQueryDocs: claimDocs,
+      sweepDocs: [],
+    });
+    generateContentMock.mockResolvedValueOnce({
+      text: JSON.stringify({
+        sanctioned_incident_id: null,
+        sanction_rationale: '',
+        reason: 'flat batch',
+      }),
+    });
+    const aiClient = { models: { generateContent: generateContentMock } };
+
+    const result = await runSanctionBatch({ aiClient, db });
+
+    expect(result).toEqual({
+      status: 'completed',
+      winnerId: null,
+      impactScore: null,
+      path: 'no-winner',
+    });
+    expect(batchCommits).toHaveLength(1);
+    for (const { payload } of batchUpdates) {
+      expect(payload).toEqual({ sanction_lease_at: null });
+    }
   });
 });
