@@ -17,7 +17,7 @@ describe('formatTimestamp', () => {
     // on some engines; match only the structure to stay portable.
     const formatted = formatTimestamp(new Date('2026-04-10T17:30:45Z'));
     expect(formatted).toMatch(
-      /^\d{4}\.\d{2}\.\d{2} \/\/ \d{2}:\d{2}:\d{2} [A-Z]{1,5}(?:[+\-]\d+)?$/,
+      /^\d{4}\.\d{2}\.\d{2} \/\/ \d{2}:\d{2}:\d{2} [A-Z]{1,5}(?:[+-]\d+)?$/,
     );
   });
 
