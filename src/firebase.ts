@@ -37,6 +37,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID);
 const auth = getAuth(app);
+let emulatorAuthBootstrap: Promise<void> = Promise.resolve();
 
 // Local emulator wiring. Opt-in via `VITE_USE_FIREBASE_EMULATOR=true` in
 // `.env.local` so developer setups can freely toggle between the local
@@ -56,11 +57,18 @@ if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
   // signed JWT. Auth Emulator does not validate JWTs and IS NOT SECURE"
   // for every refresh. In-memory persistence guarantees each emulator
   // session starts with no user and mints fresh, unsigned tokens.
-  setPersistence(auth, inMemoryPersistence)
-    .then(() => signOut(auth))
-    .catch((err) => {
-      console.warn('[firebase] Failed to reset auth persistence for emulator:', err);
-    });
+  emulatorAuthBootstrap = (async () => {
+    try {
+      await setPersistence(auth, inMemoryPersistence);
+    } catch (err) {
+      console.warn('[firebase] Failed to set in-memory auth persistence for emulator:', err);
+    }
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.warn('[firebase] Failed to sign out restored auth session for emulator:', err);
+    }
+  })();
   // Loud log so it is obvious in the browser console which backend the
   // app is talking to — a silent fallback is how "why is nothing in the
   // emulator log" happens in the first place.
@@ -71,6 +79,7 @@ let anonymousAuthPromise: Promise<void> | null = null;
 
 export async function ensureAnonymousAuth(): Promise<void> {
   if (globalThis.window === undefined) return;
+  await emulatorAuthBootstrap;
   if (auth.currentUser) return;
   if (!anonymousAuthPromise) {
     anonymousAuthPromise = signInAnonymously(auth).then(() => undefined).catch((err) => {
