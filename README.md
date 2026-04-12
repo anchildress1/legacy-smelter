@@ -106,6 +106,71 @@ docs/
 - [`docs/design-decisions.md`](docs/design-decisions.md) — Deliberate deviations from the original spec and their rationale
 - [`docs/sanction-judging-patch.md`](docs/sanction-judging-patch.md) — Sanction system rebuild build brief
 
+## Operations
+
+### Deploy
+
+```bash
+# Cloud Run (Express server + client)
+make deploy                         # uses .env, deploys to gcloud default project
+./deploy.sh --env-file .env.staging # specific env file
+
+# Firebase functions only
+firebase deploy --only functions --project anchildress1-unstable
+```
+
+### Sanction judging
+
+The `onIncidentCreated` Cloud Function fires on every `incident_logs` document create. It batches 5 unevaluated incidents, asks Gemini to pick one winner, and commits the result. Fewer than 5 unevaluated → no-op.
+
+**Manually trigger a sanction batch** (without creating a new incident):
+
+```bash
+curl -s -X POST "https://onincidentcreated-u36ut3r63a-ue.a.run.app" \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token --project=anchildress1-unstable)" \
+  -H "Content-Type: application/json" \
+  -H "ce-id: manual-$(date +%s)" \
+  -H "ce-source: //firestore.googleapis.com/projects/anchildress1-unstable/databases/legacy-smelter" \
+  -H "ce-type: google.cloud.firestore.document.v1.created" \
+  -H "ce-specversion: 1.0" \
+  -H "ce-datacontenttype: application/json" \
+  -H "ce-time: $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -H "ce-subject: documents/incident_logs/manual-trigger" \
+  -d '{"value":{"name":"projects/anchildress1-unstable/databases/legacy-smelter/documents/incident_logs/manual-trigger","fields":{"evaluated":{"booleanValue":false}}}}'
+```
+
+Returns `204` on success. The function independently queries Firestore for unevaluated docs — the event payload is just a gate.
+
+**Check function logs:**
+
+```bash
+gcloud functions logs read onIncidentCreated \
+  --gen2 --region=us-east1 --project=anchildress1-unstable --limit=15
+```
+
+**Key fields per incident doc:**
+
+| Field | Type | Written by | Purpose |
+|-------|------|-----------|---------|
+| `evaluated` | boolean | server.js (false) → sanction.js (true) | Claim flag — `false` = eligible for judging |
+| `sanction_lease_at` | timestamp/null | sanction.js | Claim lease; swept after 5 min TTL |
+| `sanctioned` | boolean | sanction.js | Winner flag |
+| `sanction_rationale` | string/null | sanction.js | Gemini's one-sentence justification |
+| `sanction_count` | number | sanction.js | 0 or 1, used in impact_score formula |
+| `impact_score` | number | sanction.js | `5×sanction + 3×escalation + 2×breach` |
+
+### Emulator (local dev)
+
+Three terminals:
+
+```bash
+make functions  # Firebase emulator: auth:9099, firestore:9180, functions:5001
+make server     # Express API on :8080
+make dev        # Vite on :3000 (proxies /api → :8080)
+```
+
+Requires `VITE_USE_FIREBASE_EMULATOR="true"` and `FIRESTORE_EMULATOR_HOST="127.0.0.1:9180"` in `.env`. The server auto-pairs `FIREBASE_AUTH_EMULATOR_HOST` from the Firestore host.
+
 ## License
 
 [Polyform Shield 1.0.0](LICENSE) — free to use, fork, and adapt; no monetization without permission.
