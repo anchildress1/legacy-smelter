@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, type FC } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getLogShareLinks } from '../lib/utils';
-import { IncidentLogCard } from './IncidentLogCard';
+import { ManifestIncidentCard } from './ManifestIncidentCard';
 import { IncidentReportOverlay } from './IncidentReportOverlay';
 import { DecommissionIndex } from './DecommissionIndex';
 import { SiteFooter } from './SiteFooter';
@@ -187,7 +187,7 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
 
           {!isLoading && pageLogs.map((log) => (
             <li key={log.id}>
-              <IncidentLogCard
+              <ManifestIncidentCard
                 log={log}
                 showP0Badge={topPriorityIds.has(log.id)}
                 onClick={() => setSelectedLog(log)}

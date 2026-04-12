@@ -71,9 +71,9 @@ vi.mock('../hooks/useGlobalStats', () => ({
 // directly via a data attribute. The real card's rendering is
 // covered in IncidentLogCard.test.tsx — this suite only cares
 // about what the MANIFEST decides to pass in.
-vi.mock('./IncidentLogCard', async () => {
+vi.mock('./ManifestIncidentCard', async () => {
   const { IncidentLogCardP0Stub } = await import('../test/p0BadgeStubs');
-  return { IncidentLogCard: IncidentLogCardP0Stub };
+  return { ManifestIncidentCard: IncidentLogCardP0Stub };
 });
 
 // The manifest also pulls in the detail overlay, footer,

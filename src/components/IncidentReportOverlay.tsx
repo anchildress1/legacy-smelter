@@ -299,36 +299,35 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                   not feel crammed. */}
               <section aria-label="Incident overview" className="space-y-6">
 
-                {/* Title row: title (left) + severity + escalate (right) */}
+                {/* Title + badge cluster. On mobile, badges wrap below
+                    the title instead of fighting for horizontal space. */}
                 <div>
-                  <div className="flex justify-between items-start gap-3">
-                    <h3 className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
-                      {report.legacyInfraClass}
-                    </h3>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {counts.sanction > 0 && <SanctionBadge />}
-                      {showP0Badge && <P0Badge />}
-                      <SeverityBadge severity={report.severity} />
-                      {incidentId && (
-                        <>
-                          <div className="w-px h-4 bg-concrete-border" aria-hidden="true" />
-                          <button
-                            onClick={handleEscalate}
-                            disabled={isTogglingEscalation}
-                            className={`${HEADER_PILL_BASE} transition-all focus-ring ${
-                              escalated
-                                ? `border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber ${IMPACT_GLOW_FILTER_ESCALATED}`
-                                : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
-                            } ${isTogglingEscalation ? 'opacity-50' : ''}`}
-                            aria-label={escalated ? 'Remove escalation' : 'Escalate'}
-                            aria-pressed={escalated}
-                          >
-                            <Siren size={10} aria-hidden="true" />
-                            {escalated ? 'Triggered' : 'Escalate'}
-                          </button>
-                        </>
-                      )}
-                    </div>
+                  <h3 className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
+                    {report.legacyInfraClass}
+                  </h3>
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <SeverityBadge severity={report.severity} />
+                    {showP0Badge && <P0Badge />}
+                    {counts.sanction > 0 && <SanctionBadge />}
+                    {incidentId && (
+                      <>
+                        <div className="w-px h-4 bg-concrete-border" aria-hidden="true" />
+                        <button
+                          onClick={handleEscalate}
+                          disabled={isTogglingEscalation}
+                          className={`${HEADER_PILL_BASE} transition-all focus-ring ${
+                            escalated
+                              ? `border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber ${IMPACT_GLOW_FILTER_ESCALATED}`
+                              : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
+                          } ${isTogglingEscalation ? 'opacity-50' : ''}`}
+                          aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+                          aria-pressed={escalated}
+                        >
+                          <Siren size={10} aria-hidden="true" />
+                          {escalated ? 'Triggered' : 'Escalate'}
+                        </button>
+                      </>
+                    )}
                   </div>
 
                   {/* Escalation / breach errors — inline under the action that produced them.
@@ -470,15 +469,12 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                   </p>
                 </div>
 
-                {/* Sanction rationale */}
+                {/* Sanction rationale — subtle, not a headline */}
                 {counts.sanction > 0 && report.sanctionRationale && (
-                  <div className="border-t border-molten-orange/20 pt-4">
-                    <h4 className="text-molten-orange font-mono text-[10px] uppercase tracking-[0.15em] flex items-center gap-1.5">
-                      <ShieldCheck size={10} aria-hidden="true" />
-                      Sanction Rationale
-                    </h4>
-                    <p className="mt-1.5 text-molten-orange font-mono text-sm leading-relaxed italic">{report.sanctionRationale}</p>
-                  </div>
+                  <p className="text-stone-gray font-mono text-xs italic leading-relaxed">
+                    <ShieldCheck size={10} className="inline -mt-0.5 mr-1 text-molten-orange/60" aria-hidden="true" />
+                    {report.sanctionRationale}
+                  </p>
                 )}
 
                 {/* Case footer */}

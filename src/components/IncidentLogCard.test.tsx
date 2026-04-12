@@ -328,12 +328,12 @@ describe('IncidentLogCard — interaction contract', () => {
     expect(container.querySelector('[data-lucide="shield-check"]')).toBeNull();
   });
 
-  it('renders the sanction badge when the log is sanctioned', () => {
+  it('renders the sanction icon when the log is sanctioned', () => {
     render(
       <IncidentLogCard log={makeLog({ sanctioned: true })} onClick={() => {}} />,
     );
-    // Full SanctionBadge pill in the header cluster.
-    expect(screen.getByText('Sanctioned')).toBeInTheDocument();
+    // Icon-only indicator in the header cluster with tooltip.
+    expect(screen.getByLabelText('Sanctioned')).toBeInTheDocument();
   });
 
   it('provides a descriptive aria-label on the escalate button that references the incident title', () => {
@@ -354,17 +354,9 @@ describe('IncidentLogCard — interaction contract', () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it('renders the timestamp in the metadata row', () => {
-    // formatTimestamp is imported from lib/utils (not mocked in this
-    // suite) so we only assert that SOME formatted string is present
-    // rather than the exact value — the exact format is pinned in
-    // lib/utils's own tests.
-    render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
-    const primaryButton = screen.getAllByRole('button')[0];
-    // The metadata row is the last child of the primary button's
-    // content tree; any non-empty text inside it is sufficient to
-    // confirm the row rendered at all.
-    expect(within(primaryButton).getByText(/Impact/i)).toBeInTheDocument();
+  it('does not render a timestamp row', () => {
+    const { container } = render(<IncidentLogCard log={makeLog()} onClick={() => {}} />);
+    expect(container.querySelector('.text-dead-gray')).toBeNull();
   });
 
   it('renders the list-side impact cluster with divider and three counters', () => {

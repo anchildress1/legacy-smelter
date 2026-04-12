@@ -1,11 +1,8 @@
 import type { FC, MouseEvent } from 'react';
 import { SmeltLog, computeImpact } from '../types';
-import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
-import { Siren, Quote } from 'lucide-react';
+import { getFiveDistinctColors } from '../lib/utils';
+import { Siren, Quote, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useEscalation } from '../hooks/useEscalation';
-import { SeverityBadge } from './SeverityBadge';
-import { P0Badge } from './P0Badge';
-import { SanctionBadge } from './SanctionBadge';
 import {
   IMPACT_GLOW_BASE,
   IMPACT_GLOW_ESCALATED,
@@ -15,15 +12,6 @@ import {
 interface IncidentLogCardProps {
   log: SmeltLog;
   onClick: () => void;
-  // When true, render the static "P0" priority badge in the header
-  // right-cluster. Set by callers that know the incident is in the
-  // live top-3 set — the home queue hard-codes it, the manifest
-  // derives it from a Set built off `useRecentIncidentLogs`, and the
-  // detail overlay mirrors the card's treatment via the same
-  // derivation. There is no P1/P2/P3: the badge is either "P0" or
-  // absent. Filter/sort changes on surfaces that render this card
-  // cannot wipe the badge — membership is independent of local
-  // presentation state.
   showP0Badge?: boolean;
 }
 
@@ -49,11 +37,7 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
 
   return (
     <div className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors group">
-      {/* Left chromatic fingerprint strip. Lighter cut than the
-          overlay's strip — at the card's 8px width a deeper reduction
-          collapses the bands into an opaque smear and loses the chroma
-          signal. The goal is just to keep the palette from clashing
-          with the dark card chrome, not mute it into dullness. */}
+      {/* Left chromatic fingerprint strip */}
       <div
         className="w-2 shrink-0 flex flex-col overflow-hidden saturate-[.95] brightness-[.97]"
         aria-hidden="true"
@@ -68,17 +52,9 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
         onClick={onClick}
         className="p-4 flex-1 min-w-0 cursor-pointer text-left focus-ring-inset"
       >
-        {/* ── HEADER ROW ──
-            Fixed right cluster reserves space for all possible badges
-            via `invisible` (not display:none) so the title never shifts
-            when sanction status changes. */}
         <div className="flex justify-between items-start gap-4">
           <div className="flex items-start gap-2 min-w-0">
             <span className="w-2 h-2 mt-1.5 rounded-full shrink-0" style={{ backgroundColor: finalColors[0] }} aria-hidden="true" />
-            {/* Title pinned to exactly two lines (`min-h-[2lh]` reserves
-                space for short titles; `line-clamp-2` caps long ones).
-                Full text preserved in the native `title` attribute so
-                truncated titles are still readable on hover. */}
             <p
               className="text-hazard-amber font-mono text-sm uppercase tracking-wide font-black min-w-0 line-clamp-2 min-h-[2lh] leading-snug"
               title={log.legacy_infra_class}
@@ -88,28 +64,35 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {log.sanctioned && <SanctionBadge />}
-            {showP0Badge && <P0Badge />}
-            <SeverityBadge severity={log.severity} />
+            <span
+              className="flex items-center justify-center w-5 h-5 rounded bg-hazard-amber/90 text-zinc-950"
+              aria-label={`Severity: ${log.severity}`}
+            >
+              <AlertTriangle size={11} aria-hidden="true" />
+            </span>
+            {showP0Badge && (
+              <span
+                className="flex items-center justify-center w-5 h-5 rounded border border-hazard-amber/90 bg-hazard-amber/10 font-mono text-[8px] font-black text-hazard-amber"
+                aria-label="P0 Priority"
+              >
+                P0
+              </span>
+            )}
+            {log.sanctioned && (
+              <span
+                className="flex items-center justify-center w-5 h-5 rounded bg-molten-orange text-zinc-950"
+                aria-label="Sanctioned"
+              >
+                <ShieldCheck size={11} aria-hidden="true" />
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Summary — the extra top gap (mt-3) separates the clamped
-            two-line title from the summary so the eye registers a
-            clean section break between header and body. */}
         <p className="text-ash-white font-mono text-sm leading-snug mt-3 line-clamp-2">
           {log.incident_feed_summary}
         </p>
 
-        {/* Quote — tertiary emphasis. Slightly dimmer than the summary
-            above so the eye still reads the summary first, but bright
-            enough to be comfortably legible (the prior /25, /45, /55
-            opacity stack was noticeably hard to read). Full text
-            preserved in the native `title` attribute for hover access.
-            Paragraph is pinned to exactly two lines (`min-h-[2lh]`
-            reserves space for short quotes; `line-clamp-2` caps long
-            ones) so every card in the feed has the same vertical
-            footprint regardless of quote length. */}
         <div className="mt-2 flex items-start gap-2 border-l-2 border-hazard-amber/60 pl-2.5">
           <Quote size={12} className="mt-0.5 shrink-0 text-hazard-amber/70" aria-hidden="true" />
           <p
@@ -120,8 +103,6 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
           </p>
         </div>
 
-        {/* Metrics cluster — mirrors the overlay shape so list + detail
-            present the same data hierarchy and visual grammar. */}
         <div
           className="mt-3 flex items-stretch py-3 border-t border-b border-concrete-border"
           data-testid="incident-card-stats-row"
@@ -153,19 +134,9 @@ export const IncidentLogCard: FC<IncidentLogCardProps> = ({
             ))}
           </div>
         </div>
-
-        <div className="mt-2 flex items-center justify-end">
-          <span className="text-dead-gray font-mono text-xs">
-            {formatTimestamp(log.timestamp.toDate())}
-          </span>
-        </div>
       </button>
 
-      {/* Escalate — upper-right, header-aligned via `justify-start pt-3.5`
-          so the icon sits at the same vertical position as the severity
-          badge in the primary content. Full card height provides a touch
-          target well above the 44px minimum. `aria-pressed` communicates
-          the toggle state to assistive technology. */}
+      {/* Escalate column */}
       <button
         onClick={handleEscalate}
         disabled={isToggling}
