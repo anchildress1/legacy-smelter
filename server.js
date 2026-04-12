@@ -281,9 +281,32 @@ async function requireFirebaseAuth(req, res, next) {
     req.authUid = decoded.uid;
     return next();
   } catch (err) {
+    // firebase-admin v13 always calls getUser() when in emulator mode, even
+    // with checkRevoked=false (base-auth.js line 119: `checkRevoked || isEmulator`).
+    // If the Auth emulator isn't reachable from this Express process (e.g.
+    // `make server` runs standalone without `make functions`), the lookup
+    // throws auth/user-not-found. In emulator mode the JWT is unsigned — the
+    // claims were already validated before the user lookup — so it is safe to
+    // decode the payload directly and proceed.
+    if (err?.code === 'auth/user-not-found' && process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+      try {
+        const [, payloadB64] = idToken.split('.');
+        const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+        if (typeof payload.sub === 'string' && payload.sub) {
+          console.warn(
+            '[server][WARN_AUTH_EMULATOR_FALLBACK] Auth emulator user lookup failed; ' +
+            'falling back to decoded JWT claims (uid=%s). Ensure `make functions` is running.',
+            payload.sub,
+          );
+          req.authUid = payload.sub;
+          return next();
+        }
+      } catch { /* fall through to 401 */ }
+    }
+    const code = err?.code ?? 'unknown';
     const msg = err instanceof Error ? err.message : String(err);
     const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
-    console.error('[server][ERR_AUTH_TOKEN_INVALID] ip=%s: %s', clientIp, msg);
+    console.error('[server][ERR_AUTH_TOKEN_INVALID] ip=%s code=%s: %s', clientIp, code, msg);
     return res.status(401).json({ error: 'Invalid or expired ID token.' });
   }
 }
