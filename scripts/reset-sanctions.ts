@@ -5,33 +5,20 @@
  * sanction_count, sanction_rationale, sanction_lease_at, and recomputes
  * impact_score. Targets the named `legacy-smelter` database.
  *
+ * Uses ambient admin credentials / FIREBASE_PROJECT_ID; set env vars
+ * or emulator host before running.
+ *
  * Usage:
  *   FIRESTORE_EMULATOR_HOST=127.0.0.1:9180 npx tsx scripts/reset-sanctions.ts
- *   GOOGLE_APPLICATION_CREDENTIALS=... npx tsx scripts/reset-sanctions.ts --project anchildress1-unstable
+ *   GOOGLE_APPLICATION_CREDENTIALS=... npx tsx scripts/reset-sanctions.ts
  */
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { computeImpactScore } from '../shared/impactScore.js';
 
 const DATABASE_ID = 'legacy-smelter';
-const IMPACT_WEIGHTS = { sanction: 5, escalation: 3, breach: 2 };
-
-function computeImpactScore(data: {
-  sanction_count: number;
-  escalation_count: number;
-  breach_count: number;
-}): number {
-  return (
-    IMPACT_WEIGHTS.sanction * data.sanction_count +
-    IMPACT_WEIGHTS.escalation * data.escalation_count +
-    IMPACT_WEIGHTS.breach * data.breach_count
-  );
-}
 
 async function main() {
-  // Known limitation accepted for v2 (tooling script): `--project` is
-  // documented and passed by Makefile, but this script currently relies on
-  // ambient admin credentials / FIREBASE_PROJECT_ID instead of argv parsing.
-  // For deterministic multi-project targeting, parse argv in a later hardening pass.
   if (getApps().length === 0) initializeApp();
   const db = getFirestore(DATABASE_ID);
 

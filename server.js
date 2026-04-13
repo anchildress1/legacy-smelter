@@ -288,7 +288,8 @@ async function requireFirebaseAuth(req, res, next) {
     // throws auth/user-not-found. In emulator mode the JWT is unsigned — the
     // claims were already validated before the user lookup — so it is safe to
     // decode the payload directly and proceed.
-    if (err?.code === 'auth/user-not-found' && process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+    // Hard-gated: only allow fallback in local dev (no K_SERVICE = not Cloud Run).
+    if (err?.code === 'auth/user-not-found' && process.env.FIREBASE_AUTH_EMULATOR_HOST && !process.env.K_SERVICE) {
       try {
         const [, payloadB64] = idToken.split('.');
         const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());

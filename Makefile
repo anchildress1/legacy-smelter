@@ -45,12 +45,13 @@ deploy:
 	./deploy.sh $(if $(ENV_FILE),--env-file $(ENV_FILE))
 
 # Reset sanction state on all incident_logs so judging re-runs without
-# new uploads. Use PROJECT to target a specific Firebase project.
+# new uploads. Uses ambient Firebase Admin credentials / environment;
+# set FIREBASE_PROJECT_ID or emulator env vars before running.
 # Examples:
-#   make reset-sanctions PROJECT=anchildress1-unstable
+#   make reset-sanctions
 #   FIRESTORE_EMULATOR_HOST=127.0.0.1:9180 make reset-sanctions
 reset-sanctions:
-	npx tsx scripts/reset-sanctions.ts $(if $(PROJECT),--project $(PROJECT))
+	npx tsx scripts/reset-sanctions.ts
 
 # Manually invoke runSanctionBatch without a Firestore trigger.
 # Pair with `make reset-sanctions` for prompt iteration.
