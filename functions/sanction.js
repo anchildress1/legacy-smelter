@@ -325,6 +325,9 @@ export async function sweepStaleLeases({ now = Date.now(), db = getDb() } = {}) 
 
   if (staleSnap.empty) return { recoveredCount: 0 };
 
+  // Known limitation accepted for v2 (toy scope): this is a single batch
+  // and therefore capped by Firestore's 500-write batch limit. If stale
+  // leases ever exceed 500, chunking or BulkWriter is the follow-up.
   const batch = db.batch();
   for (const doc of staleSnap.docs) {
     batch.update(doc.ref, {
@@ -470,6 +473,9 @@ export async function finalizeWinner({ batchDocs, selection, db = getDb() }) {
     );
   }
 
+  // Known limitation accepted for v2 (toy scope): counters are read from
+  // the claim snapshot, not re-fetched at finalize time. In pathological
+  // overlap with user counter updates, impact_score can be briefly stale.
   const breachCount = requireNonNegativeCounter(winnerDoc.data, 'breach_count', winnerDoc.id);
   const escalationCount = requireNonNegativeCounter(
     winnerDoc.data,

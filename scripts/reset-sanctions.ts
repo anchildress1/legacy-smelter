@@ -28,6 +28,10 @@ function computeImpactScore(data: {
 }
 
 async function main() {
+  // Known limitation accepted for v2 (tooling script): `--project` is
+  // documented and passed by Makefile, but this script currently relies on
+  // ambient admin credentials / FIREBASE_PROJECT_ID instead of argv parsing.
+  // For deterministic multi-project targeting, parse argv in a later hardening pass.
   if (getApps().length === 0) initializeApp();
   const db = getFirestore(DATABASE_ID);
 
@@ -43,6 +47,9 @@ async function main() {
 
   console.log(`Found ${snap.size} incident_logs doc(s). Resetting sanction state...`);
 
+  // Known limitation accepted for v2 (tooling script): this uses a single
+  // WriteBatch and therefore assumes <=500 docs. If this grows beyond 500,
+  // chunk batch commits in a follow-up pass.
   const batch = db.batch();
   let count = 0;
 
