@@ -66,20 +66,25 @@ const STUB_LOG: SmeltLog = {
   share_quote: 'test',
   severity: 'CRITICAL',
   anon_handle: 'Test_1',
-  dominant_hex_colors: ['#000000', '#111111', '#222222', '#333333', '#444444'],
-  subject_box: [0, 0, 500, 500],
-  total_pixels: 1000,
-  timestamp: { seconds: 1000, nanoseconds: 0 },
-  image_url: 'https://example.com/img.png',
+  color_1: '#000000',
+  color_2: '#111111',
+  color_3: '#222222',
+  color_4: '#333333',
+  color_5: '#444444',
+  subject_box_ymin: 0,
+  subject_box_xmin: 0,
+  subject_box_ymax: 500,
+  subject_box_xmax: 500,
+  pixel_count: 1000,
+  timestamp: { seconds: 1000, nanoseconds: 0 } as SmeltLog['timestamp'],
+  uid: 'anon-uid',
   breach_count: 0,
   escalation_count: 0,
   sanction_count: 0,
   sanctioned: false,
   sanction_rationale: null,
   impact_score: 0,
-  evaluated: true,
-  sanction_lease_at: null,
-} as SmeltLog;
+};
 
 async function loadHook() {
   return import('./useManifestLogs');
@@ -123,14 +128,15 @@ describe('useManifestLogs', () => {
 
   it('re-subscribes when sort mode changes', async () => {
     const { useManifestLogs } = await loadHook();
+    type ManifestSortMode = Parameters<typeof useManifestLogs>[0];
     const { rerender } = renderHook(
-      ({ mode }) => useManifestLogs(mode),
-      { initialProps: { mode: 'impact' as const } },
+      ({ mode }: { mode: ManifestSortMode }) => useManifestLogs(mode),
+      { initialProps: { mode: 'impact' as ManifestSortMode } },
     );
 
     expect(mockUnsubscribe).not.toHaveBeenCalled();
 
-    rerender({ mode: 'newest' as const });
+    rerender({ mode: 'newest' as ManifestSortMode });
 
     // The previous subscription should have been cleaned up.
     expect(mockUnsubscribe).toHaveBeenCalled();
