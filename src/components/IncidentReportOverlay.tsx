@@ -233,22 +233,12 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
 
           {/* ── HEADER BAR ──
               Label pinned left, action icons pinned right. */}
-          <div className="shrink-0 pl-4 pr-2 py-2.5">
-            {/* Row 1: label + close */}
-            <div className="flex items-center justify-between gap-3">
-              <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
-                Postmortem
-              </h2>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight shrink-0"
-                aria-label="Close report"
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
-            </div>
-            {/* Row 2: share + copy actions */}
-            <div className="flex items-center gap-1.5 sm:gap-1 flex-wrap mt-1.5">
+          <div className="shrink-0 pl-4 pr-2 py-2.5 flex items-center gap-3">
+            <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
+              Postmortem
+            </h2>
+            {/* Share + copy actions — right-aligned, inline with label */}
+            <div className="flex items-center gap-1.5 sm:gap-1 flex-wrap ml-auto">
               {platforms.map(({ label, href }) => {
                 const cfg = SHARE_PLATFORMS[label];
                 return (
@@ -288,6 +278,13 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
                 {copyTextState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
               </button>
             </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight shrink-0"
+              aria-label="Close report"
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
           </div>
 
           {/* Hazard stripe */}
