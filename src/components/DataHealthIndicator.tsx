@@ -1,4 +1,4 @@
-import React, { useId, useState } from 'react';
+import { useId, useState, type FC } from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 interface DataHealthIndicatorProps {
@@ -10,7 +10,7 @@ interface DataHealthIndicatorProps {
 // region. The correct ARIA pattern is `aria-expanded` + `aria-controls`
 // on the toggle and a plain region for the content. `role="dialog"`
 // would lie about the semantics and trip SonarCloud S6819.
-export const DataHealthIndicator: React.FC<DataHealthIndicatorProps> = ({ issues }) => {
+export const DataHealthIndicator: FC<DataHealthIndicatorProps> = ({ issues }) => {
   const [open, setOpen] = useState(false);
   const panelId = useId();
 
@@ -21,7 +21,7 @@ export const DataHealthIndicator: React.FC<DataHealthIndicatorProps> = ({ issues
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex items-center gap-1.5 rounded border border-hazard-amber/40 bg-hazard-amber/10 px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-hazard-amber hover:bg-hazard-amber/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber"
+        className="inline-flex items-center gap-1.5 rounded border border-hazard-amber/40 bg-hazard-amber/10 px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-hazard-amber hover:bg-hazard-amber/15 focus-ring"
         aria-expanded={open}
         aria-controls={panelId}
       >

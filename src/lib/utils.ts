@@ -1,10 +1,4 @@
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
 import type { SmeltLog } from '../types';
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
 
 // Server is us-east1 (America/New_York). Format: 2026.04.05 // 21:19:01 EST
 const _tsFormatter = new Intl.DateTimeFormat('en-US', {

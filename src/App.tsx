@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense, type ChangeEvent } from 'react';
 import { Howl } from 'howler';
 import {
   db,
@@ -20,7 +20,6 @@ import { Camera, Upload, X, Flame, RotateCcw, ArrowRight } from 'lucide-react';
 import { DecommissionIndex } from './components/DecommissionIndex';
 import { SiteFooter } from './components/SiteFooter';
 import { DataHealthIndicator } from './components/DataHealthIndicator';
-import { SeverityBadge } from './components/SeverityBadge';
 import { shouldAutoOpenPostmortem } from './lib/postmortemAutoOpen';
 import { parseSmeltLog } from './lib/smeltLogSchema';
 import {
@@ -330,7 +329,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
@@ -430,6 +429,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
   return (
     <div className="min-h-screen flex flex-col bg-concrete text-ash-white font-sans">
       <header className="border-b border-concrete-border bg-concrete-mid sticky top-0 z-50">
+        <a href="#main-content" className="skip-link">Skip to main content</a>
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-x-3 sm:gap-x-4 px-4 py-4 sm:px-6">
           <div className="min-w-0 flex-1">
             <h1 className="text-base sm:text-2xl font-black font-mono tracking-tighter uppercase whitespace-nowrap">
@@ -445,7 +445,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
               data-testid="site-tagline"
               className="flex items-center gap-1.5 mt-0.5 min-w-0"
             >
-              <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse shrink-0" />
+              <div className="w-2 h-2 rounded-full bg-coolant-green animate-pulse shrink-0" aria-hidden="true" />
               <p className="text-stone-gray font-mono text-[9px] sm:text-[10px] uppercase tracking-wide sm:tracking-widest truncate min-w-0">
                 If a bug exists, apply Hotfix.
               </p>
@@ -454,20 +454,22 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
             <DataHealthIndicator issues={activeIssues} />
             <DecommissionIndex totalPixels={globalStats.total_pixels_melted} />
-            <button onClick={onNavigateManifest} className="nav-btn" aria-label="All incidents">
-              {/* On mobile the label is dropped entirely — "ALL" alone
-                  reads as nonsense, and the tagline + Decommission Index
-                  already eat the available header width. The arrow icon
-                  carries the affordance and the aria-label keeps screen
-                  readers on the full name. */}
-              <span className="hidden sm:inline">ALL INCIDENTS</span>
-              <ArrowRight size={14} />
-            </button>
+            <nav aria-label="Site">
+              <button onClick={onNavigateManifest} className="nav-btn" aria-label="All incidents">
+                {/* On mobile the label is dropped entirely — "ALL" alone
+                    reads as nonsense, and the tagline + Decommission Index
+                    already eat the available header width. The arrow icon
+                    carries the affordance and the aria-label keeps screen
+                    readers on the full name. */}
+                <span className="hidden sm:inline">ALL INCIDENTS</span>
+                <ArrowRight size={14} />
+              </button>
+            </nav>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-6 sm:px-6 max-w-7xl mx-auto w-full">
+      <main id="main-content" className="flex-1 px-4 py-6 sm:px-6 max-w-7xl mx-auto w-full">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
           {/* Left Column: Smelter Area */}
@@ -603,26 +605,16 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
               </div>
             )}
 
-            {/* Compact result summary — shown after smelt completes */}
-            {isComplete && analysis && (
-              <div className="font-mono text-[10px] uppercase tracking-widest border border-concrete-border bg-concrete-mid rounded-lg px-4 py-3 flex items-center gap-3 min-w-0">
-                <SeverityBadge severity={analysis.severity} />
-                <span className="text-stone-gray truncate min-w-0">{analysis.ogHeadline}</span>
-              </div>
-            )}
           </div>
 
           {/* Right Column: Incident Queue */}
           <div className="lg:col-span-5">
             <div>
-              <div className="mb-3">
+              <div className="mb-4">
                 <h2 className="text-hazard-amber font-mono text-xs lg:text-sm uppercase tracking-wide lg:tracking-widest font-bold">
                   P0 INCIDENT QUEUE
                 </h2>
-                <p className="mt-1 text-stone-gray font-mono text-[9px] uppercase tracking-[0.18em]">
-                  Ranked By Impact
-                </p>
-                <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" />
+                <div className="hazard-stripe h-1 w-full mt-2 rounded-sm" aria-hidden="true" />
               </div>
               <ul className="space-y-4">
                 {recentLogs.map((log) => (

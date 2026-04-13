@@ -206,6 +206,12 @@ describe('POST /api/analyze against Firestore emulator', () => {
         impact_score: 0,
         sanctioned: false,
         sanction_rationale: null,
+        // The emulator-backed counterpart to the mock suite's assertion:
+        // the persisted doc must land with `evaluated=false` +
+        // `sanction_lease_at=null` so the Cloud Function trigger can find
+        // it as a judging candidate.
+        evaluated: false,
+        sanction_lease_at: null,
       }),
     );
 

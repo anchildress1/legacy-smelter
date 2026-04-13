@@ -64,12 +64,23 @@ src/
 │   ├── SmelterCanvas.tsx            PixiJS dragon animation
 │   ├── IncidentReportOverlay.tsx    Postmortem modal + share
 │   ├── IncidentManifest.tsx         Global incident manifest page
+│   ├── ManifestIncidentCard.tsx     Manifest-specific incident card
 │   ├── IncidentLogCard.tsx          Shared incident log card
 │   ├── DataHealthIndicator.tsx      Data integrity indicator
 │   ├── DecommissionIndex.tsx        Cumulative pixel decommission counter
+│   ├── HeaderPill.tsx               Header pill display component
+│   ├── StatItem.tsx                 Shared stat display component
+│   ├── SeverityBadge.tsx            Severity tier badge
+│   ├── SanctionBadge.tsx            Sanction indicator badge
+│   ├── P0Badge.tsx                  P0 priority badge
 │   └── SiteFooter.tsx               Site footer
 ├── hooks/
-│   └── useEscalation.ts             Escalation vote state
+│   ├── useEscalation.ts             Escalation vote state
+│   ├── useGlobalStats.ts            Global stats subscription
+│   ├── useLiveIncidentCounts.ts     Live incident count subscription
+│   ├── useManifestLogs.ts           Manifest feed pagination + sorting
+│   ├── useRecentIncidentLogs.ts     Top-3 incident subscription for P0 badge
+│   └── useModalDialog.ts            Native <dialog> modal control
 ├── services/
 │   ├── geminiService.ts             Gemini prompt, schema, analysis
 │   ├── escalationService.ts         Escalation vote writes
@@ -80,31 +91,106 @@ src/
     ├── smeltLogSchema.ts            Strict SmeltLog schema + parser
     ├── animationWindow.ts           Animation timing utilities
     ├── storageJson.ts               LocalStorage helpers
-    └── typeGuards.ts                Runtime type guards
+    ├── typeGuards.ts                Runtime type guards
+    ├── postmortemAutoOpen.ts         Auto-open postmortem overlay logic
+    ├── impactGlow.ts                Impact-score-based glow tiers
+    └── incidentReportModel.ts       Incident report view-model builder
 shared/
 ├── impactScore.js                   Impact score formula (IMPACT_WEIGHTS, computeImpactScore)
 ├── colors.js                        Fallback color palette
 └── admin-init.js                    Firebase Admin SDK initialization
 scripts/
-├── backfill-voting-fields.ts        Voting fields backfill migration
+├── trigger-sanction.ts              Manually trigger a sanction batch
+├── reset-sanctions.ts               Reset sanction state on all docs
 └── firestore.rules.integration.test.ts  Firestore rules integration tests
 docs/
-├── classification-prompt.md         AI generation constraints and field spec
 ├── ux-copy.md                       Voice, persona, and copy rules
 ├── design-decisions.md              Deliberate spec deviations
-├── sanction-rebuild-prompt.md       Sanction system rebuild build brief
+├── sanction-system-design.md        Sanction pipeline architecture
+├── sanction-judging-patch.md        Sanction judging rebuild brief
+├── sanction-test-plan.md            Sanction test scenarios
+├── sanction-deploy-checklist.md     Sanction deploy runbook
 └── archive/
+    ├── classification-prompt.md     Original AI generation prompt (superseded)
     ├── judging-prompt.md            Original sanction judging prompt (superseded)
+    ├── sanction-rebuild-prompt.md   Original sanction rebuild brief (superseded)
     ├── gemini-implementation-and-share-spec.md  Original Gemini spec (superseded)
     └── original-ai-studio-prompt.md             Original AI Studio scaffold prompt
 ```
 
 ## Docs
 
-- [`docs/classification-prompt.md`](docs/classification-prompt.md) — AI prompt, severity tiers, field constraints
 - [`docs/ux-copy.md`](docs/ux-copy.md) — Voice, persona rules, writing constraints for UI and AI copy
 - [`docs/design-decisions.md`](docs/design-decisions.md) — Deliberate deviations from the original spec and their rationale
-- [`docs/sanction-rebuild-prompt.md`](docs/sanction-rebuild-prompt.md) — Sanction system rebuild build brief
+- [`docs/sanction-system-design.md`](docs/sanction-system-design.md) — Sanction pipeline architecture and data model
+- [`docs/sanction-judging-patch.md`](docs/sanction-judging-patch.md) — Sanction judging rebuild brief
+- [`docs/sanction-test-plan.md`](docs/sanction-test-plan.md) — Sanction test scenarios and coverage plan
+- [`docs/sanction-deploy-checklist.md`](docs/sanction-deploy-checklist.md) — Sanction deploy runbook
+
+## Operations
+
+### Deploy
+
+```bash
+# Cloud Run (Express server + client)
+make deploy                         # uses .env, deploys to gcloud default project
+./deploy.sh --env-file .env.staging # specific env file
+
+# Firebase functions only
+firebase deploy --only functions --project anchildress1-unstable
+```
+
+### Sanction judging
+
+The `onIncidentCreated` Cloud Function fires on every `incident_logs` document create. It batches 5 unevaluated incidents, asks Gemini to pick one winner, and commits the result. Fewer than 5 unevaluated → no-op.
+
+**Manually trigger a sanction batch** (without creating a new incident):
+
+```bash
+curl -s -X POST "https://onincidentcreated-u36ut3r63a-ue.a.run.app" \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token --project=anchildress1-unstable)" \
+  -H "Content-Type: application/json" \
+  -H "ce-id: manual-$(date +%s)" \
+  -H "ce-source: //firestore.googleapis.com/projects/anchildress1-unstable/databases/legacy-smelter" \
+  -H "ce-type: google.cloud.firestore.document.v1.created" \
+  -H "ce-specversion: 1.0" \
+  -H "ce-datacontenttype: application/json" \
+  -H "ce-time: $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  -H "ce-subject: documents/incident_logs/manual-trigger" \
+  -d '{"value":{"name":"projects/anchildress1-unstable/databases/legacy-smelter/documents/incident_logs/manual-trigger","fields":{"evaluated":{"booleanValue":false}}}}'
+```
+
+Returns `204` on success. The function independently queries Firestore for unevaluated docs — the event payload is just a gate.
+
+**Check function logs:**
+
+```bash
+gcloud functions logs read onIncidentCreated \
+  --gen2 --region=us-east1 --project=anchildress1-unstable --limit=15
+```
+
+**Key fields per incident doc:**
+
+| Field | Type | Written by | Purpose |
+|-------|------|-----------|---------|
+| `evaluated` | boolean | server.js (false) → sanction.js (true) | Claim flag — `false` = eligible for judging |
+| `sanction_lease_at` | timestamp/null | sanction.js | Claim lease; swept after 5 min TTL |
+| `sanctioned` | boolean | sanction.js | Winner flag |
+| `sanction_rationale` | string/null | sanction.js | Gemini's one-sentence justification |
+| `sanction_count` | number | sanction.js | 0 or 1, used in impact_score formula |
+| `impact_score` | number | sanction.js | `5×sanction + 3×escalation + 2×breach` |
+
+### Emulator (local dev)
+
+Three terminals:
+
+```bash
+make functions  # Firebase emulator: auth:9099, firestore:9180, functions:5001
+make server     # Express API on :8080
+make dev        # Vite on :3000 (proxies /api → :8080)
+```
+
+Requires `VITE_USE_FIREBASE_EMULATOR="true"` and `FIRESTORE_EMULATOR_HOST="127.0.0.1:9180"` in `.env`. The server auto-pairs `FIREBASE_AUTH_EMULATOR_HOST` from the Firestore host.
 
 ## License
 

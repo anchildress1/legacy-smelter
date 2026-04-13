@@ -38,61 +38,66 @@ export function buildIncidentReportMarkdown(
     breach_count: liveBreachCount,
   };
   const impact = computeImpact(liveCounts);
+
+  // ── Section 1: Incident Overview ──
   const lines: string[] = [
     `# ${report.legacyInfraClass}`,
     '',
-    report.incidentFeedSummary,
+    `**${report.severity}** · Impact ${impact} · Sanctions ${liveSanctionCount} · Escalations ${liveEscalationCount} · Breaches ${liveBreachCount}`,
     '',
-    `**Diagnosis:** ${report.diagnosis}`,
+    report.incidentFeedSummary,
   ];
 
   if (report.shareQuote) {
-    lines.push('', `> ${report.shareQuote}`);
+    lines.push('', `> "${report.shareQuote}"`);
   }
 
+  // ── Section 2: Recommended Action ──
   lines.push(
     '',
-    `**Severity:** ${report.severity}`,
-    `**Impact:** ${impact}`,
-    `**Sanctions:** ${liveSanctionCount}`,
-    `**Escalations:** ${liveEscalationCount}`,
-    `**Containment Breaches:** ${liveBreachCount}`,
+    '## Recommended Action',
+    '',
+    report.disposition,
   );
 
-  if (liveTimestamp) {
-    lines.push(`**Filed:** ${formatTimestamp(liveTimestamp)}`);
-  }
-
-  const telemetry = [
-    report.failureOrigin ? `**Failure Origin:** ${report.failureOrigin}` : null,
+  // ── Section 3: Diagnostics ──
+  const diagnostics = [
     report.primaryContamination
       ? `**Primary Contaminant:** ${report.primaryContamination}`
       : null,
     report.contributingFactor
       ? `**Contributing Factor:** ${report.contributingFactor}`
       : null,
+    report.diagnosis ? `**Diagnosis:** ${report.diagnosis}` : null,
+    report.failureOrigin ? `**Failure Origin:** ${report.failureOrigin}` : null,
   ].filter((s): s is string => s !== null);
 
-  if (telemetry.length > 0) {
-    lines.push('', '---', '', '## Telemetry', '', ...telemetry);
+  if (diagnostics.length > 0) {
+    lines.push('', '---', '', '## Diagnostics', '', ...diagnostics);
   }
 
+  // ── Section 4: Archive ──
   lines.push(
     '',
     '---',
     '',
-    '## Disposition',
-    '',
-    report.disposition,
-    '',
     '## Archive Note',
     '',
     report.archiveNote,
-    '',
-    '---',
-    '',
-    `*Filed by ${report.anonHandle} · Chromatic Profile: ${report.chromaticProfile}*`,
   );
+
+  if (liveSanctionCount > 0 && report.sanctionRationale) {
+    lines.push(
+      '',
+      `**Sanction Rationale:** ${report.sanctionRationale}`,
+    );
+  }
+
+  // ── Footer ──
+  const footerParts = [`Filed by ${report.anonHandle}`];
+  if (liveTimestamp) footerParts.push(formatTimestamp(liveTimestamp));
+  footerParts.push(`Chromatic profile: ${report.chromaticProfile}`);
+  lines.push('', '---', '', `*${footerParts.join(' · ')}*`);
 
   return lines.join('\n');
 }

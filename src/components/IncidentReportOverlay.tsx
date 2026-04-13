@@ -1,13 +1,17 @@
-import React, { useEffect, useRef, useState, useId } from 'react';
+import { useEffect, useRef, useState, useId, type FC, type ReactNode } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { computeImpact, SmeltLog } from '../types';
 import { formatTimestamp, buildIncidentUrl } from '../lib/utils';
 import { X, Check, Copy, Link2, ShieldCheck, Siren } from 'lucide-react';
+import { StatItem } from './StatItem';
+import { SanctionBadge } from './SanctionBadge';
 import { SeverityBadge } from './SeverityBadge';
+import { P0Badge } from './P0Badge';
+import { HEADER_PILL_BASE } from './HeaderPill';
 import {
   IMPACT_GLOW_BASE,
   IMPACT_GLOW_ESCALATED,
-  IMPACT_GLOW_FILTER_ESCALATED,
+  IMPACT_GLOW_FILTER_ESCALATED_BUTTON,
 } from '../lib/impactGlow';
 import { recordBreach } from '../services/breachService';
 import { useEscalation } from '../hooks/useEscalation';
@@ -37,7 +41,7 @@ interface OverlayProps {
   showP0Badge?: boolean;
 }
 
-const SHARE_PLATFORMS: Record<string, { name: string; icon: React.ReactNode }> = {
+const SHARE_PLATFORMS: Record<string, { name: string; icon: ReactNode }> = {
   twitter: {
     name: 'X',
     icon: (
@@ -86,7 +90,7 @@ function assertOverlayInputs(
   }
 }
 
-export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose, showP0Badge = false }) => {
+export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLinks, incidentId, onClose, showP0Badge = false }) => {
   assertOverlayInputs(analysis, log, incidentId);
   const report = normalizeIncidentReport(analysis, log);
   const dialogRef = useModalDialog(onClose);
@@ -206,16 +210,17 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
       className="bg-transparent p-0 m-0 max-w-none max-h-none w-screen h-[100dvh] backdrop:bg-black/70 backdrop:backdrop-blur-[2px] open:flex items-end sm:items-center justify-center sm:p-4"
     >
       <div
-        className="bg-[#1a1a1a] w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
+        className="bg-concrete w-full sm:max-w-2xl sm:rounded-lg shadow-2xl h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-row outline-none"
       >
-        {/* Left chromatic strip. Inline filter avoids Tailwind v4
-            CSS-variable composition issues with overflow-hidden + rounded
-            contexts. Stronger cut (0.6/0.85) than the card strip because
-            the modal is larger on screen and needs a deeper reduction
-            to stay subordinate to the title hierarchy. */}
+        {/* Left chromatic strip. Inline filter — Tailwind v4 silently
+            swallows class-based filter utilities when composed with
+            overflow-hidden + rounded on the same element, so classes
+            will not work here. `brightness(0.9)` is a feather-light
+            dim that keeps hues vibrant and true (no saturation drop,
+            no gray cast) while just knocking the blinding edge off. */}
         <div
           className="flex w-2 shrink-0 flex-col sm:rounded-l-lg overflow-hidden"
-          style={{ filter: 'saturate(0.6) brightness(0.85)' }}
+          style={{ filter: 'brightness(0.9)' }}
           aria-hidden="true"
         >
           {report.dominantColors.map((color) => (
@@ -226,12 +231,14 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
         {/* Main content column */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 
-          {/* ── HEADER BAR ── */}
-          <div className="shrink-0 flex items-center justify-between gap-2 pl-5 sm:pl-8 pr-2 py-2.5">
+          {/* ── HEADER BAR ──
+              Label pinned left, action icons pinned right. */}
+          <div className="shrink-0 pl-4 pr-2 py-2.5 flex items-center gap-3">
             <h2 id={headingId} className="text-stone-gray font-mono text-[11px] uppercase tracking-widest shrink-0">
               Postmortem
             </h2>
-            <div className="flex items-center gap-1 shrink-0">
+            {/* Share + copy actions — right-aligned, inline with label */}
+            <div className="flex items-center gap-1.5 sm:gap-1 flex-wrap ml-auto">
               {platforms.map(({ label, href }) => {
                 const cfg = SHARE_PLATFORMS[label];
                 return (
@@ -241,7 +248,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={recordBreachAsync}
-                    className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                    className="w-8 h-8 sm:w-6 sm:h-6 shrink-0 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                     aria-label={`Post to ${cfg.name}`}
                     title={cfg.name}
                   >
@@ -249,10 +256,13 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                   </a>
                 );
               })}
+              {platforms.length > 0 && (
+                <div className="w-px h-5 sm:h-4 bg-concrete-border" aria-hidden="true" />
+              )}
               {incidentUrl && (
                 <button
                   onClick={handleCopyLink}
-                  className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                  className="w-8 h-8 sm:w-6 sm:h-6 shrink-0 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                   aria-label={copyLinkState === 'copied' ? 'Link copied' : 'Copy link'}
                   title={copyLinkState === 'copied' ? 'Copied!' : 'Copy link'}
                 >
@@ -261,25 +271,24 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
               )}
               <button
                 onClick={handleCopyText}
-                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
+                className="w-8 h-8 sm:w-6 sm:h-6 shrink-0 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight"
                 aria-label={copyTextState === 'copied' ? 'Brief copied' : 'Copy brief'}
                 title={copyTextState === 'copied' ? 'Copied!' : 'Copy brief'}
               >
                 {copyTextState === 'copied' ? <Check size={12} /> : <Copy size={12} />}
               </button>
-              <div className="w-px h-4 bg-concrete-border mx-0.5" aria-hidden="true" />
-              <button
-                onClick={onClose}
-                className="w-6 h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-hazard-amber"
-                aria-label="Close report"
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
             </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 sm:w-6 sm:h-6 flex items-center justify-center rounded text-stone-gray hover:text-ash-white transition-colors focus-ring-tight shrink-0"
+              aria-label="Close report"
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
           </div>
 
           {/* Hazard stripe */}
-          <div className="hazard-stripe h-1 w-full shrink-0" />
+          <div className="hazard-stripe h-1 w-full shrink-0" aria-hidden="true" />
 
           {/* ── SCROLLABLE BODY ── */}
           <div className="flex-1 overflow-y-auto">
@@ -294,48 +303,36 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                   not feel crammed. */}
               <section aria-label="Incident overview" className="space-y-6">
 
-                {/* Title row: title (left) + severity + escalate (right) */}
+                {/* Title + badge cluster. On mobile, badges wrap below
+                    the title instead of fighting for horizontal space. */}
                 <div>
-                  <div className="flex justify-between items-start gap-3">
-                    <h3 className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
-                      {report.legacyInfraClass}
-                    </h3>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {showP0Badge && (
-                        <span className="inline-flex items-center rounded border border-hazard-amber/40 bg-hazard-amber/10 px-1.5 py-0.5 text-[9px] font-mono font-black uppercase tracking-[0.15em] text-hazard-amber">
-                          P0
-                        </span>
-                      )}
-                      <SeverityBadge severity={report.severity} />
-                      {incidentId && (
-                        <>
-                          <div className="w-px h-4 bg-concrete-border" aria-hidden="true" />
-                          <button
-                            onClick={handleEscalate}
-                            disabled={isTogglingEscalation}
-                            className={`inline-flex items-center gap-1 rounded border px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hazard-amber ${
-                              escalated
-                                ? `border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber ${IMPACT_GLOW_FILTER_ESCALATED}`
-                                : 'border-[#777] text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
-                            } ${isTogglingEscalation ? 'opacity-50' : ''}`}
-                            aria-label={escalated ? 'Remove escalation' : 'Escalate'}
-                            aria-pressed={escalated}
-                          >
-                            <Siren size={10} aria-hidden="true" />
-                            {escalated ? 'Armed' : 'Escalate'}
-                          </button>
-                        </>
-                      )}
-                    </div>
+                  <h3 className="text-hazard-amber font-mono text-base sm:text-lg uppercase tracking-wide font-black leading-tight">
+                    {report.legacyInfraClass}
+                  </h3>
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <SeverityBadge severity={report.severity} />
+                    {showP0Badge && <P0Badge />}
+                    {counts.sanction > 0 && <SanctionBadge />}
+                    {incidentId && (
+                      <>
+                        <div className="w-px h-4 bg-concrete-border" aria-hidden="true" />
+                        <button
+                          onClick={handleEscalate}
+                          disabled={isTogglingEscalation}
+                          className={`${HEADER_PILL_BASE} transition-all focus-ring ${
+                            escalated
+                              ? `border-hazard-amber/70 bg-hazard-amber/15 text-hazard-amber ${IMPACT_GLOW_FILTER_ESCALATED_BUTTON}`
+                              : 'border-stone-gray text-ash-white/80 hover:text-hazard-amber hover:border-hazard-amber/70 hover:bg-hazard-amber/5'
+                          } ${isTogglingEscalation ? 'opacity-50' : ''}`}
+                          aria-label={escalated ? 'Remove escalation' : 'Escalate'}
+                          aria-pressed={escalated}
+                        >
+                          <Siren size={10} aria-hidden="true" />
+                          {escalated ? 'Triggered' : 'Escalate'}
+                        </button>
+                      </>
+                    )}
                   </div>
-
-                  {/* Sanction badge — beneath title row */}
-                  {counts.sanction > 0 && (
-                    <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono text-zinc-950 bg-hazard-amber/90 px-1.5 py-0.5 rounded uppercase font-bold">
-                      <ShieldCheck size={9} aria-hidden="true" />
-                      Sanctioned
-                    </span>
-                  )}
 
                   {/* Escalation / breach errors — inline under the action that produced them.
                       The raw error.message is rendered verbatim so a future refactor that wraps
@@ -369,8 +366,8 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     adds a touch of vertical breathing inside the
                     border frame so the italicized pull-quote feels
                     distinct from the surrounding text blocks. */}
-                <blockquote className="border-l-2 border-hazard-amber/60 pl-4 py-1">
-                  <p className="text-hazard-amber/75 font-mono text-sm italic leading-snug">
+                <blockquote className="border-l-2 border-hazard-amber/75 pl-4 py-1">
+                  <p className="text-hazard-amber/90 font-mono text-sm italic leading-snug">
                     "{report.shareQuote}"
                   </p>
                 </blockquote>
@@ -389,7 +386,7 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     amber palette and signal that it is the lead metric.
                     When `escalated` is true, the glow intensifies and
                     the number's contrast steps up a notch — a quiet
-                    visual echo of the ARMED escalate button above. */}
+                    visual echo of the TRIGGERED escalate button above. */}
                 <div
                   className="flex items-stretch py-4 border-t border-b border-concrete-border"
                   data-testid="incident-stats-row"
@@ -408,16 +405,13 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                     </div>
                   </div>
                   <div className="w-px self-stretch bg-concrete-border" aria-hidden="true" />
-                  <div className="flex flex-1 items-baseline justify-around">
+                  <div className="flex flex-1 items-center justify-around">
                     {[
                       { value: counts.sanction, label: 'Sanctions' },
                       { value: counts.escalation, label: 'Escalations' },
                       { value: counts.breach, label: 'Breaches' },
                     ].map(({ value, label }) => (
-                      <div key={label} className="text-center">
-                        <div className="text-ash-white font-mono text-xl sm:text-2xl font-black leading-none">{value}</div>
-                        <div className="mt-1 text-[9px] font-mono uppercase tracking-[0.15em] text-ash-white/60">{label}</div>
-                      </div>
+                      <StatItem key={label} value={value} label={label} variant="stacked" />
                     ))}
                   </div>
                 </div>
@@ -462,6 +456,26 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                 </dl>
               </section>
 
+              {/* ═══ SANCTION CALLOUT ═══
+                  Visually distinct from the diagnostic/archive sections.
+                  Sanctions are an achievement — the one incident out of
+                  five that Gemini picked as the funniest. The callout
+                  uses molten-orange branding to match the SanctionBadge
+                  and stands apart from the neutral gray layout. */}
+              {counts.sanction > 0 && report.sanctionRationale && (
+                <div className="mt-8 rounded-lg border border-molten-orange/30 bg-molten-orange/5 px-5 py-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <ShieldCheck size={14} className="text-molten-orange" aria-hidden="true" />
+                    <h4 className="text-molten-orange font-mono text-[10px] uppercase tracking-widest font-bold">
+                      Sanctioned
+                    </h4>
+                  </div>
+                  <p className="text-ash-white font-mono text-sm italic leading-relaxed">
+                    {report.sanctionRationale}
+                  </p>
+                </div>
+              )}
+
               {/* ═══ SECTION 4 — ARCHIVE ═══
                   Lowest priority. Always rendered in full. */}
               <section aria-label="Archive" className="mt-8 border-t border-concrete-border/50 pt-6 space-y-4">
@@ -476,22 +490,11 @@ export const IncidentReportOverlay: React.FC<OverlayProps> = ({ analysis, log, s
                   </p>
                 </div>
 
-                {/* Sanction rationale */}
-                {counts.sanction > 0 && report.sanctionRationale && (
-                  <div className="border-t border-hazard-amber/20 pt-4">
-                    <h4 className="text-hazard-amber font-mono text-[10px] uppercase tracking-[0.15em] flex items-center gap-1.5">
-                      <ShieldCheck size={10} aria-hidden="true" />
-                      Sanction Rationale
-                    </h4>
-                    <p className="mt-1.5 text-hazard-amber/80 font-mono text-sm leading-relaxed italic">{report.sanctionRationale}</p>
-                  </div>
-                )}
-
                 {/* Case footer */}
                 <div className="border-t border-concrete-border/40 pt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-xs text-stone-gray">
                   <span>Filed by <span className="text-hazard-amber font-bold">{report.anonHandle}</span></span>
                   {counts.timestamp && <span>{formatTimestamp(counts.timestamp)}</span>}
-                  <span>{report.chromaticProfile}</span>
+                  <span>Chromatic profile: {report.chromaticProfile}</span>
                 </div>
               </section>
 

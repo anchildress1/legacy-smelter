@@ -1,11 +1,57 @@
 node_modules/
 dist/
 .git/
+
+# Environment and secrets
 .env
 .env.local
 .env.*.local
+.vite.env
+.secret.local
+
+# AI/IDE agent directories
+.agents/
+.claude/
+.gemini/
+.verdent/
+.playwright-mcp/
+
+# Documentation and design (not needed at runtime or build time)
+docs/
+*.md
+LICENSE
+
+# Test infrastructure
+scripts/
+**/*.test.ts
+**/*.test.tsx
+src/test/
+
+# Vitest configs (only the main vite.config.ts is needed for build)
+vitest.*.config.ts
+
+# Firebase emulator data and rules tests
+.emulator-data/
+firestore-debug.log
+firestore.rules
+firestore.indexes.json
+firebase.json
+
+# Build/CI config not needed inside the image
+.github/
+cloudbuild.yaml
+deploy.sh
+Makefile
+.oxlintrc.json
+.nvmrc
+.release-please-manifest.json
+release-please-config.json
+metadata.json
+
+# Functions (deployed separately to Cloud Functions)
+functions/
+
+# OS junk
+.DS_Store
 *.log
 *.tmp
-.DS_Store
-
-.vite.env
