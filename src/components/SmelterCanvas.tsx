@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, forwardRef, useImperativeHandle, type MutableRefObject } from 'react';
 import * as PIXI from 'pixi.js';
 import { getFiveDistinctColors } from '../lib/utils';
 import { advanceAnimationWindow } from '../lib/animationWindow';
@@ -93,6 +93,22 @@ const PUDDLE_FRAG = `
     }
 `;
 
+/**
+ * Typed accessor for the melt filter's `meltUniforms` resource. PixiJS v8
+ * does not expose a typed view of custom shader uniform groups — the runtime
+ * object lives under `filter.resources.meltUniforms.uniforms` but the type
+ * declaration is `Record<string, unknown>`. This cast stays in one place so
+ * the rest of the code can treat the uniforms as a concrete shape.
+ */
+interface MeltUniforms {
+  uMeltAmount: number;
+  uTime: number;
+}
+function getMeltUniforms(filter: PIXI.Filter): MeltUniforms {
+  const resources = filter.resources as { meltUniforms: { uniforms: MeltUniforms } };
+  return resources.meltUniforms.uniforms;
+}
+
 const DRAGON_TEX_H = 672;     // native pixel height of dragon sprite frames
 const ANIM_SPEED = 0.2;
 const FLY_SPEED = 0.005;
@@ -168,6 +184,11 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
     const readyResolveRef = useRef<() => void>(undefined);
     const readyRejectRef = useRef<(err: unknown) => void>(undefined);
     const readyPromiseRef = useRef<Promise<void>>(new Promise(() => {}));
+    const reducedMotionRef = useRef(
+      globalThis.window !== undefined &&
+      typeof globalThis.matchMedia === 'function' &&
+      globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    );
 
     useEffect(() => {
       cbRef.current = { onComplete, onFlyInStart, onFireStart, onRenderFailure };
@@ -201,7 +222,12 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         await readyPromiseRef.current;
         const state = ps.current!;
 
-        // Destroy old filters before creating new ones (GPU memory)
+        // Detach old filters from sprites before destroying them — the
+        // ticker is still running during the image load await below, and
+        // rendering a sprite with a destroyed filter crashes FilterSystem
+        // ("Cannot set properties of null").
+        if (spriteRef.current) spriteRef.current.filters = [];
+        state.puddle.filters = [];
         if (puddleFilterRef.current) { puddleFilterRef.current.destroy(); puddleFilterRef.current = null; }
         if (meltFilterRef.current) { meltFilterRef.current.destroy(); meltFilterRef.current = null; }
 
@@ -276,14 +302,33 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         // Image behind puddle and dragon
         state.app.stage.addChildAt(sprite, 0);
 
+        if (reducedMotionRef.current) {
+          // Skip the full fly-in → melt → settle sequence. Fire all
+          // callbacks synchronously so the parent state machine lands
+          // on "complete" without any animation frames.
+          sprite.visible = false;
+          cbRef.current.onFlyInStart?.();
+          cbRef.current.onFireStart?.();
+          phaseRef.current = 'complete';
+          cbRef.current.onComplete();
+          return;
+        }
+
         beginSequence();
       },
 
       replay: () => {
+        if (reducedMotionRef.current) {
+          cbRef.current.onFlyInStart?.();
+          cbRef.current.onFireStart?.();
+          phaseRef.current = 'complete';
+          cbRef.current.onComplete();
+          return;
+        }
         // Reset melt filter uniforms
         if (meltFilterRef.current) {
           try {
-            const u = (meltFilterRef.current.resources as any).meltUniforms.uniforms;
+            const u = getMeltUniforms(meltFilterRef.current);
             u.uMeltAmount = 0;
             u.uTime = 0;
           } catch (err) {
@@ -353,8 +398,12 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
         dragon.animationSpeed = ANIM_SPEED;
         dragon.anchor.set(0.5);
         dragon.visible = false;
-        dragon.loop = true;
-        dragon.play();
+        dragon.loop = !reducedMotionRef.current;
+        if (reducedMotionRef.current) {
+          dragon.gotoAndStop(0);
+        } else {
+          dragon.play();
+        }
 
         // Z-order: puddle(1) → dragon(2). Image sprite inserted at index 0 in loadAndSmelt, placing it behind both.
         app.stage.addChild(puddle);
@@ -456,13 +505,13 @@ interface StepContext {
   dragon: PIXI.AnimatedSprite;
   puddle: PIXI.AnimatedSprite;
   textures: PixiState['textures'];
-  spriteRef: React.MutableRefObject<PIXI.Sprite | null>;
-  meltFilterRef: React.MutableRefObject<PIXI.Filter | null>;
-  puddleFilterRef: React.MutableRefObject<PIXI.Filter | null>;
-  phaseRef: React.MutableRefObject<AnimPhase>;
-  flyProgressRef: React.MutableRefObject<number>;
-  meltProgressRef: React.MutableRefObject<number>;
-  settleProgressRef: React.MutableRefObject<number>;
+  spriteRef: MutableRefObject<PIXI.Sprite | null>;
+  meltFilterRef: MutableRefObject<PIXI.Filter | null>;
+  puddleFilterRef: MutableRefObject<PIXI.Filter | null>;
+  phaseRef: MutableRefObject<AnimPhase>;
+  flyProgressRef: MutableRefObject<number>;
+  meltProgressRef: MutableRefObject<number>;
+  settleProgressRef: MutableRefObject<number>;
   callbacks: SmelterCanvasProps & { onRenderFailure?: (err: Error) => void };
   setDragonTex: (tex: PIXI.Texture[], loop: boolean) => void;
 }
@@ -500,7 +549,7 @@ function stepLanding(ctx: StepContext, dragonRestX: number, dragonY: number, bas
 }
 
 function advanceMeltShader(meltFilter: PIXI.Filter, mp: number, deltaTime: number): void {
-  const u = (meltFilter.resources as any).meltUniforms.uniforms;
+  const u = getMeltUniforms(meltFilter);
   u.uMeltAmount = mp;
   u.uTime += 0.005 * deltaTime;
 }

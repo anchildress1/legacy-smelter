@@ -2,7 +2,7 @@
 
 ## invariants
 
-- `impact_score = 5*sanction_count + 3*escalation_count + 2*breach_count`. Stored on every `incident_logs` doc. Required by `orderBy('impact_score','desc')` in `src/App.tsx` and `src/components/IncidentManifest.tsx`, backed by composite index `(impact_score DESC, timestamp DESC)` in `firestore.indexes.json`. Firestore has no expression indexes — removing the field breaks both feeds. Do not remove without also changing the sort key in those two queries and deleting the index.
+- `impact_score = 5*sanction_count + 3*escalation_count + 2*breach_count`. Stored on every `incident_logs` doc. Required by `orderBy('impact_score','desc')` in `src/hooks/useRecentIncidentLogs.ts` and `src/hooks/useManifestLogs.ts`, backed by composite index `(impact_score DESC, timestamp DESC)` in `firestore.indexes.json`. Firestore has no expression indexes — removing the field breaks both feeds. Do not remove without also changing the sort key in those two queries and deleting the index.
 - Weights live in `shared/impactScore.js` (`IMPACT_WEIGHTS = { sanction: 5, escalation: 3, breach: 2 }`). Single source for TS/JS. `firestore.rules` duplicates the formula inside `impactScore(data)` because rules cannot import JS — manual sync required.
 - Counter updates must be **paired** with `impact_score`. Rules require `affectedKeys().hasOnly(['<counter>', 'impact_score'])`. Writing a counter alone, or `impact_score` alone, is rejected with `permission-denied`.
 - Rules enforce `request.resource.data.impact_score == impactScore(request.resource.data)` on every allowed update. Client cannot write a drifted value.
@@ -13,9 +13,9 @@
 ## changing a weight
 
 1. Edit `shared/impactScore.js` `IMPACT_WEIGHTS`.
-2. Edit `firestore.rules` `impactScore()` function body.
-3. Edit the literal `+ 2` / `+ 3` / `- 3` deltas in `isBreachIncrement`, `isEscalationIncrement`, `isEscalationDecrement`.
-4. Run `scripts/backfill-voting-fields.ts` against every environment.
+2. Edit `firestore.rules` `impactScore()` function body (the formula at lines 21-23).
+3. Edit `functions/sanction.js` `IMPACT_WEIGHTS` constant (line 43).
+4. Backfill existing docs (write a one-off script or use the Firestore console to recompute `impact_score` for every doc).
 5. Deploy rules to both projects (see deploy).
 
 ## deploy
@@ -29,19 +29,21 @@ firebase deploy --only firestore:rules --project anchildress1
 
 Failure mode: committing a rules edit without deploying produces 403 `permission-denied` on valid client writes. Verify deploy with `firebase_get_security_rules` MCP tool.
 
-## scripts/sanction-incidents.ts
+## functions/sanction.js (Cloud Functions v2 trigger)
 
-- Refuses to run without `system_migrations/voting-fields-v1` marker. Created by `backfill-voting-fields.ts`.
-- Run lock at `system_locks/sanction-incidents` with TTL. Concurrent runs cannot double-sanction.
-- `sanctioned` is the single source of truth. Query: `where('sanctioned', '==', false).orderBy('timestamp', 'asc').limit(5)`. There is no separate "judged" / "evaluated" state.
-- Each batch picks exactly one of 5 to sanction. Only the selected doc is mutated (`sanctioned: true`, rationale, score). The other four stay `sanctioned: false` and re-enter the query on the next run, competing fresh against the next batch. Same doc can lose multiple batches and eventually win.
-- On model failure (no valid selection after `MAX_SELECTION_ATTEMPTS`): throws. Nothing is mutated, so re-running picks the same batch back up.
-- Malformed docs are NOT quarantined — without a "skip me" marker they cannot be safely excluded from future queries. The script crashes loudly on parse failure so the operator can fix the offending doc by hand.
+- Entry point: `functions/index.js` declares one `onDocumentCreated` trigger on `incident_logs/{incidentId}` against the named `legacy-smelter` Firestore database. The orchestrator (`runSanctionBatch`) lives in `functions/sanction.js` so unit tests can import it without the `firebase-functions` runtime.
+- Candidate discovery uses `where('evaluated', '==', false).orderBy('timestamp', 'asc').limit(5)`. New fields on `incident_logs`: `evaluated: boolean` (claim flag) and `sanction_lease_at: Timestamp | null` (claim lease). `persistIncident` in `server.js` writes both with safe defaults.
+- Claim is transactional and all-or-nothing. `claimBatch` reads the oldest 5 unevaluated docs inside a Firestore transaction and, in the same transaction, marks every one `evaluated=true` + `sanction_lease_at=<now>`. Two concurrent invocations cannot claim overlapping sets because Firestore aborts the losing transaction on write contention. Fewer than 5 unevaluated docs → the invocation returns `{ status: 'no-op' }` without touching anything.
+- Losers are out permanently after one batch. Each batch picks exactly one of 5 to sanction; the winning doc gets `sanctioned=true`, `sanction_count=1`, `sanction_rationale`, recomputed `impact_score`, and `sanction_lease_at=null`. The four losing docs only get `sanction_lease_at=null` — they keep `evaluated=true` and never re-enter the pool. "One chance only" is the explicit semantics.
+- Finalize is atomic. All five lease-clears + the winner write happen in one `WriteBatch.commit()`. Never write `impact_score` alone or a counter alone — Firestore rules reject unpaired counter writes.
+- Sweep-based recovery. If a run throws between claim and finalize, the 5 claimed docs are stuck with `evaluated=true` + an active lease. Cloud Functions v2 event retry re-delivers the triggering event; on the next invocation, `sweepStaleLeases` clears any lease older than `LEASE_TTL_MS` (5 minutes) and the docs re-enter the pool. The sweep is idempotent; parallel sweeps are safe.
+- On model failure (no valid selection after `MAX_SELECTION_ATTEMPTS=2`): throws. Claim stays in place; recovery is via sweep + retry. There is no partial-write state.
+- Malformed docs crash loudly. Without a "skip me" marker they cannot be safely excluded, so `parseIncidentDoc` and `requireNonNegativeCounter` throw with the incident ID in the error message — the operator fixes the offending doc by hand and the retry picks up cleanly.
+- Uses `gemini-3-flash-preview` — intentionally stronger than `/api/analyze` which uses `gemini-3.1-flash-lite-preview`. The lite model defaults to academic rubric-speak when judging humor; full flash has the depth to read a batch and write rationales that sound like a person. Note: `gemini-2.5-*` is the previous generation and should not be used. `GEMINI_API_KEY` is bound via `firebase-functions/params` `defineSecret` from Google Secret Manager.
 
-## scripts/backfill-voting-fields.ts
+## code style
 
-- Idempotent. Only patches docs missing a field or with drifted `impact_score`.
-- Appends to `system_migrations/voting-fields-v1/runs` subcollection on every run. Never overwrites `first_run_at`. Audit trail is preserved across re-runs.
+- Prefer top-level `await` over `.then()`/`.catch()` promise chains in all new code. Applies to scripts, Cloud Functions entry points, and any module-level async work. Existing promise chains should be converted when touched.
 
 ## memory
 

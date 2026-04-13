@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.0.0](https://github.com/anchildress1/legacy-smelter/compare/v1.0.0...v2.0.0) (2026-04-13) 🔥⚖️
+
+> *v2 is what happens when the dragon gets a compliance department and I stop pretending this was just a joke with particle effects.*
+
+Legacy Smelter stopped being a dramatic screenshot incinerator and became a full incident pipeline. The app now handles anonymous auth, public archive reads, richer manifest and share flows, escalation, breach tracking, and server-side sanctions, which means a bad artifact can now be reported, judged, and publicly humiliated with considerably more structure than is strictly healthy.
+
+The rest of the release is cleanup in the unglamorous places that usually catch fire at 2 a.m. Gemini calls moved off the client, the pipeline got stricter about schemas and backwards-compat sludge, deploy wiring stopped lying about secrets, Docker finally brings along the shared server modules it needs, and the UI got another hard pass so cards, telemetry, and overlays look like decisions instead of leftovers.
+
+It is, in short, the same furnace with better governance and fewer excuses.
+
+<details>
+<summary>Commit trail, if you need the receipts</summary>
+
+- [Initialize Legacy Smelter project structure](https://github.com/anchildress1/legacy-smelter/commit/b846f971c5376d8f29a22b982a89e47c0741791f)
+- [Dragon animation](https://github.com/anchildress1/legacy-smelter/issues/1)
+- [Introduce camera input and refine canvas dragon](https://github.com/anchildress1/legacy-smelter/commit/84518b7107cdbbdbda76a348fc8082d73b7b0fc8)
+- [Simplify Firebase auth and data validation](https://github.com/anchildress1/legacy-smelter/commit/15f4420cadb0adaa05cb1a0a14b6255d08e96bca)
+- [Gemini AI analysis, incident schema, OG share, and UX overhaul](https://github.com/anchildress1/legacy-smelter/issues/4)
+- [Move Gemini API calls server-side to secure API key](https://github.com/anchildress1/legacy-smelter/issues/12)
+- [OG share URLs, breach tracking, and manifest improvements](https://github.com/anchildress1/legacy-smelter/issues/11)
+- [Escalation voting, breach tracking, and AI sanctions](https://github.com/anchildress1/legacy-smelter/issues/13)
+- [Drop backwards-compat layer and harden full incident pipeline](https://github.com/anchildress1/legacy-smelter/issues/14)
+- [Coverage and targeted hardening](https://github.com/anchildress1/legacy-smelter/issues/15)
+- [UI redesign: incident card, overlay telemetry band, SeverityBadge](https://github.com/anchildress1/legacy-smelter/commit/484feff2ca71b0eb2dd57130c01eba1f02c84fa8)
+- [Rewrite v1 release notes](https://github.com/anchildress1/legacy-smelter/commit/6390422600b041f5fbf9c23c41796c85b5037980)
+- [Deploy fix: use the actual Gemini secret name](https://github.com/anchildress1/legacy-smelter/commit/58f92d2ea3e8bc6d6d43fd05466dc33c1d8b42a8)
+- [Docker build: include shared server modules](https://github.com/anchildress1/legacy-smelter/commit/342292ec4b8679687cc62d0af2d37a7a3caf8ad2)
+- [Refresh the release branch after merge](https://github.com/anchildress1/legacy-smelter/commit/c71b8f62f7751caf5284c90ce5005b7e19371393)
+- [Server-side sanction judging and prod-prep cleanup](https://github.com/anchildress1/legacy-smelter/issues/24)
+- [Release 2.0.0](https://github.com/anchildress1/legacy-smelter/commit/f2cdc43a8adc7bb2aabea6c08f945159bfe40634)
+</details>
+
 ## [1.0.0](https://github.com/anchildress1/legacy-smelter/compare/b846f971c5376d8f29a22b982a89e47c0741791f...3a41855) (2026-04-11) 🫗🧾
 
 > *We made it to v1. The furnace works, the dragon flies, and for once I deferred a feature instead of letting scope creep win on points.*

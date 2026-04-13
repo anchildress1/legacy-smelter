@@ -1,5 +1,5 @@
 import { render, waitFor } from '@testing-library/react';
-import React from 'react';
+import { createRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { SmelterCanvasHandle } from './SmelterCanvas';
@@ -282,7 +282,7 @@ describe('SmelterCanvas happy path', () => {
   });
 
   it('installs melt and puddle filters through loadAndSmelt and resets them on replay()', async () => {
-    const handleRef = React.createRef<SmelterCanvasHandle>();
+    const handleRef = createRef<SmelterCanvasHandle>();
 
     // Render inside a `React.createElement` call to avoid needing JSX's
     // generic ref typing: `createRef<SmelterCanvasHandle>` matches the
@@ -335,7 +335,7 @@ describe('SmelterCanvas happy path', () => {
     // component simply no-ops the uniform reset and falls through into
     // beginSequence, which itself early-returns when the pixi state is
     // not yet ready.
-    const handleRef = React.createRef<SmelterCanvasHandle>();
+    const handleRef = createRef<SmelterCanvasHandle>();
     const { SmelterCanvas } = await import('./SmelterCanvas');
     render(<SmelterCanvas ref={handleRef} onComplete={vi.fn()} />);
 

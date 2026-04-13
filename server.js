@@ -15,6 +15,7 @@
  */
 
 import express from 'express';
+import compression from 'compression';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,42 +93,53 @@ async function fetchIncident(docId) {
 let _spaHtmlCache;
 try {
   _spaHtmlCache = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
-} catch (err) {
-  const msg = err instanceof Error ? err.message : String(err);
-  throw new Error(`[server] Cannot read ${DIST}/index.html. Run "npm run build" first. Cause: ${msg}`);
+} catch (cause) {
+  throw new Error(`[server] Cannot read ${DIST}/index.html. Run "npm run build" first.`, { cause });
 }
 function getSpaHtml() {
   return _spaHtmlCache;
 }
 
-function injectIncidentOg(html, incident, canonicalUrl) {
+// Each entry maps a matching regex in `dist/index.html` to the replacement
+// rendered with the incident context. Kept as a flat table (instead of 14
+// chained `.replace()` calls) so the list is easy to keep in sync with
+// `index.html` and so adding/removing an OG tag is a single-line diff
+// instead of touching call-site plumbing.
+function buildOgReplacements(incident, canonicalUrl) {
   const title = `${incident.og_headline} — Legacy Smelter`;
   const rawDesc = `[${incident.severity}] ${incident.legacy_infra_class}: ${incident.incident_feed_summary}`;
   const desc = rawDesc.slice(0, 300);
   const imageAlt = `${incident.og_headline} — ${incident.severity} incident`;
 
-  return html
-    .replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`)
-    .replace(/<meta name="description" content="[^"]*"/, `<meta name="description" content="${esc(desc)}"`)
-    .replace(/<meta property="og:title" content="[^"]*"/, `<meta property="og:title" content="${esc(title)}"`)
-    .replace(/<meta property="og:description" content="[^"]*"/, `<meta property="og:description" content="${esc(desc)}"`)
-    .replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${esc(canonicalUrl)}"`)
-    .replace(/<meta property="og:image" content="[^"]*"/, `<meta property="og:image" content="${OG_IMAGE}"`)
-    .replace(/<meta property="og:image:width" content="[^"]*"/, `<meta property="og:image:width" content="${OG_IMAGE_WIDTH}"`)
-    .replace(/<meta property="og:image:height" content="[^"]*"/, `<meta property="og:image:height" content="${OG_IMAGE_HEIGHT}"`)
-    .replace(/<meta property="og:image:alt" content="[^"]*"/, `<meta property="og:image:alt" content="${esc(imageAlt)}"`)
-    .replace(/<meta property="og:type" content="[^"]*"/, `<meta property="og:type" content="article"`)
-    .replace(/<meta name="twitter:title" content="[^"]*"/, `<meta name="twitter:title" content="${esc(title)}"`)
-    .replace(/<meta name="twitter:description" content="[^"]*"/, `<meta name="twitter:description" content="${esc(desc)}"`)
-    .replace(/<meta name="twitter:image" content="[^"]*"/, `<meta name="twitter:image" content="${OG_IMAGE}"`)
-    .replace(/<meta name="twitter:image:alt" content="[^"]*"/, `<meta name="twitter:image:alt" content="${esc(imageAlt)}"`);
+  return [
+    [/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`],
+    [/<meta name="description" content="[^"]*"/, `<meta name="description" content="${esc(desc)}"`],
+    [/<meta property="og:title" content="[^"]*"/, `<meta property="og:title" content="${esc(title)}"`],
+    [/<meta property="og:description" content="[^"]*"/, `<meta property="og:description" content="${esc(desc)}"`],
+    [/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${esc(canonicalUrl)}"`],
+    [/<meta property="og:image" content="[^"]*"/, `<meta property="og:image" content="${OG_IMAGE}"`],
+    [/<meta property="og:image:width" content="[^"]*"/, `<meta property="og:image:width" content="${OG_IMAGE_WIDTH}"`],
+    [/<meta property="og:image:height" content="[^"]*"/, `<meta property="og:image:height" content="${OG_IMAGE_HEIGHT}"`],
+    [/<meta property="og:image:alt" content="[^"]*"/, `<meta property="og:image:alt" content="${esc(imageAlt)}"`],
+    [/<meta property="og:type" content="[^"]*"/, `<meta property="og:type" content="article"`],
+    [/<meta name="twitter:title" content="[^"]*"/, `<meta name="twitter:title" content="${esc(title)}"`],
+    [/<meta name="twitter:description" content="[^"]*"/, `<meta name="twitter:description" content="${esc(desc)}"`],
+    [/<meta name="twitter:image" content="[^"]*"/, `<meta name="twitter:image" content="${OG_IMAGE}"`],
+    [/<meta name="twitter:image:alt" content="[^"]*"/, `<meta name="twitter:image:alt" content="${esc(imageAlt)}"`],
+  ];
+}
+
+function injectIncidentOg(html, incident, canonicalUrl) {
+  return buildOgReplacements(incident, canonicalUrl).reduce(
+    (acc, [pattern, replacement]) => acc.replace(pattern, replacement),
+    html,
+  );
 }
 
 // ── Gemini analysis ─────────────────────────────────────────────────────────
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
-
 
 const GEMINI_PROMPT = `You are the commanding incident analysis engine for Legacy Smelter. You analyze uploaded images and classify them as condemned technical artifacts requiring immediate thermal decommission.
 
@@ -150,7 +162,7 @@ Short declarative clauses. Sentences under 12 words. Conclusions, not descriptio
 
 ## Field constraints
 
-- legacy_infra_class: 5 words max. What the system thinks the image is. Specific to the actual content. If someone reads it without seeing the image, they should want to see the image. "SELFIE SYSTEM V1.0" not "HUMANOID VISUAL NODE." "DESKTOP FAUNA INCIDENT" not "HUMAN-INTEGRATED WORKSPACE."
+- legacy_infra_class: 5 words max. What the system thinks the image is. Specific to the actual content. Avoids generic terms. If someone reads it without seeing the image, they should want to see the image. "SELFIE SYSTEM V1.0" not "HUMANOID VISUAL NODE." "DESKTOP FAUNA INCIDENT" not "HUMAN-INTEGRATED WORKSPACE."
 - diagnosis: 12 words max. First sentence of a postmortem — what failed and how badly. Operational. Systemic. Vary the structure. Ground it in something specific to this image.
 - chromatic_profile: 4 words max. Sounds like an internal color spec someone named badly. "Moldy Blossom," "Thermal Beige," "Incident Pink."
 - primary_contamination: 5 words max. Dominant visual or structural fault.
@@ -161,7 +173,7 @@ Short declarative clauses. Sentences under 12 words. Conclusions, not descriptio
 - archive_note: 60 words max. Evidence record. Short clauses. Start technical, then commit beyond the point of reason. Find one specific absurd detail in the image and assess it with full institutional confidence. End with a deadpan trailing observation.
 - og_headline: 10 words max. Reads like an internal notification that escaped containment.
 - share_quote: 14 words max. An incident summary someone screenshotted.
-- severity: Look at the image. Identify the single most visible physical condition, material state, or failure mode. Name it with one specific English word earned from what you observe in this image.
+- severity: Look at the image. Identify the single most visible or predominate physical condition, material state, or failure mode. Name it with one specific English word earned from what you observe in this image. Avoid abstract or generic terms.
 - anon_handle: Format: [Compound]_[Number]. Reads like an internal system account. "ThermalOperator_41," "DeprecatedNode_7," "IncidentClerk_404."
 - dominant_hex_colors: Exactly 5 vivid, saturated hex colors from the image.
 - subject_box: Bounding box [ymin, xmin, ymax, xmax] in 1000x1000 scale covering the primary artifact.
@@ -173,7 +185,7 @@ Be confident. Be concise. Sound outrageous. Sound institutional. Be visually gro
 const GEMINI_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    legacy_infra_class: { type: Type.STRING, description: 'System classification of the image subject. Specific to the actual content — name it as the system would catalog it. Dramatically announce failure. 5 words max.' },
+    legacy_infra_class: { type: Type.STRING, description: 'System classification of the image subject. Specific to the actual content — name it as the system would catalog it. Dramatically announce failure. Avoid generic terms. 5 words max.' },
     diagnosis: { type: Type.STRING, description: 'First sentence of a postmortem — what failed and how badly. Outrageous. Deadpan. Operational. Specific. Varied structure. 12 words max.' },
     dominant_hex_colors: {
       type: Type.ARRAY,
@@ -181,13 +193,13 @@ const GEMINI_RESPONSE_SCHEMA = {
       description: 'Exactly 5 vivid, saturated hex colors from the image',
     },
     chromatic_profile: { type: Type.STRING, description: "Satirical color palette name. 4 words max. E.g. 'Moldy Blossom', 'Thermal Beige'." },
-    severity: { type: Type.STRING, description: 'One English word naming the dominant visible condition or failure mode observed in this image.' },
+    severity: { type: Type.STRING, description: 'One English word naming the dominant or predominate visible condition or failure mode observed in this image. Avoid generic terms.' },
     primary_contamination: { type: Type.STRING, description: 'Dominant visual or structural fault. 5 words max.' },
     contributing_factor: { type: Type.STRING, description: 'Secondary fault. 5 words max.' },
     failure_origin: { type: Type.STRING, description: 'What decisions produced this artifact. End with a deadpan detail. 20 words max.' },
     disposition: { type: Type.STRING, description: 'System recommendation. What should happen now and why. 18 words max.' },
     incident_feed_summary: { type: Type.STRING, description: 'One-line manifest entry. Varied structure. 14 words max.' },
-    archive_note: { type: Type.STRING, description: 'Evidence record. Short clauses. Start dramatic, escalate past reason. Find one specific absurd detail and make it a focal point afterthought. End deadpan. 60 words max.' },
+    archive_note: { type: Type.STRING, description: 'Evidence record. Short clauses. Start dramatic, escalate beyond reason. Find at least one specific absurd detail and make it a focal point afterthought. End deadpan. 60 words max.' },
     og_headline: { type: Type.STRING, description: 'Internal notification that escaped containment. Evokes urgency. 10 words max.' },
     share_quote: { type: Type.STRING, description: 'Incident summary someone screenshotted but wasn\'t supposed to. Unhinged. 14 words max.' },
     anon_handle: { type: Type.STRING, description: "Generated submitter alias. Relates to image. E.g. 'ShoulderShrug_41', 'AlreadyObsolete_2'." },
@@ -269,9 +281,33 @@ async function requireFirebaseAuth(req, res, next) {
     req.authUid = decoded.uid;
     return next();
   } catch (err) {
+    // firebase-admin v13 always calls getUser() when in emulator mode, even
+    // with checkRevoked=false (base-auth.js line 119: `checkRevoked || isEmulator`).
+    // If the Auth emulator isn't reachable from this Express process (e.g.
+    // `make server` runs standalone without `make functions`), the lookup
+    // throws auth/user-not-found. In emulator mode the JWT is unsigned — the
+    // claims were already validated before the user lookup — so it is safe to
+    // decode the payload directly and proceed.
+    // Hard-gated: only allow fallback in local dev (no K_SERVICE = not Cloud Run).
+    if (err?.code === 'auth/user-not-found' && process.env.FIREBASE_AUTH_EMULATOR_HOST && !process.env.K_SERVICE) {
+      try {
+        const [, payloadB64] = idToken.split('.');
+        const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
+        if (typeof payload.sub === 'string' && payload.sub) {
+          console.warn(
+            '[server][WARN_AUTH_EMULATOR_FALLBACK] Auth emulator user lookup failed; ' +
+            'falling back to decoded JWT claims (uid=%s). Ensure `make functions` is running.',
+            payload.sub,
+          );
+          req.authUid = payload.sub;
+          return next();
+        }
+      } catch { /* fall through to 401 */ }
+    }
+    const code = err?.code ?? 'unknown';
     const msg = err instanceof Error ? err.message : String(err);
     const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
-    console.error('[server][ERR_AUTH_TOKEN_INVALID] ip=%s: %s', clientIp, msg);
+    console.error('[server][ERR_AUTH_TOKEN_INVALID] ip=%s code=%s: %s', clientIp, code, msg);
     return res.status(401).json({ error: 'Invalid or expired ID token.' });
   }
 }
@@ -415,6 +451,12 @@ app.disable('x-powered-by');
 const isCloudRun = Boolean(process.env.K_SERVICE);
 app.set('trust proxy', isCloudRun ? 1 : false);
 
+// Gzip/deflate all responses. Runs before static serving so hashed JS/CSS
+// assets, API JSON, and OG-injected HTML all benefit. Typical reduction is
+// 60-70% on text payloads. The `threshold` default (1 KB) avoids
+// compressing tiny responses where the overhead exceeds the savings.
+app.use(compression());
+
 // API routes accept JSON only.
 app.use('/api', (req, res, next) => {
   if (req.method === 'POST' && !req.is('application/json')) {
@@ -487,6 +529,13 @@ async function persistIncident(analysis, pixelCount, authUid) {
     impact_score: 0,
     sanctioned: false,
     sanction_rationale: null,
+    // Sanction judging pipeline claim flag and lease timestamp. The Cloud
+    // Functions v2 `onIncidentCreated` trigger reads `evaluated=false` to
+    // find unjudged candidates, and `sanction_lease_at` carries the claim
+    // lease so a crashed invocation's stranded batch can be swept back into
+    // the pool after `LEASE_TTL_MS`. See `functions/sanction.js`.
+    evaluated: false,
+    sanction_lease_at: null,
   });
   writeBatch.set(
     statsRef,
