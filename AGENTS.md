@@ -2,7 +2,7 @@
 
 ## invariants
 
-- `impact_score = 5*sanction_count + 3*escalation_count + 2*breach_count`. Stored on every `incident_logs` doc. Required by `orderBy('impact_score','desc')` in `src/App.tsx` and `src/components/IncidentManifest.tsx`, backed by composite index `(impact_score DESC, timestamp DESC)` in `firestore.indexes.json`. Firestore has no expression indexes — removing the field breaks both feeds. Do not remove without also changing the sort key in those two queries and deleting the index.
+- `impact_score = 5*sanction_count + 3*escalation_count + 2*breach_count`. Stored on every `incident_logs` doc. Required by `orderBy('impact_score','desc')` in `src/hooks/useRecentIncidentLogs.ts` and `src/hooks/useManifestLogs.ts`, backed by composite index `(impact_score DESC, timestamp DESC)` in `firestore.indexes.json`. Firestore has no expression indexes — removing the field breaks both feeds. Do not remove without also changing the sort key in those two queries and deleting the index.
 - Weights live in `shared/impactScore.js` (`IMPACT_WEIGHTS = { sanction: 5, escalation: 3, breach: 2 }`). Single source for TS/JS. `firestore.rules` duplicates the formula inside `impactScore(data)` because rules cannot import JS — manual sync required.
 - Counter updates must be **paired** with `impact_score`. Rules require `affectedKeys().hasOnly(['<counter>', 'impact_score'])`. Writing a counter alone, or `impact_score` alone, is rejected with `permission-denied`.
 - Rules enforce `request.resource.data.impact_score == impactScore(request.resource.data)` on every allowed update. Client cannot write a drifted value.
@@ -13,8 +13,8 @@
 ## changing a weight
 
 1. Edit `shared/impactScore.js` `IMPACT_WEIGHTS`.
-2. Edit `firestore.rules` `impactScore()` function body.
-3. Edit the literal `+ 2` / `+ 3` / `- 3` deltas in `isBreachIncrement`, `isEscalationIncrement`, `isEscalationDecrement`.
+2. Edit `firestore.rules` `impactScore()` function body (the formula at lines 21-23).
+3. Edit `functions/sanction.js` `IMPACT_WEIGHTS` constant (line 43).
 4. Backfill existing docs (write a one-off script or use the Firestore console to recompute `impact_score` for every doc).
 5. Deploy rules to both projects (see deploy).
 
@@ -32,7 +32,7 @@ Failure mode: committing a rules edit without deploying produces 403 `permission
 ## functions/sanction.js (Cloud Functions v2 trigger)
 
 - Entry point: `functions/index.js` declares one `onDocumentCreated` trigger on `incident_logs/{incidentId}` against the named `legacy-smelter` Firestore database. The orchestrator (`runSanctionBatch`) lives in `functions/sanction.js` so unit tests can import it without the `firebase-functions` runtime.
-- Candidate discovery uses `where('evaluated', '==', false).orderBy('timestamp', 'asc').limit(5)`. New fields on `incident_logs`: `evaluated: boolean` (claim flag) and `sanction_lease_at: Timestamp | null` (claim lease). `persistIncident` in `server.js` writes both with safe defaults; pre-rebuild docs are patched by `scripts/backfill-evaluated.ts`.
+- Candidate discovery uses `where('evaluated', '==', false).orderBy('timestamp', 'asc').limit(5)`. New fields on `incident_logs`: `evaluated: boolean` (claim flag) and `sanction_lease_at: Timestamp | null` (claim lease). `persistIncident` in `server.js` writes both with safe defaults.
 - Claim is transactional and all-or-nothing. `claimBatch` reads the oldest 5 unevaluated docs inside a Firestore transaction and, in the same transaction, marks every one `evaluated=true` + `sanction_lease_at=<now>`. Two concurrent invocations cannot claim overlapping sets because Firestore aborts the losing transaction on write contention. Fewer than 5 unevaluated docs → the invocation returns `{ status: 'no-op' }` without touching anything.
 - Losers are out permanently after one batch. Each batch picks exactly one of 5 to sanction; the winning doc gets `sanctioned=true`, `sanction_count=1`, `sanction_rationale`, recomputed `impact_score`, and `sanction_lease_at=null`. The four losing docs only get `sanction_lease_at=null` — they keep `evaluated=true` and never re-enter the pool. "One chance only" is the explicit semantics.
 - Finalize is atomic. All five lease-clears + the winner write happen in one `WriteBatch.commit()`. Never write `impact_score` alone or a counter alone — Firestore rules reject unpaired counter writes.

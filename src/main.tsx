@@ -67,10 +67,10 @@ function Root() {
   }, []);
 
   const routeFallback = (
-    <div className="min-h-screen bg-concrete text-ash-white flex items-center justify-center" role="status">
+    <output className="min-h-screen bg-concrete text-ash-white flex items-center justify-center">
       <div className="w-12 h-12 border-4 border-hazard-amber border-t-transparent rounded-full animate-spin" aria-hidden="true" />
       <span className="sr-only">Loading</span>
-    </div>
+    </output>
   );
 
   if (page === 'manifest') {
