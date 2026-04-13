@@ -43,7 +43,8 @@ describe('buildShareLinks', () => {
     const [, , bluesky] = buildShareLinks(TEXT, HEADLINE, PAGE);
     expect(bluesky.label).toBe('bluesky');
     expect(bluesky.href).toContain('https://bsky.app/intent/compose?');
-    expect(bluesky.href).toContain(`text=${encodeURIComponent(`${TEXT} ${PAGE}`)}`);
+    const expectedText = encodeURIComponent(`${TEXT} ${PAGE}`);
+    expect(bluesky.href).toContain(`text=${expectedText}`);
   });
 
   it('URL-encodes the headline and url for the reddit submission intent', () => {

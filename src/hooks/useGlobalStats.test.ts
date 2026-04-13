@@ -141,7 +141,7 @@ describe('useGlobalStats', () => {
     act(() => {
       snapshotHandlers.next?.({
         exists: () => true,
-        data: () => ({ total_pixels_melted: NaN }),
+        data: () => ({ total_pixels_melted: Number.NaN }),
       });
     });
 

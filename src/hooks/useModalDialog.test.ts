@@ -10,6 +10,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * guard against double-show; we control that via the stub.
  */
 
+async function loadHook() {
+  return import('./useModalDialog');
+}
+
 describe('useModalDialog', () => {
   let showModalSpy: ReturnType<typeof vi.fn>;
   let closeSpy: ReturnType<typeof vi.fn>;
@@ -42,10 +46,6 @@ describe('useModalDialog', () => {
       configurable: true,
     });
   });
-
-  async function loadHook() {
-    return import('./useModalDialog');
-  }
 
   // ── positive ──
 

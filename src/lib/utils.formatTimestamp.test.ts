@@ -38,7 +38,7 @@ describe('formatTimestamp', () => {
     const formatted = formatTimestamp(new Date('2026-03-05T12:05:09Z'));
     // Verify each field is two digits; the exact wall-clock values
     // depend on the Intl data so only assert the padding contract.
-    const dateMatch = formatted.match(/^(\d{4})\.(\d{2})\.(\d{2}) \/\/ (\d{2}):(\d{2}):(\d{2}) /);
+    const dateMatch = /^(\d{4})\.(\d{2})\.(\d{2}) \/\/ (\d{2}):(\d{2}):(\d{2}) /.exec(formatted);
     expect(dateMatch).not.toBeNull();
     expect(dateMatch?.[1]).toHaveLength(4);
     expect(dateMatch?.[2]).toHaveLength(2);

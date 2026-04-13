@@ -148,7 +148,7 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
 
         {/* Filter + sort — flat, no container */}
         <div className="mb-5 flex flex-wrap items-center gap-2">
-          <div role="group" aria-label="Filter incidents" className="contents">
+          <fieldset aria-label="Filter incidents" className="contents">
             {([
               ['all', 'All'],
               ['escalated', 'Escalated'],
@@ -169,7 +169,7 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
                 <span className="text-[9px] opacity-80">{manifestCounts[value]}</span>
               </button>
             ))}
-          </div>
+          </fieldset>
           <select
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as ManifestSort)}
@@ -191,7 +191,7 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
         {/* Log entries */}
         <ul className="space-y-4 min-h-[200px]">
           {isLoading && (
-            <li className="flex items-center justify-center py-12 list-none" role="status">
+            <li className="flex items-center justify-center py-12 list-none">
               <div className="w-6 h-6 border-2 border-hazard-amber border-t-transparent rounded-full animate-spin" aria-hidden="true" />
               <span className="sr-only">Loading incidents</span>
             </li>
