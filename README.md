@@ -64,12 +64,23 @@ src/
 │   ├── SmelterCanvas.tsx            PixiJS dragon animation
 │   ├── IncidentReportOverlay.tsx    Postmortem modal + share
 │   ├── IncidentManifest.tsx         Global incident manifest page
+│   ├── ManifestIncidentCard.tsx     Manifest-specific incident card
 │   ├── IncidentLogCard.tsx          Shared incident log card
 │   ├── DataHealthIndicator.tsx      Data integrity indicator
 │   ├── DecommissionIndex.tsx        Cumulative pixel decommission counter
+│   ├── HeaderPill.tsx               Header pill display component
+│   ├── StatItem.tsx                 Shared stat display component
+│   ├── SeverityBadge.tsx            Severity tier badge
+│   ├── SanctionBadge.tsx            Sanction indicator badge
+│   ├── P0Badge.tsx                  P0 priority badge
 │   └── SiteFooter.tsx               Site footer
 ├── hooks/
-│   └── useEscalation.ts             Escalation vote state
+│   ├── useEscalation.ts             Escalation vote state
+│   ├── useGlobalStats.ts            Global stats subscription
+│   ├── useLiveIncidentCounts.ts     Live incident count subscription
+│   ├── useManifestLogs.ts           Manifest feed pagination + sorting
+│   ├── useRecentIncidentLogs.ts     Top-3 incident subscription for P0 badge
+│   └── useModalDialog.ts            Native <dialog> modal control
 ├── services/
 │   ├── geminiService.ts             Gemini prompt, schema, analysis
 │   ├── escalationService.ts         Escalation vote writes
@@ -80,31 +91,41 @@ src/
     ├── smeltLogSchema.ts            Strict SmeltLog schema + parser
     ├── animationWindow.ts           Animation timing utilities
     ├── storageJson.ts               LocalStorage helpers
-    └── typeGuards.ts                Runtime type guards
+    ├── typeGuards.ts                Runtime type guards
+    ├── postmortemAutoOpen.ts         Auto-open postmortem overlay logic
+    ├── impactGlow.ts                Impact-score-based glow tiers
+    └── incidentReportModel.ts       Incident report view-model builder
 shared/
 ├── impactScore.js                   Impact score formula (IMPACT_WEIGHTS, computeImpactScore)
 ├── colors.js                        Fallback color palette
 └── admin-init.js                    Firebase Admin SDK initialization
 scripts/
-├── backfill-voting-fields.ts        Voting fields backfill migration
+├── trigger-sanction.ts              Manually trigger a sanction batch
+├── reset-sanctions.ts               Reset sanction state on all docs
 └── firestore.rules.integration.test.ts  Firestore rules integration tests
 docs/
-├── classification-prompt.md         AI generation constraints and field spec
 ├── ux-copy.md                       Voice, persona, and copy rules
 ├── design-decisions.md              Deliberate spec deviations
-├── sanction-rebuild-prompt.md       Sanction system rebuild build brief
+├── sanction-system-design.md        Sanction pipeline architecture
+├── sanction-judging-patch.md        Sanction judging rebuild brief
+├── sanction-test-plan.md            Sanction test scenarios
+├── sanction-deploy-checklist.md     Sanction deploy runbook
 └── archive/
+    ├── classification-prompt.md     Original AI generation prompt (superseded)
     ├── judging-prompt.md            Original sanction judging prompt (superseded)
+    ├── sanction-rebuild-prompt.md   Original sanction rebuild brief (superseded)
     ├── gemini-implementation-and-share-spec.md  Original Gemini spec (superseded)
     └── original-ai-studio-prompt.md             Original AI Studio scaffold prompt
 ```
 
 ## Docs
 
-- [`docs/classification-prompt.md`](docs/archive/classification-prompt.md) — AI prompt, severity tiers, field constraints
 - [`docs/ux-copy.md`](docs/ux-copy.md) — Voice, persona rules, writing constraints for UI and AI copy
 - [`docs/design-decisions.md`](docs/design-decisions.md) — Deliberate deviations from the original spec and their rationale
-- [`docs/sanction-judging-patch.md`](docs/sanction-judging-patch.md) — Sanction system rebuild build brief
+- [`docs/sanction-system-design.md`](docs/sanction-system-design.md) — Sanction pipeline architecture and data model
+- [`docs/sanction-judging-patch.md`](docs/sanction-judging-patch.md) — Sanction judging rebuild brief
+- [`docs/sanction-test-plan.md`](docs/sanction-test-plan.md) — Sanction test scenarios and coverage plan
+- [`docs/sanction-deploy-checklist.md`](docs/sanction-deploy-checklist.md) — Sanction deploy runbook
 
 ## Operations
 

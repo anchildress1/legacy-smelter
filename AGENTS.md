@@ -15,7 +15,7 @@
 1. Edit `shared/impactScore.js` `IMPACT_WEIGHTS`.
 2. Edit `firestore.rules` `impactScore()` function body.
 3. Edit the literal `+ 2` / `+ 3` / `- 3` deltas in `isBreachIncrement`, `isEscalationIncrement`, `isEscalationDecrement`.
-4. Run `scripts/backfill-voting-fields.ts` against every environment.
+4. Backfill existing docs (write a one-off script or use the Firestore console to recompute `impact_score` for every doc).
 5. Deploy rules to both projects (see deploy).
 
 ## deploy
@@ -40,11 +40,6 @@ Failure mode: committing a rules edit without deploying produces 403 `permission
 - On model failure (no valid selection after `MAX_SELECTION_ATTEMPTS=2`): throws. Claim stays in place; recovery is via sweep + retry. There is no partial-write state.
 - Malformed docs crash loudly. Without a "skip me" marker they cannot be safely excluded, so `parseIncidentDoc` and `requireNonNegativeCounter` throw with the incident ID in the error message — the operator fixes the offending doc by hand and the retry picks up cleanly.
 - Uses `gemini-3-flash-preview` — intentionally stronger than `/api/analyze` which uses `gemini-3.1-flash-lite-preview`. The lite model defaults to academic rubric-speak when judging humor; full flash has the depth to read a batch and write rationales that sound like a person. Note: `gemini-2.5-*` is the previous generation and should not be used. `GEMINI_API_KEY` is bound via `firebase-functions/params` `defineSecret` from Google Secret Manager.
-
-## scripts/backfill-voting-fields.ts / scripts/backfill-evaluated.ts
-
-- Both scripts are idempotent. `backfill-voting-fields.ts` patches `breach_count` / `escalation_count` / `sanction_count` / `sanctioned` / `sanction_rationale` / `impact_score`. `backfill-evaluated.ts` patches `evaluated` / `sanction_lease_at` for pre-rebuild docs so they become eligible for the judging pipeline.
-- Each appends to a migration marker under `system_migrations/<marker>/runs` on every run and never overwrites `first_run_at`. Audit trail is preserved across re-runs.
 
 ## code style
 
