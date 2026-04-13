@@ -7,6 +7,18 @@ import {
   IMPACT_GLOW_FILTER_ESCALATED_BUTTON,
 } from './impactGlow';
 
+function radiusOf(cls: string): number {
+  const m = /0_0_(\d+)px/.exec(cls);
+  if (!m) throw new Error(`no radius parsed from ${cls}`);
+  return Number(m[1]);
+}
+
+function alphaOf(cls: string): number {
+  const m = /rgba\(245,200,66,([0-9.]+)\)/.exec(cls);
+  if (!m) throw new Error(`no alpha parsed from ${cls}`);
+  return Number(m[1]);
+}
+
 // These constants are the single source of truth for the warm amber
 // "triggered" glow used on the Impact number (front card + back overlay)
 // and the escalate button in both surfaces. Pinning the class strings
@@ -60,16 +72,6 @@ describe('impactGlow — filter-only constants', () => {
   });
 
   it('button variant is subtler than the number variant', () => {
-    const radiusOf = (cls: string): number => {
-      const m = /0_0_(\d+)px/.exec(cls);
-      if (!m) throw new Error(`no radius parsed from ${cls}`);
-      return Number(m[1]);
-    };
-    const alphaOf = (cls: string): number => {
-      const m = /rgba\(245,200,66,([0-9.]+)\)/.exec(cls);
-      if (!m) throw new Error(`no alpha parsed from ${cls}`);
-      return Number(m[1]);
-    };
     expect(radiusOf(IMPACT_GLOW_FILTER_ESCALATED)).toBeGreaterThan(
       radiusOf(IMPACT_GLOW_FILTER_ESCALATED_BUTTON),
     );
@@ -147,18 +149,6 @@ describe('impactGlow — monotonicity and empty-string guards', () => {
   // different. A swap that inverted them would still pass the
   // distinctness tests above if someone edited both values at
   // once; this numeric comparison catches the inversion.
-
-  const radiusOf = (cls: string): number => {
-    const m = /0_0_(\d+)px/.exec(cls);
-    if (!m) throw new Error(`no radius parsed from ${cls}`);
-    return Number(m[1]);
-  };
-
-  const alphaOf = (cls: string): number => {
-    const m = /rgba\(245,200,66,([0-9.]+)\)/.exec(cls);
-    if (!m) throw new Error(`no alpha parsed from ${cls}`);
-    return Number(m[1]);
-  };
 
   it('escalated filter has a wider radius than base', () => {
     expect(radiusOf(IMPACT_GLOW_FILTER_ESCALATED)).toBeGreaterThan(

@@ -185,7 +185,7 @@ export const SmelterCanvas = forwardRef<SmelterCanvasHandle, SmelterCanvasProps>
     const readyRejectRef = useRef<(err: unknown) => void>(undefined);
     const readyPromiseRef = useRef<Promise<void>>(new Promise(() => {}));
     const reducedMotionRef = useRef(
-      typeof globalThis.window !== 'undefined' &&
+      globalThis.window !== undefined &&
       typeof globalThis.matchMedia === 'function' &&
       globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches,
     );

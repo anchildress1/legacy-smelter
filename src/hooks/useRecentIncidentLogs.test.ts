@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SmeltLog } from '../types';
+import { makeFixtureLog } from '../test/smeltLogFixtures';
 
 type SnapshotNext = (snap: { docs: unknown[] }) => void;
 type SnapshotError = (err: Error) => void;
@@ -51,40 +52,7 @@ vi.mock('../lib/firestoreErrors', () => ({
   OperationType: { LIST: 'list' },
 }));
 
-const STUB_LOG: SmeltLog = {
-  id: 'inc-1',
-  legacy_infra_class: 'TEST',
-  diagnosis: 'test',
-  chromatic_profile: 'test',
-  primary_contamination: 'test',
-  contributing_factor: 'test',
-  failure_origin: 'test',
-  disposition: 'test',
-  incident_feed_summary: 'test',
-  archive_note: 'test',
-  og_headline: 'test',
-  share_quote: 'test',
-  severity: 'CRITICAL',
-  anon_handle: 'Test_1',
-  color_1: '#000000',
-  color_2: '#111111',
-  color_3: '#222222',
-  color_4: '#333333',
-  color_5: '#444444',
-  subject_box_ymin: 0,
-  subject_box_xmin: 0,
-  subject_box_ymax: 500,
-  subject_box_xmax: 500,
-  pixel_count: 1000,
-  timestamp: { seconds: 1000, nanoseconds: 0 } as SmeltLog['timestamp'],
-  uid: 'anon-uid',
-  breach_count: 0,
-  escalation_count: 0,
-  sanction_count: 0,
-  sanctioned: false,
-  sanction_rationale: null,
-  impact_score: 0,
-};
+const STUB_LOG: SmeltLog = makeFixtureLog('inc-1', { severity: 'CRITICAL', anon_handle: 'Test_1' });
 
 async function loadHook() {
   return import('./useRecentIncidentLogs');

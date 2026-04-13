@@ -55,8 +55,7 @@ describe('isNonEmptyString', () => {
     expect(isNonEmptyString(false)).toBe(false);
     // Boxed strings are objects, not primitives — they fail the
     // primitive `typeof` check, which is the intended behaviour.
-    // eslint-disable-next-line no-new-wrappers
-    expect(isNonEmptyString(new String('hi'))).toBe(false);
+    expect(isNonEmptyString(Object('hi'))).toBe(false);
   });
 });
 

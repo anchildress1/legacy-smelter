@@ -303,6 +303,10 @@ describe('parseSmeltLog', () => {
   });
 });
 
+function makeDoc(id: string, data: unknown) {
+  return { id, data: () => data };
+}
+
 describe('parseSmeltLogBatch', () => {
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -310,10 +314,6 @@ describe('parseSmeltLogBatch', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
-  function makeDoc(id: string, data: unknown) {
-    return { id, data: () => data };
-  }
 
   it('returns every valid entry and invalidCount 0 on a clean batch', () => {
     const docs = [
@@ -353,7 +353,7 @@ describe('parseSmeltLogBatch', () => {
     expect(result.entries).toHaveLength(0);
     expect(console.error).toHaveBeenCalledTimes(3);
     const lastCall = (console.error as unknown as { mock: { calls: unknown[][] } }).mock.calls[2];
-    expect(String(lastCall[0])).toContain('Skipped 3 additional malformed');
+    expect(lastCall[0] as string).toContain('Skipped 3 additional malformed');
   });
 
   it('does not emit a summary line when invalid count equals maxLoggedErrors exactly', () => {

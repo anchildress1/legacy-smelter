@@ -57,7 +57,7 @@ if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
   // signed JWT. Auth Emulator does not validate JWTs and IS NOT SECURE"
   // for every refresh. In-memory persistence guarantees each emulator
   // session starts with no user and mints fresh, unsigned tokens.
-  emulatorAuthBootstrap = (async () => {
+  async function bootstrapEmulatorAuth(): Promise<void> {
     try {
       await setPersistence(auth, inMemoryPersistence);
     } catch (err) {
@@ -68,7 +68,8 @@ if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
     } catch (err) {
       console.warn('[firebase] Failed to sign out restored auth session for emulator:', err);
     }
-  })();
+  }
+  emulatorAuthBootstrap = bootstrapEmulatorAuth();
   // Loud log so it is obvious in the browser console which backend the
   // app is talking to — a silent fallback is how "why is nothing in the
   // emulator log" happens in the first place.

@@ -72,7 +72,7 @@ describe('handleFirestoreError', () => {
     expect(console.error).toHaveBeenCalledOnce();
     const loggedPayload = (console.error as unknown as { mock: { calls: unknown[][] } }).mock
       .calls[0][1];
-    expect(JSON.parse(String(loggedPayload))).toEqual({
+    expect(JSON.parse(loggedPayload as string)).toEqual({
       error: 'boom',
       operationType: 'update',
       path: 'incident_logs/inc-1',
@@ -86,7 +86,7 @@ describe('handleFirestoreError', () => {
 
     const loggedPayload = (console.error as unknown as { mock: { calls: unknown[][] } }).mock
       .calls[0][1];
-    expect(JSON.parse(String(loggedPayload))).toEqual({
+    expect(JSON.parse(loggedPayload as string)).toEqual({
       error: 'raw string',
       operationType: 'get',
       path: null,
@@ -99,7 +99,7 @@ describe('handleFirestoreError', () => {
     handleFirestoreError({ code: 42 }, OperationType.LIST, null, onError);
     const loggedPayload = (console.error as unknown as { mock: { calls: unknown[][] } }).mock
       .calls[0][1];
-    expect(JSON.parse(String(loggedPayload))).toEqual({
+    expect(JSON.parse(loggedPayload as string)).toEqual({
       error: '{"code":42}',
       operationType: 'list',
       path: null,

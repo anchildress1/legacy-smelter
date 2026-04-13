@@ -113,7 +113,11 @@ describe('useGlobalStats', () => {
     expect(result.current.statsIssue).toBeNull();
   });
 
-  it('sets statsIssue when total_pixels_melted is not a number', async () => {
+  it.each([
+    ['a string', 'not a number'],
+    ['NaN', Number.NaN],
+    ['Infinity', Infinity],
+  ] as const)('sets statsIssue when total_pixels_melted is %s', async (_label, badValue) => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { useGlobalStats, DEFAULT_STATS_SCHEMA_ISSUE } = await loadHook();
     const { result } = renderHook(() =>
@@ -123,43 +127,7 @@ describe('useGlobalStats', () => {
     act(() => {
       snapshotHandlers.next?.({
         exists: () => true,
-        data: () => ({ total_pixels_melted: 'not a number' }),
-      });
-    });
-
-    expect(result.current.statsIssue).toBe(DEFAULT_STATS_SCHEMA_ISSUE);
-    consoleErrorSpy.mockRestore();
-  });
-
-  it('sets statsIssue when total_pixels_melted is NaN', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { useGlobalStats, DEFAULT_STATS_SCHEMA_ISSUE } = await loadHook();
-    const { result } = renderHook(() =>
-      useGlobalStats({ source: 'test' }),
-    );
-
-    act(() => {
-      snapshotHandlers.next?.({
-        exists: () => true,
-        data: () => ({ total_pixels_melted: Number.NaN }),
-      });
-    });
-
-    expect(result.current.statsIssue).toBe(DEFAULT_STATS_SCHEMA_ISSUE);
-    consoleErrorSpy.mockRestore();
-  });
-
-  it('sets statsIssue when total_pixels_melted is Infinity', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { useGlobalStats, DEFAULT_STATS_SCHEMA_ISSUE } = await loadHook();
-    const { result } = renderHook(() =>
-      useGlobalStats({ source: 'test' }),
-    );
-
-    act(() => {
-      snapshotHandlers.next?.({
-        exists: () => true,
-        data: () => ({ total_pixels_melted: Infinity }),
+        data: () => ({ total_pixels_melted: badValue }),
       });
     });
 

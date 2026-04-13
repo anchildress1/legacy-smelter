@@ -83,6 +83,18 @@ describe('geminiService', () => {
     vi.restoreAllMocks();
   });
 
+  async function expectParseError(body: unknown, match: string | RegExp): Promise<void> {
+    fetchSpy.mockResolvedValueOnce(
+      stubFetchResponse({
+        ok: true,
+        status: 200,
+        json: async () => body,
+      }),
+    );
+    const { analyzeLegacyTech } = await loadService();
+    await expect(analyzeLegacyTech('img', 'image/png')).rejects.toThrow(match);
+  }
+
   describe('AnalysisError', () => {
     it('carries status, message, category and a stable name for catch blocks', async () => {
       const { AnalysisError } = await loadService();
@@ -265,18 +277,6 @@ describe('geminiService', () => {
   });
 
   describe('analyzeLegacyTech — response body shape validation', () => {
-    async function expectParseError(body: unknown, match: string | RegExp): Promise<void> {
-      fetchSpy.mockResolvedValueOnce(
-        stubFetchResponse({
-          ok: true,
-          status: 200,
-          json: async () => body,
-        }),
-      );
-      const { analyzeLegacyTech } = await loadService();
-      await expect(analyzeLegacyTech('img', 'image/png')).rejects.toThrow(match);
-    }
-
     it('rejects a non-object response', async () => {
       await expectParseError('nope', 'API response is not an object');
     });

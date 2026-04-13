@@ -159,29 +159,29 @@ describe('buildIncidentReportMarkdown', () => {
   });
 });
 
-describe('normalizeIncidentReport', () => {
-  function makeAnalysis(): SmeltAnalysis {
-    return {
-      legacyInfraClass: 'Class',
-      diagnosis: 'diag',
-      dominantColors: ['#ff0000', '#00ff00'],
-      chromaticProfile: 'profile',
-      severity: 'HIGH',
-      primaryContamination: 'primary',
-      contributingFactor: 'contrib',
-      failureOrigin: 'origin',
-      disposition: 'disp',
-      incidentFeedSummary: 'summary',
-      archiveNote: 'archive',
-      ogHeadline: 'headline',
-      shareQuote: 'quote',
-      anonHandle: 'handle',
-      pixelCount: 100,
-      subjectBox: [0, 0, 100, 100],
-      incidentId: 'doc-1',
-    };
-  }
+function makeAnalysis(): SmeltAnalysis {
+  return {
+    legacyInfraClass: 'Class',
+    diagnosis: 'diag',
+    dominantColors: ['#ff0000', '#00ff00'],
+    chromaticProfile: 'profile',
+    severity: 'HIGH',
+    primaryContamination: 'primary',
+    contributingFactor: 'contrib',
+    failureOrigin: 'origin',
+    disposition: 'disp',
+    incidentFeedSummary: 'summary',
+    archiveNote: 'archive',
+    ogHeadline: 'headline',
+    shareQuote: 'quote',
+    anonHandle: 'handle',
+    pixelCount: 100,
+    subjectBox: [0, 0, 100, 100],
+    incidentId: 'doc-1',
+  };
+}
 
+describe('normalizeIncidentReport', () => {
   it('prefers the analysis over the log when both are provided', () => {
     // App.tsx passes both during the post-analyze render before the
     // Firestore snapshot arrives — analysis wins so the UI reflects
@@ -220,6 +220,6 @@ describe('normalizeIncidentReport', () => {
   });
 
   it('returns null when both analysis and log are undefined', () => {
-    expect(normalizeIncidentReport(undefined, undefined)).toBeNull();
+    expect(normalizeIncidentReport()).toBeNull();
   });
 });

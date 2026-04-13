@@ -2,16 +2,13 @@ import type { FC, MouseEvent } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getFiveDistinctColors, formatTimestamp } from '../lib/utils';
 import { Siren, Quote } from 'lucide-react';
-import { StatItem } from './StatItem';
 import { useEscalation } from '../hooks/useEscalation';
 import { SeverityBadge } from './SeverityBadge';
 import { P0Badge } from './P0Badge';
 import { SanctionBadge } from './SanctionBadge';
-import {
-  IMPACT_GLOW_BASE,
-  IMPACT_GLOW_ESCALATED,
-  IMPACT_GLOW_FILTER_ESCALATED_BUTTON,
-} from '../lib/impactGlow';
+import { IMPACT_GLOW_FILTER_ESCALATED_BUTTON } from '../lib/impactGlow';
+import { ChromaticStrip } from './ChromaticStrip';
+import { IncidentMetricsRow } from './IncidentMetricsRow';
 
 interface ManifestIncidentCardProps {
   log: SmeltLog;
@@ -48,14 +45,7 @@ export const ManifestIncidentCard: FC<ManifestIncidentCardProps> = ({
   return (
     <div className="modern-card relative overflow-hidden flex w-full text-left hover:border-hazard-amber/40 transition-colors group">
       {/* Left chromatic fingerprint strip */}
-      <div
-        className="w-2 shrink-0 flex flex-col overflow-hidden saturate-[.95] brightness-[.97]"
-        aria-hidden="true"
-      >
-        {finalColors.map((col) => (
-          <div key={col} className="flex-1" style={{ backgroundColor: col }} />
-        ))}
-      </div>
+      <ChromaticStrip colors={finalColors} />
 
       {/* Primary action: open incident detail */}
       <button
@@ -101,25 +91,7 @@ export const ManifestIncidentCard: FC<ManifestIncidentCardProps> = ({
         {/* Row 4: inline metrics + timestamp */}
         <div className="mt-3 flex items-center justify-between gap-4 border-t border-concrete-border pt-3">
           <div className="flex items-center gap-4" data-testid="manifest-card-stats-row">
-            <span className="flex items-center gap-1">
-              <span
-                data-testid="manifest-card-impact-number"
-                className={`font-mono text-lg font-black leading-none transition-all ${
-                  escalated ? IMPACT_GLOW_ESCALATED : IMPACT_GLOW_BASE
-                }`}
-              >
-                {impact}
-              </span>
-              <span className="text-[9px] font-mono uppercase tracking-wider font-bold text-hazard-amber">Impact</span>
-            </span>
-            <span className="w-px h-3 bg-concrete-border" aria-hidden="true" />
-            {[
-              { value: log.sanction_count, label: 'Sanctions' },
-              { value: log.escalation_count, label: 'Escalations' },
-              { value: log.breach_count, label: 'Breaches' },
-            ].map(({ value, label }) => (
-              <StatItem key={label} value={value} label={label} />
-            ))}
+            <IncidentMetricsRow impact={impact} escalated={escalated} log={log} testIdPrefix="manifest-card" />
           </div>
           <span className="text-dead-gray font-mono text-xs shrink-0">
             {formatTimestamp(log.timestamp.toDate())}
