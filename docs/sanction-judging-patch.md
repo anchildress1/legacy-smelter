@@ -67,7 +67,7 @@ If two candidates tie on total score, prefer the one with the higher **declarati
 
 ## Rationale
 
-When `sanctioned_incident_id` is set, `sanction_rationale` is one sentence, institutional voice, maximum 500 characters. It names the specific axis that earned the sanction. Do NOT quote the candidate's own text. Do NOT name the subject matter. Reference the craft, not the content.
+When `sanctioned_incident_id` is set, `sanction_rationale` is one sentence, institutional voice, maximum 150 characters. It names the specific axis that earned the sanction. Do NOT quote the candidate's own text. Do NOT name the subject matter. Reference the craft, not the content.
 
 When `sanctioned_incident_id` is `null`, `sanction_rationale` is an empty string and `reason` is a one-sentence explanation of what the batch was missing. Soft, not punitive. "No candidate clearly earned the sanction this round" is the tone.
 ```
