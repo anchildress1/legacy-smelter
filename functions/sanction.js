@@ -419,6 +419,9 @@ export async function judgeBatch(candidates, { geminiApiKey, aiClient } = {}) {
         config: {
           responseMimeType: 'application/json',
           responseSchema: JUDGING_RESPONSE_SCHEMA,
+          thinkingConfig: {
+            thinkingLevel: "low",
+          },
         },
       });
       const text = response?.text?.trim();

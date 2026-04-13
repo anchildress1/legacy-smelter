@@ -393,9 +393,6 @@ async function analyzeImage(base64Image, mimeType) {
     config: {
       responseMimeType: 'application/json',
       responseSchema: GEMINI_RESPONSE_SCHEMA,
-      thinkingConfig: {
-        thinkingLevel: "low",
-      }
     },
   });
 

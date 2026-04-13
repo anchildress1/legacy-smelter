@@ -101,7 +101,7 @@ docs/
 
 ## Docs
 
-- [`docs/classification-prompt.md`](docs/classification-prompt.md) — AI prompt, severity tiers, field constraints
+- [`docs/classification-prompt.md`](docs/archive/classification-prompt.md) — AI prompt, severity tiers, field constraints
 - [`docs/ux-copy.md`](docs/ux-copy.md) — Voice, persona rules, writing constraints for UI and AI copy
 - [`docs/design-decisions.md`](docs/design-decisions.md) — Deliberate deviations from the original spec and their rationale
 - [`docs/sanction-judging-patch.md`](docs/sanction-judging-patch.md) — Sanction system rebuild build brief
