@@ -44,7 +44,7 @@
     "jsdom": "^29.0.2",
     "lucide-react": "^1.8.0",
     "oxlint": "^1.59.0",
-    "pixi.js": "^8.17.1",
+    "pixi.js": "^8.18.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "supertest": "^7.2.2",
