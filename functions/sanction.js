@@ -55,7 +55,7 @@ export const LEASE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const MAX_SELECTION_ATTEMPTS = 2;
 
 // Intentionally a stronger model than the /api/analyze path (which uses
-// gemini-3.1-flash-lite-preview for fast generation). Judging humor requires
+// gemini-3.1-flash-lite for fast generation). Judging humor requires
 // reasoning the lite model cannot do — it defaults to academic rubric-speak
 // regardless of prompt. Full flash has the depth to actually read the batch
 // and write a rationale that sounds like a person, not a grading engine.

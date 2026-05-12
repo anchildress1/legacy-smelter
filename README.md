@@ -23,7 +23,7 @@ The system analyzes uploaded images using Gemini Vision and files a formal postm
 |-------|------------|
 | Framework | React 19 + TypeScript + Vite |
 | Animation | PixiJS 8 |
-| AI | Gemini (`gemini-3.1-flash-lite-preview`) via `@google/genai` |
+| AI | Gemini (`gemini-3.1-flash-lite`) via `@google/genai` |
 | Database | Firebase Firestore |
 | Audio | Howler.js |
 | Styling | Tailwind CSS v4 |

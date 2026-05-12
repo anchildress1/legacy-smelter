@@ -291,7 +291,7 @@ Watch for 72 hours after prod deploy:
 - **Function invocation count** — should roughly match incident creation rate. A wild spike indicates a retry storm (e.g. every invocation is throwing). A drop to zero indicates the trigger binding is broken.
 - **Function error rate** — should be near zero. Transient Gemini blips throw and retry silently; sustained errors need investigation. Check for `[sanction-trigger] Sanction batch failed` log entries.
 - **Firestore reads/writes** on the `legacy-smelter` database. The sanction path reads at most `(claim query + sweep query + 5 individual doc reads) ≈ 7 reads` per invocation and writes at most `5 claim updates + 5 finalize updates ≈ 10 writes` per successful invocation. A sustained usage jump well above that ratio means something is wrong.
-- **Gemini API spend** on the project. The judging path uses `gemini-3.1-flash-lite-preview` at one call per 5 incidents (two calls max on retry). Watch for a sustained rate of 2 calls per invocation — that means half of invocations are hitting the retry branch and there is a prompt or schema regression.
+- **Gemini API spend** on the project. The judging path uses `gemini-3.1-flash-lite` at one call per 5 incidents (two calls max on retry). Watch for a sustained rate of 2 calls per invocation — that means half of invocations are hitting the retry branch and there is a prompt or schema regression.
 
 ## 8. Post-deploy cleanup
 

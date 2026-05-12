@@ -48,7 +48,7 @@ Delete the old script and related dead code. **Do not touch the `impact_score` s
 | 3 | Best-effort recovery on Gemini failure via `sanction_lease_at` + sweep + Cloud Functions retry. Do NOT burn the 5 on failure. |
 | 4 | Claim strategy: transaction sets `evaluated=true` + `sanction_lease_at=now` on all 5 atomically BEFORE calling Gemini. No separate `sanction_batch_id` — `sanction_lease_at` does the pending-vs-final job alone. |
 | 5 | Lease TTL = 5 minutes. |
-| 6 | Gemini model = `gemini-3.1-flash-lite-preview` (same as analyze path). |
+| 6 | Gemini model = `gemini-3.1-flash-lite` (same as analyze path). |
 | 7 | Judging prompt is **inlined as a `JUDGING_PROMPT` constant** in the function code, written fresh from the criteria in `docs/judging-prompt.md`. Do NOT `readFileSync` the doc. The doc is guidance; write real code from it, then delete the doc. |
 | 8 | `GEMINI_API_KEY` stored in Google Secret Manager, wired into the function via `defineSecret('GEMINI_API_KEY')`. Reuse the same secret the server already uses. |
 | 9 | **`impact_score` stays stored on the doc.** No change to `shared/impactScore.js`, no change to `firestore.rules` `impactScore()`, no change to `firestore.indexes.json` impact_score composite. Sanction finalize writes a correctly-paired `impact_score` via the existing `computeImpactScore()` function. This is deferred tech debt — future-me problem. |
