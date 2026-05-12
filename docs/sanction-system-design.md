@@ -12,7 +12,7 @@ flowchart LR
     CloudRun["Cloud Run<br/>server.js<br/>POST /api/analyze"]
     Firestore[("Firestore<br/>incident_logs<br/>db: legacy-smelter")]
     Functions["Cloud Functions v2<br/>onIncidentCreated<br/>functions/sanction.js"]
-    Gemini["Gemini<br/>3.1-flash-lite-preview"]
+    Gemini["Gemini<br/>3.1-flash-lite"]
     Secrets["Secret Manager<br/>GEMINI_API_KEY"]
 
     Browser -- "POST" --> CloudRun
@@ -30,7 +30,7 @@ flowchart LR
 | Firestore (`legacy-smelter` DB) | `incident_logs` collection holds every classified image. Two new fields back the judging claim: `evaluated: boolean` and `sanction_lease_at: Timestamp \| null`. |
 | Eventarc + Cloud Functions v2 | `onDocumentCreated` trigger on `incident_logs/{incidentId}` fires for every new doc. Region: `us-east1` (pinned to the Cloud Run region for latency). `maxInstances: 10`. |
 | `functions/sanction.js` | Orchestration module. Exports `runSanctionBatch` which sequences sweep → claim → judge → finalize. Kept independent of the `firebase-functions` runtime so the unit tests can import it directly. |
-| Gemini 3.1 Flash Lite Preview | Same model `/api/analyze` uses for classification. The sanction path pins the same model ID so model-lifecycle events (deprecation, quota split) hit both callers together. Structured output via `responseMimeType: 'application/json'` + `responseSchema`. |
+| Gemini 3.1 Flash Lite | Same model `/api/analyze` uses for classification. The sanction path pins the same model ID so model-lifecycle events (deprecation, quota split) hit both callers together. Structured output via `responseMimeType: 'application/json'` + `responseSchema`. |
 | Secret Manager | `GEMINI_API_KEY` is declared via `firebase-functions/params` `defineSecret('GEMINI_API_KEY')` in `functions/index.js`. The deploy manifest wires the GSM binding; the trigger reads `.value()` at invocation time. |
 
 ## 2. Sequence — happy path
