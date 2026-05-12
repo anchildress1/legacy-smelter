@@ -439,7 +439,7 @@ export async function judgeBatch(candidates, { geminiApiKey, aiClient } = {}) {
       return normalizeSelection(parsed, candidates);
     } catch (err) {
       lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = (err instanceof Error ? err.message : String(err)).replace(/[\r\n]/g, ' ');
       console.warn(
         `[sanction] Judging attempt ${attempt}/${MAX_SELECTION_ATTEMPTS} failed: ${msg}`,
       );
@@ -520,7 +520,7 @@ export async function finalizeNoWinner({ batchDocs, selection, db = getDb() }) {
   await batch.commit();
 
   console.log(
-    `[sanction] Finalized no-winner batch (batch_size=${batchDocs.length}, reason=${selection.reason})`,
+    `[sanction] Finalized no-winner batch (batch_size=${batchDocs.length}, reason=${String(selection.reason ?? '').replace(/[\r\n]/g, ' ')})`,
   );
   return { winnerId: null, impactScore: null, path: 'no-winner' };
 }
