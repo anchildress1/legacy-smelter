@@ -139,7 +139,7 @@ function injectIncidentOg(html, incident, canonicalUrl) {
 // ── Gemini analysis ─────────────────────────────────────────────────────────
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
+const GEMINI_MODEL = 'gemini-3.1-flash-lite';
 
 const GEMINI_PROMPT = `You are the commanding incident analysis engine for Legacy Smelter. You analyze uploaded images and classify them as condemned technical artifacts requiring immediate thermal decommission.
 
@@ -655,8 +655,8 @@ app.get('/s/:id', async (req, res, next) => {
   try {
     incident = await fetchIncident(id);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[server][ERR_OG_FETCH_FAILED] id=%s: %s', id, msg);
+    const msg = (err instanceof Error ? err.message : String(err)).replace(/[\r\n]/g, ' ');
+    console.error('[server][ERR_OG_FETCH_FAILED] id=%s: %s', String(id).replace(/[\r\n]/g, ' '), msg);
     // Fallback to the generic SPA, but do NOT cache — a transient Firestore
     // error should not poison the CDN for hours.
     res.setHeader('Cache-Control', 'no-store');

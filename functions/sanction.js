@@ -55,7 +55,7 @@ export const LEASE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const MAX_SELECTION_ATTEMPTS = 2;
 
 // Intentionally a stronger model than the /api/analyze path (which uses
-// gemini-3.1-flash-lite-preview for fast generation). Judging humor requires
+// gemini-3.1-flash-lite for fast generation). Judging humor requires
 // reasoning the lite model cannot do — it defaults to academic rubric-speak
 // regardless of prompt. Full flash has the depth to actually read the batch
 // and write a rationale that sounds like a person, not a grading engine.
@@ -439,7 +439,7 @@ export async function judgeBatch(candidates, { geminiApiKey, aiClient } = {}) {
       return normalizeSelection(parsed, candidates);
     } catch (err) {
       lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = (err instanceof Error ? err.message : String(err)).replace(/[\r\n]/g, ' ');
       console.warn(
         `[sanction] Judging attempt ${attempt}/${MAX_SELECTION_ATTEMPTS} failed: ${msg}`,
       );
@@ -520,7 +520,7 @@ export async function finalizeNoWinner({ batchDocs, selection, db = getDb() }) {
   await batch.commit();
 
   console.log(
-    `[sanction] Finalized no-winner batch (batch_size=${batchDocs.length}, reason=${selection.reason})`,
+    `[sanction] Finalized no-winner batch (batch_size=${batchDocs.length}, reason=${String(selection.reason ?? '').replace(/[\r\n]/g, ' ')})`,
   );
   return { winnerId: null, impactScore: null, path: 'no-winner' };
 }
