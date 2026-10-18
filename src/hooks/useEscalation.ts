@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useLayoutEffect, useRef } from 'react';
 import {
   toggleEscalation,
   hasEscalated,
@@ -53,7 +53,7 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
   // before any await, so the second call sees the guard immediately.
   const toggleInFlightRef = useRef(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // Any incident switch invalidates stale async completions from the previous
     // incident. This includes toggles still in-flight.
     localMutationEpochRef.current += 1;

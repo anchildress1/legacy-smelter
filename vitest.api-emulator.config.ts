@@ -16,6 +16,7 @@ export default defineConfig({
     ],
     exclude: ['**/node_modules/**'],
     environment: 'node',
+    env: { METADATA_SERVER_DETECTION: 'none' },
     // Both suites in this config share the same Firestore emulator instance
     // and write to the same `legacy-smelter` database. Running them in
     // parallel (the default) causes the sanction integration suite's seeded

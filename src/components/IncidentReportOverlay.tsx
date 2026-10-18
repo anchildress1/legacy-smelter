@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useId, type FC, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useId, type FC, type ReactNode } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { computeImpact, SmeltLog } from '../types';
 import { formatTimestamp, buildIncidentUrl } from '../lib/utils';
@@ -130,7 +130,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
     setBreachError(null);
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     breachEpochRef.current = { incidentId };
   }, [incidentId]);
 

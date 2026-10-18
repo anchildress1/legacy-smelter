@@ -13,6 +13,17 @@ export default defineConfig({
     // Actual compression is handled by the Express compression middleware.
     reportCompressedSize: false,
     cssMinify: 'lightningcss',
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: 'firebase-auth', test: /node_modules[/\\]@firebase[/\\]auth[/\\]/ },
+            { name: 'firebase-firestore', test: /node_modules[/\\]@firebase[/\\]firestore[/\\]/ },
+          ],
+        },
+        strictExecutionOrder: true,
+      },
+    },
   },
   server: {
     // HMR is disabled when DISABLE_HMR=true (used in AI Studio to prevent
