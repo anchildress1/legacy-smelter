@@ -251,12 +251,12 @@ class MockImage {
   public crossOrigin = '';
   public width = 100;
   public height = 100;
-  private _src = '';
+  private sourceUrl = '';
   get src() {
-    return this._src;
+    return this.sourceUrl;
   }
   set src(value: string) {
-    this._src = value;
+    this.sourceUrl = value;
     // Fire onload in a microtask so the awaited Promise in loadAndSmelt
     // has a chance to set the handlers first.
     queueMicrotask(() => {

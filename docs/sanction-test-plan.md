@@ -1,8 +1,10 @@
 # Sanction judging — test plan
 
-**Status:** Permanent. Pair with `docs/sanction-system-design.md`. Every test referenced here must stay green on `main`; CI runs the unit suite on every push and the emulator suite on the `test:api:emulator` job.
+**Status:** Permanent. Pair with `docs/sanction-system-design.md`. Every test referenced here must stay green on `main`; The `CI / ai-checks` job runs `make ai-checks` on ready pull requests and pushes to `main`: lint/typecheck, unit tests, API emulator tests, rules tests, then the production build.
 
 This document describes the complete test coverage for the sanction judging pipeline: what each layer proves, why it exists as a separate layer, and what regressions it catches. If you are adding a test, find the layer it belongs in below and match the existing style.
+
+Use the Node 24 version in `.nvmrc` and Java 25 for emulator checks. Cloud Functions deployment retains its supported Node 22 runtime. Install both lockfiles with `npm ci` and `npm ci --prefix functions` before running `make ai-checks`.
 
 ## 1. Test layers at a glance
 
@@ -17,13 +19,13 @@ The unit and integration suites are intentionally redundant on the happy path. D
 
 ## 2. Unit tests — `functions/sanction.test.js`
 
-Emulator-free, ~200ms total runtime, runs on every push via `npm run test`. Mocks `firebase-admin/app`, `firebase-admin/firestore`, and `@google/genai` via `vi.hoisted` so the module under test can import `getFirestore` and `GoogleGenAI` naturally while we control their behavior.
+Emulator-free, runs in CI via `npm run test:run`. Mocks `firebase-admin/app`, `firebase-admin/firestore`, and `@google/genai` via `vi.hoisted` so the module under test can import `getFirestore` and `GoogleGenAI` naturally while we control their behavior.
 
 ### 2.1 Fixture strategy
 
 - `makeMockDb({ claimQuerySize, claimQueryDocs, sweepDocs })` builds the exact Firestore surface `sanction.js` touches: `collection().where().orderBy().limit().get()`, `runTransaction`, and `batch()`. Returns references to every inner mock so tests assert call counts, payload shapes, and ordering — not just return values.
 - `StubTimestamp` is a two-method stub (`fromMillis`, `toMillis`). `sanction.js` only calls those two; the rest of the real `Timestamp` API is dead weight for unit tests.
-- `__resetSanctionSingletonsForTests` is an explicit test seam exported from `sanction.js` that clears the lazy `_db` / `_ai` caches between tests. Every phase test calls it in `beforeEach`.
+- `resetSanctionSingletonsForTests` is an explicit test seam exported from `sanction.js` that clears the lazy `dbInstance` / `aiInstance` caches between tests. Every phase test calls it in `beforeEach`.
 
 ### 2.2 Pure helpers
 

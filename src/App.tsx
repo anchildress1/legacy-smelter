@@ -157,7 +157,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     });
   }, [onCanvasReadyTimeout]);
 
-  const releaseCameraResources = () => {
+  const releaseCameraResources = useCallback(() => {
     if (cameraAttachTimerRef.current !== null) {
       clearTimeout(cameraAttachTimerRef.current);
       cameraAttachTimerRef.current = null;
@@ -170,7 +170,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
       videoRef.current.srcObject = null;
     }
-  };
+  }, []);
 
   // Release camera hardware if component unmounts mid-flow
   useEffect(() => {
@@ -178,7 +178,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       releaseCameraResources();
       rejectCanvasWaiters('Smelter view unmounted before canvas was ready.');
     };
-  }, [rejectCanvasWaiters]);
+  }, [rejectCanvasWaiters, releaseCameraResources]);
 
   // Deep link: fetch incident by Firestore doc ID and stage it for the
   // overlay. Actually opening the overlay is deferred to the staging
@@ -207,17 +207,10 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     return () => { cancelled = true; };
   }, [deepLinkId]);
 
-  // Staging effect: a pending deep-link log waits here until the top-3
-  // subscription has delivered its first snapshot, then transfers into
-  // `selectedRecentLog` to open the overlay. This runs exactly once per
-  // pending log because it clears `pendingDeepLinkLog` on transfer.
-  // Reading `recentLogsLoaded` guarantees the P0 derivation below sees
-  // a populated Set on first render, avoiding a false→true badge flash.
-  useEffect(() => {
-    if (!pendingDeepLinkLog || !recentLogsLoaded) return;
+  if (pendingDeepLinkLog && recentLogsLoaded) {
     setSelectedRecentLog(pendingDeepLinkLog);
     setPendingDeepLinkLog(null);
-  }, [pendingDeepLinkLog, recentLogsLoaded]);
+  }
 
   const startCamera = async () => {
     try {

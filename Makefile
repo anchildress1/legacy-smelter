@@ -62,5 +62,5 @@ trigger-sanction:
 	npx tsx scripts/trigger-sanction.ts
 
 ai-checks:
-	npm run lint || echo "Lint skipped or passed"
-	echo "Secret scan passed"
+	npm run test:proof
+	npm run build

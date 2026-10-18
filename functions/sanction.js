@@ -141,8 +141,8 @@ const JUDGING_RESPONSE_SCHEMA = {
 
 // ── Lazy singletons (admin app + Gemini client) ─────────────────────────────
 
-let _db = null;
-let _ai = null;
+let dbInstance = null;
+let aiInstance = null;
 
 /**
  * Lazy Firestore handle. Admin SDK `initializeApp()` picks up the service
@@ -152,22 +152,22 @@ let _ai = null;
  * bypass this path entirely.
  */
 export function getDb() {
-  if (_db) return _db;
+  if (dbInstance) return dbInstance;
   if (getApps().length === 0) initializeApp();
-  _db = getFirestore(FIRESTORE_DATABASE);
-  return _db;
+  dbInstance = getFirestore(FIRESTORE_DATABASE);
+  return dbInstance;
 }
 
 function getAiClient(apiKey) {
-  if (_ai) return _ai;
-  _ai = new GoogleGenAI({ apiKey });
-  return _ai;
+  if (aiInstance) return aiInstance;
+  aiInstance = new GoogleGenAI({ apiKey });
+  return aiInstance;
 }
 
 // Test-only seam so unit tests can reset cached singletons between runs.
-export function __resetSanctionSingletonsForTests() {
-  _db = null;
-  _ai = null;
+export function resetSanctionSingletonsForTests() {
+  dbInstance = null;
+  aiInstance = null;
 }
 
 // ── Helpers ported verbatim from scripts/sanction-incidents.ts ──────────────
@@ -588,4 +588,4 @@ export async function runSanctionBatch({ geminiApiKey, aiClient, db, now = Date.
 // Expose for tests that need to reference the FieldValue sentinel without
 // re-importing firebase-admin. Intentionally not part of the module's
 // public API beyond the test surface.
-export const __internals = { FieldValue };
+export const sanctionInternals = { FieldValue };

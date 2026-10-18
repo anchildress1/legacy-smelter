@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type FC } from 'react';
+import { useState, useMemo, type FC } from 'react';
 import { SmeltLog, computeImpact } from '../types';
 import { getLogShareLinks } from '../lib/utils';
 import { IncidentLogCard } from './IncidentLogCard';
@@ -88,9 +88,12 @@ export const IncidentManifest: FC<IncidentManifestProps> = ({ onNavigateHome }) 
     });
   }, [allLogs, filterMode, sortMode]);
 
-  useEffect(() => {
+  const pageKey = `${filterMode}:${sortMode}`;
+  const [activePageKey, setActivePageKey] = useState(pageKey);
+  if (activePageKey !== pageKey) {
+    setActivePageKey(pageKey);
     setCurrentPage(0);
-  }, [filterMode, sortMode]);
+  }
 
   const totalPages = Math.max(1, Math.ceil(sortedLogs.length / PAGE_SIZE));
   const isWindowTruncated = allLogs.length === MANIFEST_FETCH_LIMIT;

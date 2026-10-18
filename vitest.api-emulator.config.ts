@@ -25,8 +25,6 @@ export default defineConfig({
     // emulator a clean slate.
     fileParallelism: false,
     pool: 'forks',
-    forks: {
-      singleFork: true,
-    },
+    maxWorkers: 1,
   },
 });

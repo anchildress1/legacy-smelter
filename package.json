@@ -16,48 +16,51 @@
     "test:rules": "firebase emulators:exec --only firestore --project demo-legacy-smelter \"vitest run --config vitest.rules.config.ts\"",
     "test:proof": "npm run lint && npm run test:run && npm run test:api:emulator && npm run test:rules",
     "clean": "rm -rf dist",
-    "lint": "oxlint && npm run typecheck",
+    "lint": "oxlint --deny-warnings && npm run typecheck",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p scripts/tsconfig.json"
   },
   "dependencies": {
-    "@google/genai": "^1.49.0",
-    "compression": "^1.8.1",
-    "dotenv": "^17.4.1",
-    "express": "^5.2.1",
-    "firebase-admin": "^13.8.0",
-    "image-size": "^2.0.2"
+    "@google/genai": "^2.30.0",
+    "compression": "^1.8.2",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "firebase-admin": "^14.5.0",
+    "image-size": "^2.0.4"
   },
   "devDependencies": {
-    "@firebase/rules-unit-testing": "^5.0.0",
-    "@tailwindcss/vite": "^4.2.2",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
     "@types/express": "^5.0.6",
-    "@types/howler": "^2.2.12",
-    "@types/node": "^25.6.0",
-    "@types/react-dom": "^19.2.3",
-    "@types/supertest": "^7.2.0",
-    "@vitejs/plugin-react": "^6.0.1",
-    "firebase": "^12.12.0",
-    "firebase-tools": "^15.14.0",
+    "@types/howler": "^2.2.13",
+    "@types/node": "^26.6.5",
+    "@types/react-dom": "^19.3.0",
+    "@types/supertest": "^7.2.1",
+    "@vitejs/plugin-react": "^6.1.2",
+    "firebase": "^13.0.0",
+    "firebase-tools": "^15.34.0",
     "howler": "^2.2.4",
-    "jsdom": "^29.0.2",
-    "lucide-react": "^1.8.0",
-    "oxlint": "^1.59.0",
-    "pixi.js": "^8.17.1",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "supertest": "^7.2.2",
-    "tailwindcss": "^4.2.2",
-    "tsx": "^4.21.0",
-    "typescript": "~6.0.2",
-    "vite": "^8.0.8",
-    "vitest": "^4.1.4"
+    "jsdom": "^30.1.3",
+    "lucide-react": "^1.59.0",
+    "oxlint": "^1.88.0",
+    "pixi.js": "^8.22.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "supertest": "^7.3.1",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
   },
   "overrides": {
     "@tootallnate/once": "3.0.1"
   },
   "volta": {
-    "node": "22.22.2"
+    "node": "24.21.0"
+  },
+  "engines": {
+    "node": ">=24.15.0"
   }
 }
