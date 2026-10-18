@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import baseConfig from './vitest.config';
+import baseConfig from './vitest.config.ts';
 
 /**
  * Emulator-backed integration suite config. Inherits `resolve.alias` from the

@@ -188,7 +188,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
   useEffect(() => {
     if (!deepLinkId) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const snap = await getDoc(doc(db, 'incident_logs', deepLinkId));
         if (cancelled) return;
@@ -258,7 +258,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
         ctx.drawImage(videoRef.current, 0, 0);
         const base64 = canvas.toDataURL('image/jpeg');
         stopCamera();
-        processImage(base64, 'image/jpeg');
+        void processImage(base64, 'image/jpeg');
       } else {
         console.error('[App] captureImage: failed to get 2D canvas context');
         stopCamera();
@@ -322,7 +322,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     }
   };
 
-  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
@@ -331,9 +331,9 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     setAnalyzeIssue(null);
 
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = (event) => {
       const base64 = event.target?.result as string;
-      processImage(base64, file.type);
+      void processImage(base64, file.type);
     };
     reader.onerror = () => {
       console.error('[App] FileReader failed:', reader.error);

@@ -6,7 +6,8 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
+RUN npm rebuild esbuild
 COPY index.html vite.config.ts tsconfig.json ./
 COPY public ./public
 COPY shared ./shared
@@ -20,7 +21,7 @@ RUN --mount=type=secret,id=vite_env,target=/run/secrets/vite_env \
 FROM node:24-alpine AS server-deps
 WORKDIR /app
 COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 
 # ── server stage ─────────────────────────────────────────────────────────────
 # Minimal runtime: express + @google/genai + dotenv + compiled dist + server.js.

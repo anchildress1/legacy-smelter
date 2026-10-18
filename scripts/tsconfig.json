@@ -7,7 +7,6 @@
     "types": ["node"],
     "skipLibCheck": true,
     "isolatedModules": true,
-    "allowJs": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "strict": true

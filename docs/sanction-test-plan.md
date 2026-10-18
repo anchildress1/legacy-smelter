@@ -1,10 +1,10 @@
 # Sanction judging — test plan
 
-**Status:** Permanent. Pair with `docs/sanction-system-design.md`. Every test referenced here must stay green on `main`; The `CI / ai-checks` job runs `make ai-checks` on ready pull requests and pushes to `main`: lint/typecheck, unit tests, API emulator tests, rules tests, then the production build.
+**Status:** Permanent. Pair with `docs/sanction-system-design.md`. Every test referenced here must stay green on `main`; the `CI / ai-checks` job runs `make ai-checks` on ready pull requests and pushes to `main`: Gitleaks, a production build with demo test configuration, lint/typecheck, unit tests, API emulator tests, then rules tests.
 
 This document describes the complete test coverage for the sanction judging pipeline: what each layer proves, why it exists as a separate layer, and what regressions it catches. If you are adding a test, find the layer it belongs in below and match the existing style.
 
-Use the Node 24 version in `.nvmrc` and Java 25 for emulator checks. Cloud Functions deployment retains its supported Node 22 runtime. Install both lockfiles with `npm ci` and `npm ci --prefix functions` before running `make ai-checks`.
+Use the Node 24 version in `.nvmrc` and Java 25 for emulator checks. Cloud Functions deployment retains its supported Node 22 runtime. Install Gitleaks and both lockfiles with `npm ci --ignore-scripts`, `npm rebuild esbuild re2`, and `npm ci --prefix functions --ignore-scripts` before running `make ai-checks`.
 
 ## 1. Test layers at a glance
 

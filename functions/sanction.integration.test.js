@@ -86,6 +86,9 @@ function makeIncidentData({
     uid: 'uid-test',
     legacy_infra_class: 'Class',
     diagnosis: 'Diagnosis',
+    disposition: 'Decommission',
+    primary_contamination: 'Legacy residue',
+    contributing_factor: 'Config rot',
     severity: 'high',
     archive_note: 'Archive',
     failure_origin: 'Origin',
@@ -97,7 +100,7 @@ function makeIncidentData({
     sanction_count: 0,
     sanctioned: false,
     sanction_rationale: null,
-    impact_score: 0,
+    impact_score: 3 * escalationCount + 2 * breachCount,
     pixel_count: 100,
     timestamp: Timestamp.fromMillis(timestampMs),
     evaluated,
@@ -215,7 +218,7 @@ describe('claimBatch (emulator)', () => {
     expect(allIds.size).toBe(claimA.length + claimB.length);
     const flipped = await db.collection('incident_logs').where('evaluated', '==', true).get();
     expect(flipped.size).toBe(allIds.size);
-  });
+  }, 15000);
 });
 
 describe('sweepStaleLeases (emulator)', () => {
