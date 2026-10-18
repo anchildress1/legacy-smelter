@@ -26,8 +26,8 @@ import { getFiveDistinctColors } from './shared/colors.js';
 import { getDb, getAdminAuth } from './shared/admin-init.js';
 import 'dotenv/config';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DIST = resolve(__dirname, 'dist');
+const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+const DIST = resolve(moduleDirectory, 'dist');
 const PORT = process.env.PORT || 8080;
 const APP_URL_RAW = (process.env.VITE_APP_URL || '').trim();
 if (!APP_URL_RAW) {
@@ -90,14 +90,14 @@ async function fetchIncident(docId) {
 // Read index.html once at startup so a missing build fails the server
 // immediately with an actionable error instead of the first request returning
 // a generic 500.
-let _spaHtmlCache;
+let spaHtmlCache;
 try {
-  _spaHtmlCache = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
+  spaHtmlCache = readFileSync(resolve(DIST, 'index.html'), 'utf-8');
 } catch (cause) {
   throw new Error(`[server] Cannot read ${DIST}/index.html. Run "npm run build" first.`, { cause });
 }
 function getSpaHtml() {
-  return _spaHtmlCache;
+  return spaHtmlCache;
 }
 
 // Each entry maps a matching regex in `dist/index.html` to the replacement
@@ -354,10 +354,10 @@ const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'ima
 const MAX_BASE64_LENGTH = 9 * 1024 * 1024; // ~6.75 MB decoded
 const MAX_PIXEL_COUNT = 200_000_000; // 200 MP hard cap to prevent poisoned stats input
 
-let _aiClient = null;
+let aiClient = null;
 function getAiClient() {
-  if (!_aiClient) _aiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-  return _aiClient;
+  if (!aiClient) aiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  return aiClient;
 }
 
 function derivePixelCount(base64Image) {

@@ -157,7 +157,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     });
   }, [onCanvasReadyTimeout]);
 
-  const releaseCameraResources = () => {
+  const releaseCameraResources = useCallback(() => {
     if (cameraAttachTimerRef.current !== null) {
       clearTimeout(cameraAttachTimerRef.current);
       cameraAttachTimerRef.current = null;
@@ -170,7 +170,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
       videoRef.current.srcObject = null;
     }
-  };
+  }, []);
 
   // Release camera hardware if component unmounts mid-flow
   useEffect(() => {
@@ -178,7 +178,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
       releaseCameraResources();
       rejectCanvasWaiters('Smelter view unmounted before canvas was ready.');
     };
-  }, [rejectCanvasWaiters]);
+  }, [rejectCanvasWaiters, releaseCameraResources]);
 
   // Deep link: fetch incident by Firestore doc ID and stage it for the
   // overlay. Actually opening the overlay is deferred to the staging
@@ -188,7 +188,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
   useEffect(() => {
     if (!deepLinkId) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const snap = await getDoc(doc(db, 'incident_logs', deepLinkId));
         if (cancelled) return;
@@ -207,17 +207,10 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     return () => { cancelled = true; };
   }, [deepLinkId]);
 
-  // Staging effect: a pending deep-link log waits here until the top-3
-  // subscription has delivered its first snapshot, then transfers into
-  // `selectedRecentLog` to open the overlay. This runs exactly once per
-  // pending log because it clears `pendingDeepLinkLog` on transfer.
-  // Reading `recentLogsLoaded` guarantees the P0 derivation below sees
-  // a populated Set on first render, avoiding a false→true badge flash.
-  useEffect(() => {
-    if (!pendingDeepLinkLog || !recentLogsLoaded) return;
+  if (pendingDeepLinkLog && recentLogsLoaded) {
     setSelectedRecentLog(pendingDeepLinkLog);
     setPendingDeepLinkLog(null);
-  }, [pendingDeepLinkLog, recentLogsLoaded]);
+  }
 
   const startCamera = async () => {
     try {
@@ -265,7 +258,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
         ctx.drawImage(videoRef.current, 0, 0);
         const base64 = canvas.toDataURL('image/jpeg');
         stopCamera();
-        processImage(base64, 'image/jpeg');
+        void processImage(base64, 'image/jpeg');
       } else {
         console.error('[App] captureImage: failed to get 2D canvas context');
         stopCamera();
@@ -329,7 +322,7 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     }
   };
 
-  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
@@ -338,9 +331,9 @@ export default function App({ onNavigateManifest, deepLinkId }: Readonly<AppProp
     setAnalyzeIssue(null);
 
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = (event) => {
       const base64 = event.target?.result as string;
-      processImage(base64, file.type);
+      void processImage(base64, file.type);
     };
     reader.onerror = () => {
       console.error('[App] FileReader failed:', reader.error);

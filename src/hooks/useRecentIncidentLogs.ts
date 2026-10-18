@@ -44,14 +44,14 @@ export function useRecentIncidentLogs({
   const [recentLogs, setRecentLogs] = useState<SmeltLog[]>([]);
   const [queueIssue, setQueueIssue] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const queryKey = JSON.stringify([limitCount, schemaIssuePrefix, source]);
+  const [activeQueryKey, setActiveQueryKey] = useState(queryKey);
+  if (activeQueryKey !== queryKey) {
+    setActiveQueryKey(queryKey);
+    setLoaded(false);
+  }
 
   useEffect(() => {
-    // Reset the loaded sentinel when the query inputs change (e.g. a
-    // different `limitCount`) so consumers see a clean "not yet
-    // loaded" state for the new subscription before its first
-    // callback fires.
-    setLoaded(false);
-
     const logsQuery = query(
       collection(db, 'incident_logs'),
       orderBy('impact_score', 'desc'),

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useId, type FC, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useId, type FC, type ReactNode } from 'react';
 import { SmeltAnalysis } from '../services/geminiService';
 import { computeImpact, SmeltLog } from '../types';
 import { formatTimestamp, buildIncidentUrl } from '../lib/utils';
@@ -112,7 +112,7 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
   } = useEscalation(incidentId ?? null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyLinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const breachEpochRef = useRef(0);
+  const breachEpochRef = useRef({ incidentId });
   const headingId = useId();
 
   const incidentUrl = incidentId ? buildIncidentUrl(incidentId) : null;
@@ -124,9 +124,14 @@ export const IncidentReportOverlay: FC<OverlayProps> = ({ analysis, log, shareLi
     };
   }, []);
 
-  useEffect(() => {
-    breachEpochRef.current += 1;
+  const [activeIncidentId, setActiveIncidentId] = useState(incidentId);
+  if (activeIncidentId !== incidentId) {
+    setActiveIncidentId(incidentId);
     setBreachError(null);
+  }
+
+  useLayoutEffect(() => {
+    breachEpochRef.current = { incidentId };
   }, [incidentId]);
 
   useEffect(() => {

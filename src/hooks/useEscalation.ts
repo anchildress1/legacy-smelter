@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useLayoutEffect, useRef } from 'react';
 import {
   toggleEscalation,
   hasEscalated,
@@ -37,6 +37,13 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
   const [escalated, setEscalated] = useState(() => incidentId ? hasEscalated(incidentId) : false);
   const [isToggling, setIsToggling] = useState(false);
   const [toggleError, setToggleError] = useState<Error | null>(null);
+  const [activeIncidentId, setActiveIncidentId] = useState(incidentId);
+  if (activeIncidentId !== incidentId) {
+    setActiveIncidentId(incidentId);
+    setIsToggling(false);
+    setToggleError(null);
+    setEscalated(incidentId ? hasEscalated(incidentId) : false);
+  }
   const localMutationEpochRef = useRef(0);
   const activeToggleRequestRef = useRef(0);
   // Synchronous re-entry guard. `isToggling` state cannot be used here
@@ -46,22 +53,15 @@ export function useEscalation(incidentId: string | null): UseEscalationResult {
   // before any await, so the second call sees the guard immediately.
   const toggleInFlightRef = useRef(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // Any incident switch invalidates stale async completions from the previous
     // incident. This includes toggles still in-flight.
     localMutationEpochRef.current += 1;
     activeToggleRequestRef.current += 1;
     toggleInFlightRef.current = false;
-    setIsToggling(false);
-    setToggleError(null);
-
-    if (!incidentId) {
-      setEscalated(false);
-      return;
-    }
+    if (!incidentId) return;
 
     const syncEpoch = localMutationEpochRef.current;
-    setEscalated(hasEscalated(incidentId));
     let cancelled = false;
     syncEscalationState(incidentId)
       .then((state) => {

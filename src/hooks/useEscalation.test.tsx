@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockToggleEscalation = vi.fn<(incidentId: string) => Promise<boolean>>();
@@ -314,6 +315,39 @@ describe('useEscalation', () => {
     );
     consoleErrorSpy.mockRestore();
     consoleWarnSpy.mockRestore();
+  });
+
+  it('accepts a new incident toggle during commit while the previous request is pending', async () => {
+    const oldToggle = makeDeferredToggle();
+    const newToggle = makeDeferredToggle();
+    mockToggleEscalation.mockImplementationOnce(oldToggle.impl).mockImplementationOnce(newToggle.impl);
+    const { useEscalation } = await loadHook();
+    let startedNewToggle = false;
+    const { result, rerender } = renderHook(({ incidentId }) => {
+      const state = useEscalation(incidentId);
+      useLayoutEffect(() => {
+        if (incidentId === 'inc-b' && !startedNewToggle) {
+          startedNewToggle = true;
+          void state.toggle();
+        }
+      }, [incidentId, state]);
+      return state;
+    }, { initialProps: { incidentId: 'inc-a' } });
+
+    await act(async () => { void result.current.toggle(); });
+    expect(mockToggleEscalation).toHaveBeenCalledWith('inc-a');
+    rerender({ incidentId: 'inc-b' });
+    expect(mockToggleEscalation).toHaveBeenCalledTimes(2);
+    expect(mockToggleEscalation).toHaveBeenLastCalledWith('inc-b');
+    expect(result.current.isToggling).toBe(true);
+
+    await act(async () => {
+      oldToggle.resolve(false);
+      newToggle.resolve(true);
+    });
+    expect(result.current.escalated).toBe(true);
+    expect(result.current.isToggling).toBe(false);
+    expect(result.current.toggleError).toBeNull();
   });
 
   it('falls back to cached state and logs when syncEscalationState rejects', async () => {

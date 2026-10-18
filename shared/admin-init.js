@@ -68,22 +68,22 @@ export function ensureApp() {
   return projectId;
 }
 
-let _db = null;
+let dbInstance = null;
 
 export function getDb() {
-  if (_db) return _db;
+  if (dbInstance) return dbInstance;
   ensureApp();
   const databaseId = process.env.FIREBASE_FIRESTORE_DATABASE_ID;
   if (!databaseId) throw new Error('Missing FIREBASE_FIRESTORE_DATABASE_ID');
-  _db = getFirestore(databaseId);
-  return _db;
+  dbInstance = getFirestore(databaseId);
+  return dbInstance;
 }
 
-let _auth = null;
+let authInstance = null;
 
 export function getAdminAuth() {
-  if (_auth) return _auth;
+  if (authInstance) return authInstance;
   ensureApp();
-  _auth = getAuth();
-  return _auth;
+  authInstance = getAuth();
+  return authInstance;
 }

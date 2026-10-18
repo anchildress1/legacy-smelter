@@ -32,6 +32,13 @@ export function useManifestLogs(sortMode: ManifestSortMode): UseManifestLogsResu
   const [isLoading, setIsLoading] = useState(true);
   const [manifestIssue, setManifestIssue] = useState<string | null>(null);
 
+  const [activeSortMode, setActiveSortMode] = useState(sortMode);
+  if (activeSortMode !== sortMode) {
+    setActiveSortMode(sortMode);
+    setIsLoading(true);
+    setManifestIssue(null);
+  }
+
   useEffect(() => {
     const logsRef = collection(db, 'incident_logs');
     const q = (() => {
@@ -63,8 +70,6 @@ export function useManifestLogs(sortMode: ManifestSortMode): UseManifestLogsResu
       }
     })();
 
-    setIsLoading(true);
-    setManifestIssue(null);
     let gotFirst = false;
     const unsubLogs = onSnapshot(
       q,

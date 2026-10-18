@@ -1,7 +1,7 @@
 import type { SmeltLog } from '../types';
 
 // Server is us-east1 (America/New_York). Format: 2026.04.05 // 21:19:01 EST
-const _tsFormatter = new Intl.DateTimeFormat('en-US', {
+const timestampFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
   year: 'numeric',
   month: '2-digit',
@@ -14,7 +14,7 @@ const _tsFormatter = new Intl.DateTimeFormat('en-US', {
 });
 
 export function formatTimestamp(date: Date): string {
-  const p = Object.fromEntries(_tsFormatter.formatToParts(date).map(({ type, value }) => [type, value]));
+  const p = Object.fromEntries(timestampFormatter.formatToParts(date).map(({ type, value }) => [type, value]));
   return `${p.year}.${p.month}.${p.day} // ${p.hour}:${p.minute}:${p.second} ${p.timeZoneName}`;
 }
 

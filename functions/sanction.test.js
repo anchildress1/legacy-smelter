@@ -2,8 +2,8 @@
 /**
  * Unit tests for the sanction judging module. Mocks firebase-admin and
  * @google/genai so the suite runs without a Firestore emulator. The module
- * exports a `__resetSanctionSingletonsForTests` seam that clears the lazy
- * `_db` / `_ai` caches between tests — every test that touches them calls
+ * exports a `resetSanctionSingletonsForTests` seam that clears the lazy
+ * `dbInstance` / `aiInstance` caches between tests — every test that touches them calls
  * it in `beforeEach`.
  *
  * Coverage goals:
@@ -32,10 +32,10 @@ const { firestoreMocks, generateContentMock, GoogleGenAIMock, TypeMock } = vi.ho
   // two methods via the query filter and lease write.
   class StubTimestamp {
     constructor(ms) {
-      this._ms = ms;
+      this.milliseconds = ms;
     }
     toMillis() {
-      return this._ms;
+      return this.milliseconds;
     }
     static fromMillis(ms) {
       return new StubTimestamp(ms);
@@ -90,7 +90,7 @@ const {
   finalizeNoWinner,
   finalizeBatch,
   runSanctionBatch,
-  __resetSanctionSingletonsForTests,
+  resetSanctionSingletonsForTests,
 } = await import('./sanction.js');
 
 // ── Shared fixture builders ─────────────────────────────────────────────────
@@ -424,7 +424,7 @@ describe('normalizeSelection', () => {
 
 describe('sweepStaleLeases', () => {
   beforeEach(() => {
-    __resetSanctionSingletonsForTests();
+    resetSanctionSingletonsForTests();
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
   afterEach(() => {
@@ -459,7 +459,7 @@ describe('sweepStaleLeases', () => {
 
 describe('claimBatch', () => {
   beforeEach(() => {
-    __resetSanctionSingletonsForTests();
+    resetSanctionSingletonsForTests();
   });
 
   it('returns an empty array when fewer than MIN_BATCH unevaluated docs exist', async () => {
@@ -505,7 +505,7 @@ describe('claimBatch', () => {
 
 describe('judgeBatch', () => {
   beforeEach(() => {
-    __resetSanctionSingletonsForTests();
+    resetSanctionSingletonsForTests();
     generateContentMock.mockReset();
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
@@ -592,7 +592,7 @@ describe('judgeBatch', () => {
 
 describe('finalizeWinner', () => {
   beforeEach(() => {
-    __resetSanctionSingletonsForTests();
+    resetSanctionSingletonsForTests();
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
   afterEach(() => {
@@ -660,7 +660,7 @@ describe('finalizeWinner', () => {
 
 describe('finalizeNoWinner / finalizeBatch', () => {
   beforeEach(() => {
-    __resetSanctionSingletonsForTests();
+    resetSanctionSingletonsForTests();
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
   afterEach(() => {
@@ -715,7 +715,7 @@ describe('finalizeNoWinner / finalizeBatch', () => {
 
 describe('runSanctionBatch', () => {
   beforeEach(() => {
-    __resetSanctionSingletonsForTests();
+    resetSanctionSingletonsForTests();
     generateContentMock.mockReset();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});

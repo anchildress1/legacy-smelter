@@ -1,4 +1,4 @@
-.PHONY: dev local server functions build docker-build deploy ai-checks reset-sanctions trigger-sanction
+.PHONY: dev local server functions build docker-build deploy ai-checks reset-sanctions trigger-sanction secret-scan
 
 # Start everything locally in one terminal: emulators → server → Vite.
 # Requires `concurrently` (dev dependency). All three processes share
@@ -61,6 +61,9 @@ reset-sanctions:
 trigger-sanction:
 	npx tsx scripts/trigger-sanction.ts
 
-ai-checks:
-	npm run lint || echo "Lint skipped or passed"
-	echo "Secret scan passed"
+secret-scan:
+	bash scripts/scan-secrets.sh
+
+ai-checks: secret-scan
+	npm run build -- --mode test
+	npm run test:proof

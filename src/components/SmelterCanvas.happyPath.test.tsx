@@ -251,12 +251,12 @@ class MockImage {
   public crossOrigin = '';
   public width = 100;
   public height = 100;
-  private _src = '';
+  private sourceUrl = '';
   get src() {
-    return this._src;
+    return this.sourceUrl;
   }
   set src(value: string) {
-    this._src = value;
+    this.sourceUrl = value;
     // Fire onload in a microtask so the awaited Promise in loadAndSmelt
     // has a chance to set the handlers first.
     queueMicrotask(() => {
@@ -307,7 +307,7 @@ describe('SmelterCanvas happy path', () => {
 
     // Two filters must be created: the puddle palette-swap filter and
     // the melt filter. Both carry their own uniform blocks.
-    expect(pixiState.filters.length).toBe(2);
+    expect(pixiState.filters).toHaveLength(2);
     const meltFilter = pixiState.filters.find((f) => f.resources.meltUniforms);
     const puddleFilter = pixiState.filters.find((f) => f.resources.puddleUniforms);
     expect(meltFilter).toBeDefined();
@@ -346,7 +346,7 @@ describe('SmelterCanvas happy path', () => {
     expect(() => handleRef.current?.replay()).not.toThrow();
     // No filter should have been created — replay must not fabricate
     // one on its own.
-    expect(pixiState.filters.length).toBe(0);
+    expect(pixiState.filters).toHaveLength(0);
   });
 
   it('destroys the PIXI app with texture:false on unmount to preserve the Assets cache', async () => {
