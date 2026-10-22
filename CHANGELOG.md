@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/anchildress1/legacy-smelter/compare/v2.0.0...v2.0.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* refresh dependencies and reduce Firebase advisories ([#36](https://github.com/anchildress1/legacy-smelter/issues/36)) ([7a9f03b](https://github.com/anchildress1/legacy-smelter/commit/7a9f03bc74476555e9630e53430c0d66673d06f1))
+
 ## [2.0.0](https://github.com/anchildress1/legacy-smelter/compare/v1.0.0...v2.0.0) (2026-04-13) 🔥⚖️
 
 > *v2 is what happens when the dragon gets a compliance department and I stop pretending this was just a joke with particle effects.*
