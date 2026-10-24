@@ -207,12 +207,32 @@ describe('useManifestLogs', () => {
     expect(result.current.manifestIssue).toBeNull();
   });
 
-  it('accepts all four sort modes without error', async () => {
-    const { useManifestLogs } = await loadHook();
+  it.each([
+    ['impact', 'impact_score'],
+    ['newest', 'timestamp'],
+    ['breaches', 'breach_count'],
+    ['escalations', 'escalation_count'],
+  ] as const)('subscribes to %s logs in descending %s order', async (mode, field) => {
+    const { useManifestLogs, MANIFEST_FETCH_LIMIT } = await loadHook();
+    const { onSnapshot } = await import('../firebase');
+    const { result, unmount } = renderHook(() => useManifestLogs(mode));
+    const orders = [{ __orderBy: field, dir: 'desc' }];
+    if (mode !== 'newest') orders.push({ __orderBy: 'timestamp', dir: 'desc' });
 
-    for (const mode of ['impact', 'newest', 'breaches', 'escalations'] as const) {
-      const { unmount } = renderHook(() => useManifestLogs(mode));
-      unmount();
-    }
+    expect(onSnapshot).toHaveBeenCalledWith(
+      {
+        __query: true,
+        args: [
+          { __collection: 'incident_logs' },
+          ...orders,
+          { __limit: MANIFEST_FETCH_LIMIT },
+        ],
+      },
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(result.current).toEqual({ allLogs: [], isLoading: true, manifestIssue: null });
+    unmount();
+    expect(mockUnsubscribe).toHaveBeenCalledOnce();
   });
 });

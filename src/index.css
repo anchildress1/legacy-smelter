@@ -30,18 +30,6 @@
   body {
     @apply bg-concrete text-ash-white font-sans selection:bg-hazard-amber selection:text-zinc-950;
   }
-
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
-    }
-
-    dialog[open] {
-      animation: none !important;
-    }
-  }
 }
 
 @layer components {
@@ -102,5 +90,18 @@
 
   dialog[open] {
     animation: dialog-in 150ms ease-out;
+  }
+}
+
+/* Unlayered rules outrank Tailwind components and utilities without escalating specificity. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+  }
+
+  dialog[open] {
+    animation: none;
   }
 }
