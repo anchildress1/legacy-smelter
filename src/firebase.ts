@@ -77,12 +77,10 @@ let anonymousAuthPromise: Promise<void> | null = null;
 export async function ensureAnonymousAuth(): Promise<void> {
   if (globalThis.window === undefined) return;
   if (auth.currentUser) return;
-  if (!anonymousAuthPromise) {
-    anonymousAuthPromise = signInAnonymously(auth).then(() => undefined).catch((err) => {
-      anonymousAuthPromise = null;
-      throw err;
-    });
-  }
+  anonymousAuthPromise ??= signInAnonymously(auth).then(() => undefined).catch((err) => {
+    anonymousAuthPromise = null;
+    throw err;
+  });
   await anonymousAuthPromise;
 }
 
