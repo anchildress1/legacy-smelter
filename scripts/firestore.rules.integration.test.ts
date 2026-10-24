@@ -1,12 +1,15 @@
 // @vitest-environment node
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import {
-  assertFails,
-  assertSucceeds,
-  initializeTestEnvironment,
-  type RulesTestEnvironment,
-} from '@firebase/rules-unit-testing';
-import { deleteDoc, doc, getDoc, setDoc, updateDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
+  deleteDoc,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  writeBatch,
+  serverTimestamp,
+} from 'firebase/firestore';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -92,25 +95,25 @@ describe('firestore.rules invariants', () => {
 
     await seedIncident('inc-breach');
 
-    await assertSucceeds(
+    await expect(
       updateDoc(incidentRef, {
         breach_count: 1,
         impact_score: 2,
       }),
-    );
+    ).resolves.toBeUndefined();
 
-    await assertFails(
+    await expect(
       updateDoc(incidentRef, {
         breach_count: 2,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
 
-    await assertFails(
+    await expect(
       updateDoc(incidentRef, {
         breach_count: 2,
         impact_score: 999,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('rejects unauthenticated breach increments even with a well-formed payload', async () => {
@@ -123,12 +126,12 @@ describe('firestore.rules invariants', () => {
     // `request.auth != null` guard on the update rule must reject
     // anonymous callers. A regression that drops that guard — e.g. during
     // a refactor — needs to be caught here, not in production.
-    await assertFails(
+    await expect(
       updateDoc(incidentRef, {
         breach_count: 1,
         impact_score: 2,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('rejects breach decrements — the counter is a one-way ratchet', async () => {
@@ -146,20 +149,20 @@ describe('firestore.rules invariants', () => {
     const incidentRef = doc(db, 'incident_logs', 'inc-breach-decrement');
 
     // Decrement by 1 with an internally-consistent impact_score. Must fail.
-    await assertFails(
+    await expect(
       updateDoc(incidentRef, {
         breach_count: 2,
         impact_score: 4,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
 
     // Reset to zero with a zero impact_score. Must also fail.
-    await assertFails(
+    await expect(
       updateDoc(incidentRef, {
         breach_count: 0,
         impact_score: 0,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('rejects increments from non-contiguous counter states', async () => {
@@ -175,19 +178,19 @@ describe('firestore.rules invariants', () => {
     const db = testEnv.authenticatedContext('u-nzbreach').firestore();
     const incidentRef = doc(db, 'incident_logs', 'inc-non-zero-breach');
 
-    await assertFails(
+    await expect(
       updateDoc(incidentRef, {
         breach_count: 7,
         impact_score: 14,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
 
-    await assertSucceeds(
+    await expect(
       updateDoc(incidentRef, {
         breach_count: 6,
         impact_score: 12,
       }),
-    );
+    ).resolves.toBeUndefined();
   });
 
   it('rejects multi-counter updates that touch both breach_count and escalation_count', async () => {
@@ -199,13 +202,13 @@ describe('firestore.rules invariants', () => {
     // `affectedKeys().hasOnly(['breach_count', 'impact_score'])` is the
     // single-counter guard. Writing two counters at once — even if the
     // impact_score is internally consistent — must fail.
-    await assertFails(
+    await expect(
       updateDoc(incidentRef, {
         breach_count: 1,
         escalation_count: 1,
         impact_score: 5,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('allows escalation increment only when paired with escalation subdoc create in the same batch', async () => {
@@ -224,16 +227,16 @@ describe('firestore.rules invariants', () => {
       uid: 'u-esc',
       timestamp: serverTimestamp(),
     });
-    await assertSucceeds(validBatch.commit());
+    await expect(validBatch.commit()).resolves.toBeUndefined();
 
     await seedIncident('inc-esc-up-missing-subdoc');
     const missingSubdocRef = doc(db, 'incident_logs', 'inc-esc-up-missing-subdoc');
-    await assertFails(
+    await expect(
       updateDoc(missingSubdocRef, {
         escalation_count: 1,
         impact_score: 3,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('rejects escalation increment with drifted impact_score even when subdoc is paired', async () => {
@@ -257,7 +260,7 @@ describe('firestore.rules invariants', () => {
       uid: 'u-drift',
       timestamp: serverTimestamp(),
     });
-    await assertFails(driftedBatch.commit());
+    await expect(driftedBatch.commit()).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('rejects users attempting to create an escalation subdoc under another user id', async () => {
@@ -288,7 +291,7 @@ describe('firestore.rules invariants', () => {
       uid: 'u-victim',
       timestamp: serverTimestamp(),
     });
-    await assertFails(impersonationBatch.commit());
+    await expect(impersonationBatch.commit()).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('rejects escalation subdoc where body uid does not match the authenticated caller', async () => {
@@ -321,7 +324,7 @@ describe('firestore.rules invariants', () => {
       uid: 'u-victim',
       timestamp: serverTimestamp(),
     });
-    await assertFails(bodyTamperBatch.commit());
+    await expect(bodyTamperBatch.commit()).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('rejects escalation subdoc carrying extra keys beyond uid and timestamp', async () => {
@@ -336,13 +339,7 @@ describe('firestore.rules invariants', () => {
 
     const db = testEnv.authenticatedContext('u-extra').firestore();
     const incidentRef = doc(db, 'incident_logs', 'inc-esc-extra-keys');
-    const escalationRef = doc(
-      db,
-      'incident_logs',
-      'inc-esc-extra-keys',
-      'escalations',
-      'u-extra',
-    );
+    const escalationRef = doc(db, 'incident_logs', 'inc-esc-extra-keys', 'escalations', 'u-extra');
 
     const extraKeysBatch = writeBatch(db);
     extraKeysBatch.update(incidentRef, {
@@ -354,7 +351,7 @@ describe('firestore.rules invariants', () => {
       timestamp: serverTimestamp(),
       foo: 'bar',
     });
-    await assertFails(extraKeysBatch.commit());
+    await expect(extraKeysBatch.commit()).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('rejects client writes that touch sanction_count', async () => {
@@ -377,21 +374,21 @@ describe('firestore.rules invariants', () => {
     const incidentRef = doc(db, 'incident_logs', 'inc-sanction-client');
 
     // Pure sanction_count increment with a matching impact_score (5×1 = 5).
-    await assertFails(
+    await expect(
       updateDoc(incidentRef, {
         sanction_count: 1,
         impact_score: 5,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
 
     // Smuggling sanction_count into an otherwise-valid breach increment.
-    await assertFails(
+    await expect(
       updateDoc(incidentRef, {
         breach_count: 1,
         sanction_count: 1,
         impact_score: 7,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('allows escalation decrement only when paired with subdoc delete and denies decrement at zero', async () => {
@@ -411,16 +408,16 @@ describe('firestore.rules invariants', () => {
       impact_score: 0,
     });
     validBatch.delete(escalationRef);
-    await assertSucceeds(validBatch.commit());
+    await expect(validBatch.commit()).resolves.toBeUndefined();
 
     await seedIncident('inc-esc-zero');
     const zeroRef = doc(db, 'incident_logs', 'inc-esc-zero');
-    await assertFails(
+    await expect(
       updateDoc(zeroRef, {
         escalation_count: -1,
         impact_score: -3,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('rejects escalation decrement when subdoc delete is omitted from the batch', async () => {
@@ -436,12 +433,12 @@ describe('firestore.rules invariants', () => {
     const db = testEnv.authenticatedContext('u-dec').firestore();
     const incidentRef = doc(db, 'incident_logs', 'inc-esc-dec-orphan');
 
-    await assertFails(
+    await expect(
       updateDoc(incidentRef, {
         escalation_count: 0,
         impact_score: 0,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('rejects escalation subdoc delete when parent counter is not decremented', async () => {
@@ -456,31 +453,25 @@ describe('firestore.rules invariants', () => {
     await seedEscalation('inc-esc-subdoc-orphan', 'u-sub');
 
     const db = testEnv.authenticatedContext('u-sub').firestore();
-    const escalationRef = doc(
-      db,
-      'incident_logs',
-      'inc-esc-subdoc-orphan',
-      'escalations',
-      'u-sub',
-    );
+    const escalationRef = doc(db, 'incident_logs', 'inc-esc-subdoc-orphan', 'escalations', 'u-sub');
 
-    await assertFails(deleteDoc(escalationRef));
+    await expect(deleteDoc(escalationRef)).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('denies incident creates and global_stats writes from clients', async () => {
     const db = testEnv.authenticatedContext('u-create').firestore();
 
-    await assertFails(
+    await expect(
       setDoc(doc(db, 'incident_logs', 'client-created'), {
         ...BASE_INCIDENT,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
 
-    await assertFails(
+    await expect(
       setDoc(doc(db, 'global_stats', 'main'), {
         total_pixels_melted: 123,
       }),
-    );
+    ).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('allows public reads for incident logs and global stats', async () => {
@@ -493,10 +484,13 @@ describe('firestore.rules invariants', () => {
 
     const db = testEnv.unauthenticatedContext().firestore();
 
-    await assertSucceeds(getDoc(doc(db, 'incident_logs', 'inc-read')));
-    const statsSnap = await assertSucceeds(getDoc(doc(db, 'global_stats', 'main')));
+    const incidentSnap = await getDoc(doc(db, 'incident_logs', 'inc-read'));
+    expect(incidentSnap.data()).toEqual(BASE_INCIDENT);
+    const statsSnap = await getDoc(doc(db, 'global_stats', 'main'));
     expect(statsSnap.data()).toEqual({ total_pixels_melted: 456 });
 
-    await assertFails(deleteDoc(doc(db, 'incident_logs', 'inc-read')));
+    await expect(deleteDoc(doc(db, 'incident_logs', 'inc-read'))).rejects.toMatchObject({
+      code: 'permission-denied',
+    });
   });
 });
