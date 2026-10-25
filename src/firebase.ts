@@ -74,13 +74,19 @@ if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
 
 let anonymousAuthPromise: Promise<void> | null = null;
 
+async function signInAnonymous(): Promise<void> {
+  try {
+    await signInAnonymously(auth);
+  } catch (err) {
+    anonymousAuthPromise = null;
+    throw err;
+  }
+}
+
 export async function ensureAnonymousAuth(): Promise<void> {
   if (globalThis.window === undefined) return;
   if (auth.currentUser) return;
-  anonymousAuthPromise ??= signInAnonymously(auth).then(() => undefined).catch((err) => {
-    anonymousAuthPromise = null;
-    throw err;
-  });
+  anonymousAuthPromise ??= signInAnonymous();
   await anonymousAuthPromise;
 }
 
